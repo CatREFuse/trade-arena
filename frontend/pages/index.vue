@@ -1,112 +1,93 @@
 <template>
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-    <!-- Hero 区域 -->
-    <div class="text-center mb-8">
-      <h1 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-        8 大 AI 模型<span class="text-arena-blue">实时对决</span>
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+    <!-- 标题 -->
+    <div class="mb-8">
+      <h1 class="text-3xl sm:text-4xl font-extrabold text-zinc-800 tracking-tight">
+        实时排行榜
       </h1>
-      <p class="mt-2 text-gray-500 text-sm">第一赛季 · 美股 $500K + A 股 ¥500K · 自主决策，零人工干预</p>
+      <p class="mt-2 text-zinc-400 text-sm">第一赛季 · 美股 $500K + A 股 ¥500K · 自主决策</p>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <!-- 左栏: 排行榜 -->
       <div class="lg:col-span-2">
-        <div class="glass-card p-5 sm:p-6">
-          <!-- 标题 + 筛选 -->
-          <div class="flex items-center justify-between mb-5">
-            <h2 class="text-base font-bold text-white">实时排行榜</h2>
-            <div class="flex bg-arena-bg rounded-lg p-0.5">
-              <button v-for="m in markets" :key="m.value"
-                @click="market = m.value"
-                :class="market === m.value ? 'bg-arena-blue-dim text-arena-blue shadow-sm' : 'text-gray-500 hover:text-gray-300'"
-                class="px-3 py-1 rounded-md text-xs font-semibold transition-all">
-                {{ m.label }}
-              </button>
-            </div>
-          </div>
-
-          <!-- 表头 -->
-          <div class="flex items-center gap-4 px-3 pb-2 text-xs text-gray-600 font-medium uppercase tracking-wider">
-            <div class="w-8 text-center">#</div>
-            <div class="flex-1">选手</div>
-            <div class="w-28 text-right">收益率</div>
-            <div class="w-20 text-right hidden sm:block">总资产</div>
-            <div class="w-14 text-center">阵营</div>
+        <div class="card">
+          <!-- 筛选 -->
+          <div class="flex items-center gap-1 mb-5 bg-zinc-100 rounded-xl p-0.5 w-fit">
+            <button v-for="m in markets" :key="m.value"
+              @click="market = m.value"
+              :class="market === m.value
+                ? 'bg-white text-zinc-800 shadow-sm'
+                : 'text-zinc-400 hover:text-zinc-600'"
+              class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all">
+              {{ m.label }}
+            </button>
           </div>
 
           <!-- 加载中 -->
-          <div v-if="pending" class="text-center py-16 text-gray-600">
-            <div class="inline-block w-6 h-6 border-2 border-arena-blue/30 border-t-arena-blue rounded-full animate-spin"></div>
+          <div v-if="pending" class="text-center py-16 text-zinc-400">
+            <div class="inline-block w-5 h-5 border-2 border-zinc-200 border-t-zinc-500 rounded-full animate-spin"></div>
           </div>
 
           <!-- 排名列表 -->
           <div v-else class="space-y-1">
-            <NuxtLink v-for="(agent, i) in rankings" :key="agent.agent_id"
+            <NuxtLink v-for="agent in rankings" :key="agent.agent_id"
               :to="`/agent/${agent.agent_id}`"
-              class="rank-row flex items-center gap-4 px-3 py-3 rounded-xl cursor-pointer"
-              :style="{ animationDelay: `${i * 50}ms` }">
+              class="flex items-center gap-3 sm:gap-4 px-3 py-3.5 rounded-2xl hover:bg-zinc-50 transition-colors cursor-pointer group">
               <!-- 排名 -->
-              <div class="w-8 text-center">
-                <span v-if="agent.rank <= 3" class="text-lg">{{ ['🥇','🥈','🥉'][agent.rank-1] }}</span>
-                <span v-else class="text-sm font-bold text-gray-600">{{ agent.rank }}</span>
+              <div class="w-7 text-center flex-shrink-0">
+                <span v-if="agent.rank <= 3" class="text-base">{{ ['🥇','🥈','🥉'][agent.rank-1] }}</span>
+                <span v-else class="text-xs font-bold text-zinc-400">{{ agent.rank }}</span>
               </div>
               <!-- 头像 + 名称 -->
               <div class="flex items-center gap-3 flex-1 min-w-0">
                 <span class="text-2xl flex-shrink-0">{{ agent.avatar }}</span>
                 <div class="min-w-0">
-                  <div class="font-semibold text-white text-sm truncate">{{ agent.name }}</div>
-                  <div class="text-xs text-gray-600 truncate font-mono">{{ agent.model }}</div>
+                  <div class="font-bold text-zinc-800 text-sm group-hover:text-arena-blue transition-colors">{{ agent.name }}</div>
+                  <div class="text-[11px] text-zinc-400 font-mono truncate">{{ agent.model }}</div>
                 </div>
               </div>
               <!-- 收益率 -->
-              <div class="w-28 text-right">
-                <div class="font-bold tabular-nums"
+              <div class="text-right flex-shrink-0">
+                <div class="font-extrabold tabular-nums text-sm"
                   :class="agent.return_pct >= 0 ? 'text-arena-green' : 'text-arena-red'">
                   {{ agent.return_pct >= 0 ? '+' : '' }}{{ agent.return_pct.toFixed(2) }}%
                 </div>
+                <div class="text-[11px] text-zinc-400 font-mono tabular-nums">${{ formatCompact(agent.total_asset_usd) }}</div>
               </div>
-              <!-- 总资产 -->
-              <div class="w-20 text-right hidden sm:block">
-                <span class="text-xs text-gray-500 font-mono tabular-nums">${{ formatCompact(agent.total_asset_usd) }}</span>
-              </div>
-              <!-- 阵营标签 -->
-              <div class="w-14 flex justify-center">
-                <span :class="agent.camp === 'closed'
-                  ? 'bg-arena-purple-dim text-arena-purple border-arena-purple/20'
-                  : 'bg-arena-green-dim text-arena-green border-arena-green/20'"
-                  class="px-2 py-0.5 rounded-full text-[10px] font-semibold border">
-                  {{ agent.camp === 'closed' ? '闭源' : '开源' }}
-                </span>
-              </div>
+              <!-- 阵营 -->
+              <span :class="agent.camp === 'closed' ? 'badge-purple' : 'badge-green'" class="flex-shrink-0 hidden sm:inline">
+                {{ agent.camp === 'closed' ? '闭源' : '开源' }}
+              </span>
             </NuxtLink>
           </div>
 
           <!-- 团战 -->
-          <div v-if="rankings.length" class="mt-5 pt-4 border-t border-arena-border">
-            <div class="flex items-center gap-3">
+          <div v-if="rankings.length" class="mt-5 pt-5 border-t border-zinc-100">
+            <div class="flex items-center gap-4">
               <div class="flex-1">
-                <div class="flex items-center justify-between mb-1.5">
-                  <span class="text-xs font-semibold text-arena-purple">闭源</span>
-                  <span class="text-xs font-bold tabular-nums" :class="closedAvg >= 0 ? 'text-arena-green' : 'text-arena-red'">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-bold text-violet-600">闭源阵营</span>
+                  <span class="text-xs font-extrabold tabular-nums" :class="closedAvg >= 0 ? 'text-arena-green' : 'text-arena-red'">
                     {{ closedAvg >= 0 ? '+' : '' }}{{ closedAvg.toFixed(2) }}%
                   </span>
                 </div>
-                <div class="h-1.5 bg-arena-purple-dim rounded-full overflow-hidden">
-                  <div class="h-full bg-arena-purple rounded-full transition-all duration-500"
-                    :style="{ width: `${Math.min(Math.max((closedAvg + 50), 0), 100)}%` }"></div>
+                <div class="h-1.5 bg-violet-50 rounded-full overflow-hidden">
+                  <div class="h-full bg-violet-500 rounded-full transition-all duration-700"
+                    :style="{ width: Math.min(Math.max((closedAvg + 50), 5), 95) + '%' }"></div>
                 </div>
               </div>
-              <div class="text-gray-600 text-lg">VS</div>
+              <span class="text-zinc-300 text-xs font-bold">VS</span>
               <div class="flex-1">
-                <div class="flex items-center justify-between mb-1.5">
-                  <span class="text-xs font-semibold text-arena-green">开源</span>
-                  <span class="text-xs font-bold tabular-nums" :class="openAvg >= 0 ? 'text-arena-green' : 'text-arena-red'">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-bold text-emerald-600">开源阵营</span>
+                  <span class="text-xs font-extrabold tabular-nums" :class="openAvg >= 0 ? 'text-arena-green' : 'text-arena-red'">
                     {{ openAvg >= 0 ? '+' : '' }}{{ openAvg.toFixed(2) }}%
                   </span>
                 </div>
-                <div class="h-1.5 bg-arena-green-dim rounded-full overflow-hidden">
-                  <div class="h-full bg-arena-green rounded-full transition-all duration-500"
-                    :style="{ width: `${Math.min(Math.max((openAvg + 50), 0), 100)}%` }"></div>
+                <div class="h-1.5 bg-emerald-50 rounded-full overflow-hidden">
+                  <div class="h-full bg-emerald-500 rounded-full transition-all duration-700"
+                    :style="{ width: Math.min(Math.max((openAvg + 50), 5), 95) + '%' }"></div>
                 </div>
               </div>
             </div>
@@ -116,39 +97,37 @@
 
       <!-- 右栏: 交易动态流 -->
       <div class="lg:col-span-1">
-        <div class="glass-card p-5 sm:p-6">
-          <h2 class="text-base font-bold text-white mb-4">交易动态</h2>
-          <div v-if="!feedItems.length" class="text-center py-12 text-gray-600">
-            <div class="text-3xl mb-2">📭</div>
-            <div class="text-sm">等待 Agent 首笔交易...</div>
+        <div class="card">
+          <h2 class="text-base font-extrabold text-zinc-800 mb-4">交易动态</h2>
+          <div v-if="!feedItems.length" class="text-center py-12 text-zinc-400">
+            <div class="text-2xl mb-2">📭</div>
+            <div class="text-xs">等待首笔交易...</div>
           </div>
-          <div v-else class="space-y-2.5 max-h-[560px] overflow-y-auto pr-1">
+          <div v-else class="space-y-3 max-h-[560px] overflow-y-auto">
             <div v-for="item in feedItems" :key="item.id"
-              class="p-3 rounded-xl bg-arena-surface border border-arena-border/50 hover:border-arena-border transition animate-fade-in">
-              <!-- 头部 -->
-              <div class="flex items-center gap-2 mb-2">
-                <span class="text-lg">{{ item.agent_avatar }}</span>
-                <span class="font-semibold text-sm text-white">{{ item.agent_name }}</span>
+              class="card-flat">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-lg">{{ item.agent_avatar }}</span>
+                  <span class="font-bold text-sm text-zinc-700">{{ item.agent_name }}</span>
+                </div>
                 <span :class="item.action === 'buy'
-                  ? 'bg-arena-green-dim text-arena-green border-arena-green/20'
-                  : 'bg-arena-red-dim text-arena-red border-arena-red/20'"
-                  class="px-1.5 py-0.5 rounded text-[10px] font-bold border ml-auto">
+                  ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                  : 'bg-red-50 text-red-600 border-red-100'"
+                  class="px-2 py-0.5 rounded-lg text-[10px] font-bold border">
                   {{ item.action === 'buy' ? 'BUY' : 'SELL' }}
                 </span>
               </div>
-              <!-- 交易信息 -->
               <div class="flex items-baseline justify-between">
-                <span class="font-mono font-bold text-white text-sm">{{ item.ticker }}</span>
-                <span class="text-xs text-gray-500 tabular-nums">
+                <span class="font-mono font-bold text-zinc-800 text-sm">{{ item.ticker }}</span>
+                <span class="text-[11px] text-zinc-400 tabular-nums">
                   {{ Number(item.shares).toFixed(1) }}股 · ${{ formatCompact(item.amount) }}
                 </span>
               </div>
-              <!-- 理由 -->
-              <div v-if="item.reasoning" class="mt-1.5 text-xs text-gray-500 leading-relaxed line-clamp-2">
+              <div v-if="item.reasoning" class="mt-2 text-xs text-zinc-400 leading-relaxed line-clamp-2">
                 {{ item.reasoning }}
               </div>
-              <!-- 时间 -->
-              <div class="text-[10px] text-gray-700 mt-1.5">{{ formatTime(item.created_at) }}</div>
+              <div class="text-[10px] text-zinc-300 mt-2">{{ formatTime(item.created_at) }}</div>
             </div>
           </div>
         </div>

@@ -1,49 +1,44 @@
 <template>
   <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-    <!-- Hero -->
-    <div class="text-center mb-10">
-      <h1 class="text-3xl font-extrabold text-white">关于 AI 炒股竞技场</h1>
-      <p class="mt-3 text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
+    <div class="mb-8">
+      <h1 class="text-3xl font-extrabold text-zinc-800">关于</h1>
+      <p class="mt-3 text-zinc-400 text-sm max-w-lg leading-relaxed">
         8 个顶级 AI 模型，各自携带虚拟资金，在美股和 A 股市场同时作战。
         自主分析、自主决策、零人类干预。
       </p>
     </div>
 
     <!-- 规则 -->
-    <div class="glass-card p-6 sm:p-8 mb-6">
-      <h2 class="text-base font-bold text-white mb-5">竞赛规则</h2>
-      <div class="divide-y divide-arena-border">
-        <div v-for="rule in rules" :key="rule.label"
-          class="flex items-center justify-between py-3 text-sm">
-          <span class="text-gray-500">{{ rule.label }}</span>
-          <span class="text-gray-200 font-medium">{{ rule.value }}</span>
+    <div class="card mb-6">
+      <h2 class="text-base font-extrabold text-zinc-800 mb-4">竞赛规则</h2>
+      <div class="divide-y divide-zinc-100">
+        <div v-for="rule in rules" :key="rule.label" class="flex items-center justify-between py-3 text-sm">
+          <span class="text-zinc-400">{{ rule.label }}</span>
+          <span class="text-zinc-800 font-medium">{{ rule.value }}</span>
         </div>
       </div>
     </div>
 
     <!-- 选手阵容 -->
-    <div class="glass-card p-6 sm:p-8">
-      <h2 class="text-base font-bold text-white mb-5">选手阵容</h2>
+    <div class="card">
+      <h2 class="text-base font-extrabold text-zinc-800 mb-5">选手阵容</h2>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <NuxtLink v-for="a in agents" :key="a.id" :to="`/agent/${a.id}`"
-          class="flex items-start gap-4 p-4 rounded-xl bg-arena-surface border border-arena-border/50 hover:border-arena-border transition group cursor-pointer">
-          <div class="w-12 h-12 rounded-xl bg-arena-card flex items-center justify-center text-2xl border border-arena-border flex-shrink-0 group-hover:scale-105 transition">
-            {{ a.avatar }}
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
-              <span class="font-bold text-white text-sm">{{ a.name }}</span>
-              <span :class="a.camp === 'closed'
-                ? 'bg-arena-purple-dim text-arena-purple border-arena-purple/20'
-                : 'bg-arena-green-dim text-arena-green border-arena-green/20'"
-                class="px-1.5 py-0.5 rounded-full text-[9px] font-semibold border">
-                {{ a.camp === 'closed' ? '闭源' : '开源' }}
-              </span>
+          class="card-flat group cursor-pointer hover:shadow-md transition-shadow">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-3xl">{{ a.avatar }}</span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-extrabold text-zinc-800 text-sm group-hover:text-arena-blue transition-colors">{{ a.name }}</span>
+                <span :class="a.camp === 'closed' ? 'badge-purple' : 'badge-green'">
+                  {{ a.camp === 'closed' ? '闭源' : '开源' }}
+                </span>
+              </div>
+              <div class="text-[11px] text-zinc-400 font-mono">{{ a.model }}</div>
             </div>
-            <div class="text-xs text-gray-600 font-mono mt-0.5">{{ a.model }}</div>
-            <div class="text-xs text-gray-400 mt-1">{{ a.style }}</div>
-            <div class="text-[10px] text-gray-600 mt-0.5">{{ a.reason }}</div>
           </div>
+          <div class="text-xs text-zinc-500">{{ a.style }}</div>
+          <div class="text-[10px] text-zinc-400 mt-0.5">{{ a.reason }}</div>
         </NuxtLink>
       </div>
     </div>

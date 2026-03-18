@@ -2,47 +2,56 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+SC:wght@400;500;700;900&display=swap');
 
 body {
-  @apply bg-arena-bg text-gray-200 antialiased;
+  @apply bg-zinc-50 text-zinc-800 antialiased;
+  font-family: Inter, 'Noto Sans SC', system-ui, sans-serif;
 }
 
-/* 微妙的顶部光晕 */
-.glow-top {
-  background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(88, 166, 255, 0.08), transparent);
+@layer components {
+  .card {
+    @apply bg-white rounded-3xl shadow-lg shadow-zinc-200/50 p-5 sm:p-6;
+  }
+  .card-flat {
+    @apply bg-white rounded-2xl border border-zinc-100 p-4 sm:p-5;
+  }
+  .text-secondary {
+    @apply text-zinc-500;
+  }
+  .text-tertiary {
+    @apply text-zinc-400;
+  }
+  .badge {
+    @apply px-2 py-0.5 rounded-full text-[10px] font-semibold;
+  }
+  .badge-purple {
+    @apply badge bg-violet-50 text-violet-600 border border-violet-100;
+  }
+  .badge-green {
+    @apply badge bg-emerald-50 text-emerald-600 border border-emerald-100;
+  }
 }
 
-/* 卡片玻璃感 */
-.glass-card {
-  @apply bg-arena-card/80 backdrop-blur-sm border border-arena-border rounded-2xl;
+@layer base {
+  * {
+    @apply selection:text-white selection:bg-zinc-800;
+  }
 }
 
-/* 排名行悬停效果 */
-.rank-row {
-  @apply transition-all duration-200;
-}
-.rank-row:hover {
-  @apply bg-arena-card-hover;
-  box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.1), 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-/* 数字等宽 */
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
-}
-
-/* 滚动条美化 */
+/* 滚动条 */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #30363d;
-  border-radius: 3px;
+  background: #d4d4d8;
+  border-radius: 2px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #484f58;
+
+/* tabular nums */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
