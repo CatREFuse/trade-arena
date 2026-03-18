@@ -1,12 +1,12 @@
 <template>
   <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-    <h1 class="text-3xl font-extrabold text-zinc-800 mb-6">市场总览</h1>
+    <h1 class="text-3xl font-extrabold text-main mb-6">市场总览</h1>
 
     <!-- 大盘指数 -->
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
       <div v-for="idx in indices" :key="idx.name" class="card-flat">
-        <div class="text-[10px] text-zinc-400 font-medium mb-1">{{ idx.flag }} {{ idx.name }}</div>
-        <div class="text-sm font-extrabold text-zinc-800 tabular-nums">{{ idx.value }}</div>
+        <div class="text-[10px] text-dim font-medium mb-1">{{ idx.flag }} {{ idx.name }}</div>
+        <div class="text-sm font-extrabold text-main tabular-nums">{{ idx.value }}</div>
         <div :class="idx.change >= 0 ? 'text-arena-green' : 'text-arena-red'" class="text-xs font-bold tabular-nums mt-0.5">
           {{ idx.change >= 0 ? '+' : '' }}{{ idx.change }}%
         </div>
@@ -15,22 +15,22 @@
 
     <!-- 交易统计 -->
     <div class="card mb-6">
-      <h2 class="text-base font-extrabold text-zinc-800 mb-5">交易统计</h2>
+      <h2 class="text-base font-extrabold text-main mb-5">交易统计</h2>
       <div class="grid grid-cols-3 gap-6">
         <div class="text-center">
-          <div class="text-3xl font-extrabold text-zinc-800 tabular-nums">{{ feedItems.length }}</div>
-          <div class="text-xs text-zinc-400 mt-1">总交易</div>
+          <div class="text-3xl font-extrabold text-main tabular-nums">{{ feedItems.length }}</div>
+          <div class="text-xs text-dim mt-1">总交易</div>
         </div>
         <div class="text-center">
           <div class="text-3xl font-extrabold text-arena-green tabular-nums">{{ buyCount }}</div>
-          <div class="text-xs text-zinc-400 mt-1">买入</div>
+          <div class="text-xs text-dim mt-1">买入</div>
         </div>
         <div class="text-center">
           <div class="text-3xl font-extrabold text-arena-red tabular-nums">{{ sellCount }}</div>
-          <div class="text-xs text-zinc-400 mt-1">卖出</div>
+          <div class="text-xs text-dim mt-1">卖出</div>
         </div>
       </div>
-      <div class="mt-5 h-2 bg-zinc-100 rounded-full overflow-hidden flex" v-if="feedItems.length">
+      <div class="mt-5 h-2 bg-switch rounded-full overflow-hidden flex" v-if="feedItems.length">
         <div class="bg-emerald-500 h-full rounded-l-full transition-all" :style="{ width: buyRatio + '%' }"></div>
         <div class="bg-red-500 h-full rounded-r-full transition-all" :style="{ width: (100 - buyRatio) + '%' }"></div>
       </div>
@@ -38,20 +38,20 @@
 
     <!-- 热门股票 -->
     <div class="card">
-      <h2 class="text-base font-extrabold text-zinc-800 mb-4">热门交易标的</h2>
-      <div v-if="!hotStocks.length" class="text-center py-10 text-zinc-400 text-sm">等待交易数据积累...</div>
-      <div v-else class="divide-y divide-zinc-100">
+      <h2 class="text-base font-extrabold text-main mb-4">热门交易标的</h2>
+      <div v-if="!hotStocks.length" class="text-center py-10 text-dim text-sm">等待交易数据积累...</div>
+      <div v-else class="divide-y divide-zinc-100 dark:divide-zinc-700">
         <div v-for="(stock, i) in hotStocks" :key="stock.ticker"
           class="flex items-center gap-4 py-3">
-          <div class="w-6 text-center text-xs font-extrabold" :class="i === 0 ? 'text-arena-gold' : 'text-zinc-400'">
+          <div class="w-6 text-center text-xs font-extrabold" :class="i === 0 ? 'text-arena-gold' : 'text-dim'">
             {{ i + 1 }}
           </div>
-          <div class="font-mono text-zinc-800 font-bold text-sm flex-1">{{ stock.ticker }}</div>
+          <div class="font-mono text-main font-bold text-sm flex-1">{{ stock.ticker }}</div>
           <div class="flex items-center gap-3">
-            <div class="w-20 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+            <div class="w-20 h-1.5 bg-switch rounded-full overflow-hidden">
               <div class="h-full bg-blue-500 rounded-full" :style="{ width: (stock.count / maxTradeCount * 100) + '%' }"></div>
             </div>
-            <span class="text-xs text-zinc-400 tabular-nums w-10 text-right">{{ stock.count }} 笔</span>
+            <span class="text-xs text-dim tabular-nums w-10 text-right">{{ stock.count }} 笔</span>
           </div>
         </div>
       </div>

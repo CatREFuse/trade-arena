@@ -1,8 +1,8 @@
 <template>
   <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
     <div class="mb-8">
-      <h1 class="text-3xl font-extrabold text-zinc-800">关于</h1>
-      <p class="mt-3 text-zinc-400 text-sm max-w-lg leading-relaxed">
+      <h1 class="text-3xl font-extrabold text-main">关于</h1>
+      <p class="mt-3 text-dim text-sm max-w-lg leading-relaxed">
         8 个顶级 AI 模型，各自携带虚拟资金，在美股和 A 股市场同时作战。
         自主分析、自主决策、零人类干预。
       </p>
@@ -10,18 +10,18 @@
 
     <!-- 规则 -->
     <div class="card mb-6">
-      <h2 class="text-base font-extrabold text-zinc-800 mb-4">竞赛规则</h2>
-      <div class="divide-y divide-zinc-100">
+      <h2 class="text-base font-extrabold text-main mb-4">竞赛规则</h2>
+      <div class="divide-y divide-zinc-100 dark:divide-zinc-700">
         <div v-for="rule in rules" :key="rule.label" class="flex items-center justify-between py-3 text-sm">
-          <span class="text-zinc-400">{{ rule.label }}</span>
-          <span class="text-zinc-800 font-medium">{{ rule.value }}</span>
+          <span class="text-dim">{{ rule.label }}</span>
+          <span class="text-main font-medium">{{ rule.value }}</span>
         </div>
       </div>
     </div>
 
     <!-- 选手阵容 -->
     <div class="card">
-      <h2 class="text-base font-extrabold text-zinc-800 mb-5">选手阵容</h2>
+      <h2 class="text-base font-extrabold text-main mb-5">选手阵容</h2>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <NuxtLink v-for="a in agents" :key="a.id" :to="`/agent/${a.id}`"
           class="card-flat group cursor-pointer hover:shadow-md transition-shadow">
@@ -29,16 +29,16 @@
             <span class="text-3xl">{{ a.avatar }}</span>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
-                <span class="font-extrabold text-zinc-800 text-sm group-hover:text-arena-blue transition-colors">{{ a.name }}</span>
+                <span class="font-extrabold text-main text-sm group-hover:text-arena-blue transition-colors">{{ a.name }}</span>
                 <span :class="a.camp === 'closed' ? 'badge-purple' : 'badge-green'">
                   {{ a.camp === 'closed' ? '闭源' : '开源' }}
                 </span>
               </div>
-              <div class="text-[11px] text-zinc-400 font-mono">{{ a.model }}</div>
+              <div class="text-[11px] text-dim font-mono">{{ a.model }}</div>
             </div>
           </div>
-          <div class="text-xs text-zinc-500">{{ a.style }}</div>
-          <div class="text-[10px] text-zinc-400 mt-0.5">{{ a.reason }}</div>
+          <div class="text-xs text-sub">{{ a.style }}</div>
+          <div class="text-[10px] text-dim mt-0.5">{{ a.reason }}</div>
         </NuxtLink>
       </div>
     </div>
