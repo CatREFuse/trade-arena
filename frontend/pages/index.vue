@@ -16,12 +16,18 @@
     </div>
 
     <!-- 排行榜卡片 -->
-    <div class="card mt-6">
-      <div v-if="pending" class="text-center py-16 text-tertiary">
+    <div class="card mt-6 relative min-h-[200px]">
+      <!-- 初次加载 spinner（仅在无数据时显示） -->
+      <div v-if="pending && !rankings.length" class="text-center py-16 text-tertiary">
         <div class="inline-block w-5 h-5 border-2 border-zinc-200 dark:border-zinc-600 border-t-zinc-500 dark:border-t-zinc-300 rounded-full animate-spin"></div>
       </div>
 
-      <div v-else class="space-y-1">
+      <!-- 切换 tab 时的轻量 loading 指示（保留旧数据） -->
+      <div v-if="pending && rankings.length" class="absolute top-4 right-4">
+        <div class="w-4 h-4 border-2 border-zinc-200 dark:border-zinc-600 border-t-blue-500 rounded-full animate-spin"></div>
+      </div>
+
+      <div v-if="rankings.length" class="space-y-1">
         <NuxtLink v-for="agent in rankings" :key="agent.agent_id"
           :to="`/agent/${agent.agent_id}`"
           class="flex items-center gap-3 px-3 py-3 rounded-2xl md:transition-all md:hover:shadow-2xl cursor-pointer group">
