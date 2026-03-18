@@ -3,6 +3,7 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   ssr: true,
   modules: ['@nuxtjs/tailwindcss'],
+  css: ['~/assets/css/main.css'],
   nitro: {
     devProxy: {
       '/api/': {
