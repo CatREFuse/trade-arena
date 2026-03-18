@@ -2,7 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 body {
-  @apply bg-arena-bg text-gray-100;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  @apply bg-arena-bg text-gray-200 antialiased;
+}
+
+/* 微妙的顶部光晕 */
+.glow-top {
+  background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(88, 166, 255, 0.08), transparent);
+}
+
+/* 卡片玻璃感 */
+.glass-card {
+  @apply bg-arena-card/80 backdrop-blur-sm border border-arena-border rounded-2xl;
+}
+
+/* 排名行悬停效果 */
+.rank-row {
+  @apply transition-all duration-200;
+}
+.rank-row:hover {
+  @apply bg-arena-card-hover;
+  box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.1), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* 数字等宽 */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
 }
