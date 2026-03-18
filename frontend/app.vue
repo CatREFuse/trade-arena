@@ -11,7 +11,7 @@
             class="px-3 py-1.5 rounded-xl text-sm font-medium transition-all"
             :class="$route.path === link.to
               ? 'text-main font-bold'
-              : 'text-tertiary hover:text-main'">
+              : 'text-secondary hover:text-main'">
             {{ link.label }}
           </NuxtLink>
           <!-- 主题切换 -->

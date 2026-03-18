@@ -8,7 +8,7 @@
       <button v-for="m in markets" :key="m.value"
         @click="market = m.value"
         :class="market === m.value
-          ? 'bg-blue-500 text-white font-medium'
+          ? 'bg-blue-600 text-white font-medium'
           : 'text-zinc-400 hover:text-main'"
         class="px-3 py-1 rounded-lg text-sm transition-all select-none">
         {{ m.label }}
@@ -33,7 +33,7 @@
             <span class="text-2xl flex-shrink-0">{{ agent.avatar }}</span>
             <div class="min-w-0">
               <div class="font-bold text-main text-sm">{{ agent.name }}</div>
-              <div class="text-[11px] text-tertiary font-mono truncate">{{ agent.model }}</div>
+              <div class="text-[11px] text-secondary font-mono truncate">{{ agent.model }}</div>
             </div>
           </div>
           <div class="text-right flex-shrink-0">
@@ -99,8 +99,8 @@
             <span class="font-bold text-sm text-main">{{ item.agent_name }}</span>
           </div>
           <span :class="item.action === 'buy'
-            ? 'bg-emerald-500 text-white'
-            : 'bg-red-500 text-white'"
+            ? 'bg-emerald-700 text-white'
+            : 'bg-red-700 text-white'"
             class="px-2 py-0.5 rounded-lg text-[10px] font-bold">
             {{ item.action === 'buy' ? 'BUY' : 'SELL' }}
           </span>

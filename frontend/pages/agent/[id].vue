@@ -65,7 +65,7 @@
         </div>
         <div v-else class="divide-y divide-zinc-200 dark:divide-zinc-700" style="border-width: 0.5px">
           <div v-for="t in agentTrades" :key="t.id" class="flex items-center gap-4 py-3.5">
-            <div :class="t.action === 'buy' ? 'bg-emerald-500' : 'bg-red-500'"
+            <div :class="t.action === 'buy' ? 'bg-emerald-700' : 'bg-red-700'"
               class="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0">
               <svg v-if="t.action === 'buy'" class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/>
