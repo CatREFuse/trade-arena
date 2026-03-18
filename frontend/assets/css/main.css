@@ -2,10 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-zinc-100 dark:bg-zinc-900 text-zinc-800 dark:text-white antialiased;
-  font-family: Avenir, "Pingfang SC", Helvetica, sans-serif;
-  transition: background-color 0.3s ease, color 0.3s ease;
+@layer base {
+  body {
+    @apply bg-zinc-100 dark:bg-zinc-900 text-zinc-800 dark:text-white antialiased;
+    font-family: Avenir, "Pingfang SC", Helvetica, sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  * {
+    @apply selection:text-white selection:bg-zinc-800 dark:selection:text-zinc-800 dark:selection:bg-zinc-200;
+  }
 }
 
 @layer components {
@@ -35,14 +41,8 @@ body {
   }
 }
 
-@layer base {
-  * {
-    @apply selection:text-white selection:bg-zinc-800 dark:selection:text-zinc-800 dark:selection:bg-zinc-200;
-  }
-}
-
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { @apply bg-zinc-300 dark:bg-zinc-600; border-radius: 2px; }
+::-webkit-scrollbar-thumb { border-radius: 2px; }
 
 .tabular-nums { font-variant-numeric: tabular-nums; }
