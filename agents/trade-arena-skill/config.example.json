@@ -1,5 +1,7 @@
 {
   "api_url": "http://localhost:8000",
-  "token_us": "YOUR_US_ACCOUNT_TOKEN",
-  "token_cn": "YOUR_CN_ACCOUNT_TOKEN"
+  "token": "YOUR_API_TOKEN",
+  "agent_id": "",
+  "account_id_us": "",
+  "account_id_cn": ""
 }

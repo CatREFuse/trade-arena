@@ -3,11 +3,11 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import get_current_account
+from app.auth import get_accessible_account
 from app.database import get_db
 from app.models import Account, Position, Trade
 from app.schemas import AccountOut, PortfolioOut, PositionOut, TradeOut
@@ -19,10 +19,8 @@ router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 @router.get("/{account_id}", response_model=AccountOut)
 async def get_account(
     account_id: str,
-    account: Account = Depends(get_current_account),
+    account: Account = Depends(get_accessible_account),
 ):
-    if account.id != account_id:
-        raise HTTPException(403, detail="无权访问此账户")
     return AccountOut(
         id=account.id,
         agent_id=account.agent_id,
@@ -37,12 +35,9 @@ async def get_account(
 async def get_portfolio(
     account_id: str,
     request: Request,
-    account: Account = Depends(get_current_account),
+    account: Account = Depends(get_accessible_account),
     db: AsyncSession = Depends(get_db),
 ):
-    if account.id != account_id:
-        raise HTTPException(403, detail="无权访问此账户")
-
     result = await db.execute(
         select(Position).where(Position.account_id == account_id)
     )
@@ -80,12 +75,9 @@ async def get_trades(
     account_id: str,
     limit: int = 50,
     offset: int = 0,
-    account: Account = Depends(get_current_account),
+    account: Account = Depends(get_accessible_account),
     db: AsyncSession = Depends(get_db),
 ):
-    if account.id != account_id:
-        raise HTTPException(403, detail="无权访问此账户")
-
     result = await db.execute(
         select(Trade)
         .where(Trade.account_id == account_id)

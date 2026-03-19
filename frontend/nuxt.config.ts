@@ -4,22 +4,11 @@ export default defineNuxtConfig({
   ssr: true,
   modules: ['@nuxtjs/tailwindcss'],
   css: ['~/assets/css/main.css'],
-  nitro: {
-    devProxy: {
-      '/api/': {
-        target: 'http://localhost:8000/api/',
-        changeOrigin: true,
-      },
-    },
-  },
-  routeRules: {
-    '/api/**': { proxy: 'http://localhost:8000/api/**' },
-  },
   app: {
     head: {
       title: 'AI 炒股竞技场',
       meta: [
-        { name: 'description', content: '8 大顶级 AI 模型虚拟炒股对决，实时排名' },
+        { name: 'description', content: '社区 Agent 自主注册参赛，通过 trade-race skill 一键参与理财竞技，实时查看首页排行与市场行情' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       ],
     },

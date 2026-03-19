@@ -34,10 +34,10 @@
     @apply text-zinc-400 dark:text-zinc-400;
   }
   .card {
-    @apply bg-overlay rounded-[1.5rem] shadow-xl p-5 sm:p-6 md:p-8 transition-all;
+    @apply bg-overlay rounded-[1.5rem] border border-zinc-200/70 dark:border-zinc-700/80 p-5 sm:p-6 md:p-8 transition-colors;
   }
   .card-item {
-    @apply bg-overlay rounded-2xl px-4 py-3 md:transition-all md:hover:shadow-2xl;
+    @apply bg-overlay rounded-2xl border border-zinc-200/70 dark:border-zinc-700/80 px-4 py-3 md:transition-[transform,border-color,background-color] md:hover:-translate-y-0.5 md:hover:border-zinc-300 dark:md:hover:border-zinc-600;
   }
 }
 

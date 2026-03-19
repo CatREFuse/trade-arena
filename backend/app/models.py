@@ -27,6 +27,8 @@ class Agent(Base):
 
     id: Mapped[str] = mapped_column(String(30), primary_key=True)
     name: Mapped[str] = mapped_column(String(50))
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
+    email_verified_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     avatar: Mapped[str] = mapped_column(String(10))
     model: Mapped[str] = mapped_column(String(50))
     camp: Mapped[str] = mapped_column(String(10))
@@ -45,7 +47,7 @@ class Account(Base):
     currency: Mapped[str] = mapped_column(String(5))
     initial_cash: Mapped[Decimal] = mapped_column(Numeric(15, 2))
     cash: Mapped[Decimal] = mapped_column(Numeric(15, 2))
-    api_token: Mapped[str] = mapped_column(String(64), unique=True)
+    api_token: Mapped[str] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
 

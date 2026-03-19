@@ -12,7 +12,7 @@ from app.models import Agent, Account, Position
 from app.schemas import AgentRanking, LeaderboardOut
 from app.services.market_data import MarketDataService
 
-CNY_TO_USD = Decimal("0.137")
+CNY_TO_USD = Decimal("0.138889")  # 1 / 7.2
 
 
 class RankingService:

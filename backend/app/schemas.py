@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 # --- Account ---
@@ -38,7 +38,8 @@ class PortfolioOut(BaseModel):
 
 # --- Trade ---
 class BuyRequest(BaseModel):
-    account_id: str
+    account_id: Optional[str] = None
+    market: Optional[str] = None  # "us" | "cn"，与 token 配合自动解析 account_id
     ticker: str
     amount: Decimal
     reasoning: Optional[str] = None
@@ -47,7 +48,8 @@ class BuyRequest(BaseModel):
 
 
 class SellRequest(BaseModel):
-    account_id: str
+    account_id: Optional[str] = None
+    market: Optional[str] = None
     ticker: str
     shares: Decimal
     reasoning: Optional[str] = None
@@ -72,8 +74,47 @@ class QuoteOut(BaseModel):
     ticker: str
     price: Decimal
     change_pct: float
+    name: Optional[str] = None
     volume: Optional[int] = None
     market_status: str
+
+
+class IndexQuoteOut(BaseModel):
+    """大盘指数行情"""
+    symbol: str
+    name: str
+    price: float
+    change_pct: float
+    market: str
+
+
+class MarketBoardItemOut(BaseModel):
+    ticker: str
+    name: str
+    market: str
+    price: Decimal
+    change_pct: float
+    volume: Optional[int] = None
+    market_status: str
+
+
+class MarketSummaryOut(BaseModel):
+    market: str
+    name: str
+    stock_count: int
+    up_count: int
+    down_count: int
+    flat_count: int
+    avg_change_pct: float
+    leader: Optional[MarketBoardItemOut] = None
+    laggard: Optional[MarketBoardItemOut] = None
+
+
+class MarketOverviewOut(BaseModel):
+    indices: list[IndexQuoteOut]
+    boards: dict[str, list[MarketBoardItemOut]]
+    markets: list[MarketSummaryOut]
+    updated_at: datetime
 
 
 # --- Leaderboard ---
@@ -117,3 +158,109 @@ class SnapshotOut(BaseModel):
     total_asset: Decimal
     cash: Decimal
     position_value: Decimal
+
+
+class ChartPointOut(BaseModel):
+    """资产曲线数据点"""
+    date: str
+    value: float
+
+
+
+# --- Agent Registration ---
+class AgentOut(BaseModel):
+    id: str
+    name: str
+    avatar: str
+    model: str
+    camp: str
+    style: str
+    framework: str
+    created_at: datetime
+
+
+class AgentRegisterRequest(BaseModel):
+    name: str
+    email: str
+    verification_code: str
+    model: str
+    avatar: str
+    style: str
+    framework: str = "custom"
+
+    @field_validator("name")
+    @classmethod
+    def name_check(cls, v):
+        v = v.strip()
+        if not v or len(v) > 50:
+            raise ValueError("名称长度需在 1-50 字符之间")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def email_check(cls, v):
+        v = v.strip().lower()
+        if "@" not in v or "." not in v.split("@")[-1]:
+            raise ValueError("请输入有效邮箱")
+        if len(v) > 255:
+            raise ValueError("邮箱长度不能超过 255 字符")
+        return v
+
+    @field_validator("verification_code")
+    @classmethod
+    def verification_code_check(cls, v):
+        v = v.strip()
+        if len(v) != 6 or not v.isdigit():
+            raise ValueError("验证码需为 6 位数字")
+        return v
+
+    @field_validator("avatar")
+    @classmethod
+    def avatar_check(cls, v):
+        v = v.strip()
+        if not v or len(v) > 10:
+            raise ValueError("请输入一个 emoji 作为头像")
+        return v
+
+    @field_validator("model")
+    @classmethod
+    def model_check(cls, v):
+        v = v.strip()
+        if not v or len(v) > 50:
+            raise ValueError("模型名称长度需在 1-50 字符之间")
+        return v
+
+    @field_validator("style")
+    @classmethod
+    def style_check(cls, v):
+        v = v.strip()
+        if not v or len(v) > 100:
+            raise ValueError("投资风格描述长度需在 1-100 字符之间")
+        return v
+
+
+class AgentRegisterResponse(BaseModel):
+    agent: AgentOut
+    token: str
+
+
+class AgentEmailCodeRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def email_check(cls, v):
+        v = v.strip().lower()
+        if "@" not in v or "." not in v.split("@")[-1]:
+            raise ValueError("请输入有效邮箱")
+        if len(v) > 255:
+            raise ValueError("邮箱长度不能超过 255 字符")
+        return v
+
+
+class AgentEmailCodeResponse(BaseModel):
+    email: str
+    expires_in: int
+    cooldown_in: int
+    delivery: str
+    dev_code: Optional[str] = None

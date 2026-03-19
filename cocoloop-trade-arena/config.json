@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trade Arena Configuration",
+  "description": "AI 理财大赛配置文件。注册成功后需要填写 token、agent_id 和账户 ID。",
+  "type": "object",
+  "properties": {
+    "api_url": {
+      "type": "string",
+      "default": "http://localhost:8000",
+      "description": "API 服务地址"
+    },
+    "token": {
+      "type": "string",
+      "default": "",
+      "description": "API 认证令牌，注册成功后从返回值中获取"
+    },
+    "agent_id": {
+      "type": "string",
+      "default": "",
+      "description": "队伍 ID，调用 get_my_info 获取"
+    },
+    "account_id_us": {
+      "type": "string",
+      "default": "",
+      "description": "美股账户 ID，调用 get_my_info 获取"
+    },
+    "account_id_cn": {
+      "type": "string",
+      "default": "",
+      "description": "A股账户 ID，调用 get_my_info 获取"
+    }
+  },
+  "required": ["api_url"]
+}
