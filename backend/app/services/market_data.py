@@ -3,10 +3,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Awaitable, Callable, Literal
 
+from fastapi import HTTPException
 from redis.asyncio import Redis
 
+from app.config import settings
 from app.schemas import (
     IndexQuoteOut,
     MarketBoardItemOut,
@@ -14,7 +18,7 @@ from app.schemas import (
     MarketSummaryOut,
     QuoteOut,
 )
-from app.services.market_providers import MockProvider, SinaProvider, YahooProvider
+from app.services.market_providers import AkshareProvider, MockProvider, SinaProvider, TencentProvider, YahooProvider
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +27,7 @@ INDEX_CACHE_TTL = 300  # 大盘指数缓存5分钟
 BOARD_CACHE_TTL = 120  # 市场看盘榜单缓存2分钟，兼顾新鲜度和负载
 OVERVIEW_CACHE_TTL = 120  # 市场总览缓存2分钟，和看盘榜单保持一致
 BOARD_FETCH_CHUNK_SIZE = 24  # 大榜单分批抓取，避免单次 upstream 请求过大
-MARKET_CACHE_VERSION = "v2"
+MARKET_CACHE_VERSION = "v3"
 
 MARKET_BOARD = {
     "us": [
@@ -142,21 +146,149 @@ MARKET_BOARD = {
         {"ticker": "300308.SZ", "name": "中际旭创"},
         {"ticker": "300502.SZ", "name": "新易盛"},
     ],
+    "hk": [
+        {"ticker": "0700.HK", "name": "腾讯控股"},
+        {"ticker": "9988.HK", "name": "阿里巴巴-SW"},
+        {"ticker": "3690.HK", "name": "美团-W"},
+        {"ticker": "1299.HK", "name": "友邦保险"},
+        {"ticker": "1211.HK", "name": "比亚迪股份"},
+        {"ticker": "1810.HK", "name": "小米集团-W"},
+        {"ticker": "2318.HK", "name": "中国平安"},
+        {"ticker": "0941.HK", "name": "中国移动"},
+        {"ticker": "0388.HK", "name": "香港交易所"},
+        {"ticker": "0005.HK", "name": "汇丰控股"},
+        {"ticker": "9618.HK", "name": "京东集团-SW"},
+        {"ticker": "9999.HK", "name": "网易-S"},
+        {"ticker": "9888.HK", "name": "百度集团-SW"},
+        {"ticker": "1024.HK", "name": "快手-W"},
+    ],
 }
+
+
+ProviderDataType = Literal["quote", "index"]
+ProviderMiddleware = Callable[["ProviderCallContext", Callable[[], Awaitable[object]]], Awaitable[object]]
+
+
+@dataclass
+class ProviderCallContext:
+    data_type: ProviderDataType
+    market: str
+    key: str
+    provider_name: str
+    had_error: bool = False
+
+
+@dataclass(frozen=True)
+class ProviderEntry:
+    name: str
+    provider: object
+
+
+class ProviderRegistry:
+    """按市场和数据类型维护 provider 链，支持按优先级插拔。"""
+
+    def __init__(self):
+        self._chains: dict[tuple[ProviderDataType, str], list[ProviderEntry]] = {}
+
+    def register(
+        self,
+        *,
+        data_type: ProviderDataType,
+        market: str,
+        provider: object,
+        name: str | None = None,
+        priority: int | None = None,
+    ) -> None:
+        key = (data_type, market.lower())
+        chain = self._chains.setdefault(key, [])
+        entry_name = name or provider.__class__.__name__
+        chain[:] = [entry for entry in chain if entry.name != entry_name]
+        entry = ProviderEntry(name=entry_name, provider=provider)
+
+        if priority is None or priority >= len(chain):
+            chain.append(entry)
+            return
+
+        chain.insert(max(priority, 0), entry)
+
+    def chain(self, data_type: ProviderDataType, market: str) -> list[ProviderEntry]:
+        return list(self._chains.get((data_type, market.lower()), []))
 
 
 class MarketDataService:
     def __init__(
         self,
         redis: Redis,
+        akshare: AkshareProvider | None = None,
         yahoo: YahooProvider | None = None,
+        tencent: TencentProvider | None = None,
         sina: SinaProvider | None = None,
         mock: MockProvider | None = None,
+        enable_mock_fallback: bool | None = None,
     ):
         self.redis = redis
+        self.akshare = akshare or AkshareProvider()
+        self.tencent = tencent or TencentProvider()
         self.sina = sina or SinaProvider()
         self.yahoo = yahoo or YahooProvider()
         self.mock = mock or MockProvider()
+        self.enable_mock_fallback = (
+            settings.market_enable_mock_fallback
+            if enable_mock_fallback is None
+            else enable_mock_fallback
+        )
+        self.provider_failure_threshold = max(settings.market_provider_failure_threshold, 1)
+        self.provider_cooldown_seconds = max(settings.market_provider_cooldown_seconds, 1)
+        self.provider_registry = ProviderRegistry()
+        self._provider_health: dict[tuple[ProviderDataType, str, str], dict[str, float | int]] = {}
+        self._provider_middlewares: list[ProviderMiddleware] = [
+            self._provider_health_middleware,
+            self._provider_error_middleware,
+        ]
+        self._register_default_providers()
+
+    def _register_default_providers(self) -> None:
+        # quote chain
+        self.register_provider("quote", "cn", self.akshare, priority=0)
+        self.register_provider("quote", "cn", self.tencent, priority=1)
+        self.register_provider("quote", "cn", self.sina, priority=2)
+
+        self.register_provider("quote", "hk", self.akshare, priority=0)
+        self.register_provider("quote", "hk", self.tencent, priority=1)
+        self.register_provider("quote", "hk", self.yahoo, priority=2)
+
+        self.register_provider("quote", "us", self.yahoo, priority=0)
+
+        # index chain
+        self.register_provider("index", "cn", self.akshare, priority=0)
+        self.register_provider("index", "cn", self.tencent, priority=1)
+        self.register_provider("index", "cn", self.sina, priority=2)
+
+        self.register_provider("index", "hk", self.akshare, priority=0)
+        self.register_provider("index", "hk", self.tencent, priority=1)
+        self.register_provider("index", "hk", self.yahoo, priority=2)
+
+        self.register_provider("index", "us", self.yahoo, priority=0)
+
+    def register_provider(
+        self,
+        data_type: ProviderDataType,
+        market: str,
+        provider: object,
+        *,
+        priority: int | None = None,
+        name: str | None = None,
+    ) -> None:
+        self.provider_registry.register(
+            data_type=data_type,
+            market=market,
+            provider=provider,
+            name=name,
+            priority=priority,
+        )
+
+    def add_provider_middleware(self, middleware: ProviderMiddleware) -> None:
+        self._provider_middlewares.append(middleware)
 
     async def get_quote(self, ticker: str) -> QuoteOut:
         """获取个股行情，带缓存"""
@@ -173,17 +305,16 @@ class MarketDataService:
             except Exception as e:
                 logger.warning(f"Cache parse error: {e}")
 
-        provider = self._get_provider(ticker)
-
-        try:
-            quote = await provider.get_quote(ticker)
-            if not quote:
-                # 降级到 mock
-                logger.warning(f"Provider returned None for {ticker}, using mock")
-                quote = await self.mock.get_quote(ticker)
-        except Exception as e:
-            logger.error(f"Quote fetch failed for {ticker}: {e}")
-            quote = await self.mock.get_quote(ticker)
+        quote = await self._fetch_quote_with_fallback(ticker)
+        if not quote:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "MARKET_DATA_UNAVAILABLE",
+                    "message": f"行情源不可用：{ticker}",
+                    "detail": {"ticker": ticker},
+                },
+            )
 
         # 构建响应数据（移除 ticker 避免重复）
         data = {
@@ -200,6 +331,8 @@ class MarketDataService:
 
     async def get_index(self, symbol: str, market: str) -> IndexQuoteOut:
         """获取大盘指数行情"""
+        symbol = symbol.upper()
+        market = market.lower()
         cache_key = f"index:{market}:{symbol}"
 
         # 尝试从缓存获取
@@ -212,44 +345,33 @@ class MarketDataService:
             except Exception as e:
                 logger.warning(f"Index cache parse error: {e}")
 
-        # 根据市场选择提供商
-        if market == "us":
-            provider = self.yahoo
-            name_map = {"SPX": "S&P 500", "NDX": "NASDAQ", "DJI": "道琼斯"}
-        else:
-            provider = self.sina
-            name_map = {"SH": "上证指数", "SZ": "深成指", "CY": "创业板指"}
-
-        try:
-            quote = await provider.get_index(symbol)
-            if quote:
-                data = {
-                    "symbol": symbol,
-                    "name": name_map.get(symbol, symbol),
-                    "price": quote.price,
-                    "change_pct": quote.change_pct,
-                    "market": market,
-                }
-            else:
-                # 降级到 mock
-                quote = await self.mock.get_index(symbol)
-                data = {
-                    "symbol": symbol,
-                    "name": name_map.get(symbol, symbol),
-                    "price": quote.price,
-                    "change_pct": quote.change_pct,
-                    "market": market,
-                }
-        except Exception as e:
-            logger.error(f"Index fetch failed for {symbol}: {e}")
-            quote = await self.mock.get_index(symbol)
-            data = {
-                "symbol": symbol,
-                "name": name_map.get(symbol, symbol),
-                "price": quote.price,
-                "change_pct": quote.change_pct,
-                "market": market,
-            }
+        name_map = {
+            "SPX": "S&P 500",
+            "NDX": "NASDAQ",
+            "DJI": "道琼斯",
+            "SH": "上证指数",
+            "SZ": "深成指",
+            "CY": "创业板指",
+            "HSI": "恒生指数",
+            "HSCEI": "国企指数",
+        }
+        quote = await self._fetch_index_with_fallback(symbol, market)
+        if not quote:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "MARKET_DATA_UNAVAILABLE",
+                    "message": f"指数行情源不可用：{symbol}",
+                    "detail": {"symbol": symbol, "market": market},
+                },
+            )
+        data = {
+            "symbol": symbol,
+            "name": name_map.get(symbol, symbol),
+            "price": quote.price,
+            "change_pct": quote.change_pct,
+            "market": market,
+        }
 
         # 写入缓存
         await self.redis.setex(cache_key, INDEX_CACHE_TTL, json.dumps(data))
@@ -266,6 +388,7 @@ class MarketDataService:
         indices = [
             ("SPX", "us"), ("NDX", "us"), ("DJI", "us"),
             ("SH", "cn"), ("SZ", "cn"), ("CY", "cn"),
+            ("HSI", "hk"), ("HSCEI", "hk"),
         ]
         name_map = {
             "SPX": "S&P 500",
@@ -274,6 +397,8 @@ class MarketDataService:
             "SH": "上证指数",
             "SZ": "深成指",
             "CY": "创业板指",
+            "HSI": "恒生指数",
+            "HSCEI": "国企指数",
         }
         cached, missing = await self._get_cached_indices(indices)
 
@@ -312,10 +437,10 @@ class MarketDataService:
         board: list[MarketBoardItemOut] = []
         for entry in entries:
             quote = quotes.get(entry["ticker"])
-            if not quote:
+            if not quote and self.enable_mock_fallback:
                 quote = await self.mock.get_quote(entry["ticker"])
-                if not quote:
-                    continue
+            if not quote:
+                continue
             board.append(
                 MarketBoardItemOut(
                     ticker=entry["ticker"],
@@ -343,17 +468,19 @@ class MarketDataService:
             except Exception as e:
                 logger.warning(f"Market overview cache parse error: {e}")
 
-        indices, us_board, cn_board = await asyncio.gather(
+        indices, us_board, cn_board, hk_board = await asyncio.gather(
             self.get_all_indices(refresh=refresh),
             self.get_market_board("us", refresh=refresh),
             self.get_market_board("cn", refresh=refresh),
+            self.get_market_board("hk", refresh=refresh),
         )
         overview = MarketOverviewOut(
             indices=indices,
-            boards={"us": us_board, "cn": cn_board},
+            boards={"us": us_board, "cn": cn_board, "hk": hk_board},
             markets=[
                 self._build_market_summary("us", "美股", us_board),
                 self._build_market_summary("cn", "A 股", cn_board),
+                self._build_market_summary("hk", "港股", hk_board),
             ],
             updated_at=datetime.now(timezone.utc),
         )
@@ -365,9 +492,8 @@ class MarketDataService:
         return overview
 
     def _get_provider(self, ticker: str):
-        if ".SH" in ticker or ".SZ" in ticker:
-            return self.sina
-        return self.yahoo
+        providers = self._quote_providers(ticker)
+        return providers[0] if providers else self.yahoo
 
     async def _get_quotes_batch(self, tickers: list[str]):
         cached, missing = await self._get_cached_quotes(tickers)
@@ -375,21 +501,25 @@ class MarketDataService:
 
         for chunk_start in range(0, len(missing), BOARD_FETCH_CHUNK_SIZE):
             chunk = missing[chunk_start : chunk_start + BOARD_FETCH_CHUNK_SIZE]
-            us_tickers = [ticker for ticker in chunk if self._get_provider(ticker) is self.yahoo]
-            cn_tickers = [ticker for ticker in chunk if self._get_provider(ticker) is self.sina]
-            results = await asyncio.gather(
-                self.yahoo.get_quotes_batch(us_tickers) if us_tickers else self._empty_dict(),
-                self.sina.get_quotes_batch(cn_tickers) if cn_tickers else self._empty_dict(),
-            )
-            for batch in results:
-                fetched.update(batch)
+            market_groups: dict[str, list[str]] = {"us": [], "cn": [], "hk": []}
+            for ticker in chunk:
+                market_groups[self._ticker_market(ticker)].append(ticker)
+
+            batch_tasks = [
+                self._fetch_quotes_by_market_chain(market, market_tickers)
+                for market, market_tickers in market_groups.items()
+                if market_tickers
+            ]
+            for market_quotes in await asyncio.gather(*batch_tasks):
+                fetched.update({ticker: quote for ticker, quote in market_quotes.items() if quote})
 
             for ticker in chunk:
                 quote = fetched.get(ticker)
-                if not quote:
+                if not quote and self.enable_mock_fallback:
                     quote = await self.mock.get_quote(ticker)
                     fetched[ticker] = quote
-                await self._cache_quote_data(ticker, quote)
+                if quote:
+                    await self._cache_quote_data(ticker, quote)
 
         return {**cached, **fetched}
 
@@ -429,12 +559,19 @@ class MarketDataService:
 
     async def _fetch_missing_indices(self, missing: list[tuple[str, str]]):
         fetched: dict[tuple[str, str], IndexQuoteOut] = {}
-        us_symbols = [symbol for symbol, market in missing if market == "us"]
-        cn_symbols = [symbol for symbol, market in missing if market == "cn"]
+        market_groups: dict[str, list[str]] = {"us": [], "cn": [], "hk": []}
+        for symbol, market in missing:
+            market_groups[market].append(symbol)
 
-        us_task = self.yahoo.get_indices_batch(us_symbols) if us_symbols else self._empty_dict()
-        cn_task = self.sina.get_indices_batch(cn_symbols) if cn_symbols else self._empty_dict()
-        us_quotes, cn_quotes = await asyncio.gather(us_task, cn_task)
+        market_quotes: dict[str, dict[str, object]] = {"us": {}, "cn": {}, "hk": {}}
+        batch_tasks = [
+            self._fetch_indices_market_result(market, symbols)
+            for market, symbols in market_groups.items()
+            if symbols
+        ]
+        for market, result in await asyncio.gather(*batch_tasks):
+            market_quotes[market] = result
+
         name_map = {
             "SPX": "S&P 500",
             "NDX": "NASDAQ",
@@ -442,12 +579,17 @@ class MarketDataService:
             "SH": "上证指数",
             "SZ": "深成指",
             "CY": "创业板指",
+            "HSI": "恒生指数",
+            "HSCEI": "国企指数",
         }
 
         for symbol, market in missing:
-            quote = us_quotes.get(symbol) if market == "us" else cn_quotes.get(symbol)
-            if not quote:
+            quote = market_quotes.get(market, {}).get(symbol)
+
+            if not quote and self.enable_mock_fallback:
                 quote = await self.mock.get_index(symbol)
+            if not quote:
+                continue
             data = {
                 "symbol": symbol,
                 "name": name_map.get(symbol, symbol),
@@ -459,6 +601,242 @@ class MarketDataService:
             fetched[(symbol, market)] = IndexQuoteOut(**data)
         return fetched
 
+    async def _fetch_quote_with_fallback(self, ticker: str):
+        market = self._ticker_market(ticker)
+        for provider in self._quote_providers(ticker):
+            quote = await self._execute_provider_call(
+                data_type="quote",
+                market=market,
+                key=ticker,
+                provider_name=provider.__class__.__name__,
+                call=lambda provider=provider: provider.get_quote(ticker),
+            )
+            if quote:
+                return quote
+        if self.enable_mock_fallback:
+            logger.warning("No upstream quote for %s, falling back to mock", ticker)
+            return await self.mock.get_quote(ticker)
+        return None
+
+    async def _fetch_index_with_fallback(self, symbol: str, market: str):
+        for provider in self._index_providers(market):
+            quote = await self._execute_provider_call(
+                data_type="index",
+                market=market,
+                key=symbol,
+                provider_name=provider.__class__.__name__,
+                call=lambda provider=provider: provider.get_index(symbol),
+            )
+            if quote:
+                return quote
+        if self.enable_mock_fallback:
+            logger.warning("No upstream index for %s/%s, falling back to mock", market, symbol)
+            return await self.mock.get_index(symbol)
+        return None
+
+    def _quote_providers(self, ticker: str) -> list:
+        market = self._ticker_market(ticker)
+        return [entry.provider for entry in self.provider_registry.chain("quote", market)]
+
+    def _index_providers(self, market: str) -> list:
+        return [entry.provider for entry in self.provider_registry.chain("index", market)]
+
+    async def _fetch_quotes_by_market_chain(self, market: str, tickers: list[str]) -> dict[str, object]:
+        remaining = set(tickers)
+        resolved: dict[str, object] = {}
+        providers = [entry.provider for entry in self.provider_registry.chain("quote", market)]
+        for provider in providers:
+            if not remaining:
+                break
+            request = [ticker for ticker in tickers if ticker in remaining]
+            payload = await self._execute_provider_call(
+                data_type="quote",
+                market=market,
+                key=f"batch:{len(request)}",
+                provider_name=provider.__class__.__name__,
+                call=lambda provider=provider, request=request: provider.get_quotes_batch(request),
+            )
+            if not isinstance(payload, dict):
+                continue
+            for ticker in request:
+                quote = payload.get(ticker)
+                if quote:
+                    resolved[ticker] = quote
+                    remaining.discard(ticker)
+        for ticker in tickers:
+            resolved.setdefault(ticker, None)
+        return resolved
+
+    async def _fetch_indices_by_market_chain(self, market: str, symbols: list[str]) -> dict[str, object]:
+        remaining = set(symbols)
+        resolved: dict[str, object] = {}
+        for provider in self._index_providers(market):
+            if not remaining:
+                break
+            request = [symbol for symbol in symbols if symbol in remaining]
+            payload = await self._execute_provider_call(
+                data_type="index",
+                market=market,
+                key=f"batch:{len(request)}",
+                provider_name=provider.__class__.__name__,
+                call=lambda provider=provider, request=request: provider.get_indices_batch(request),
+            )
+            if not isinstance(payload, dict):
+                continue
+            for symbol in request:
+                quote = payload.get(symbol)
+                if quote:
+                    resolved[symbol] = quote
+                    remaining.discard(symbol)
+        for symbol in symbols:
+            resolved.setdefault(symbol, None)
+        return resolved
+
+    async def _fetch_indices_market_result(self, market: str, symbols: list[str]) -> tuple[str, dict[str, object]]:
+        return market, await self._fetch_indices_by_market_chain(market, symbols)
+
+    async def _execute_provider_call(
+        self,
+        *,
+        data_type: ProviderDataType,
+        market: str,
+        key: str,
+        provider_name: str,
+        call: Callable[[], Awaitable[object]],
+    ) -> object:
+        ctx = ProviderCallContext(
+            data_type=data_type,
+            market=market,
+            key=key,
+            provider_name=provider_name,
+        )
+        return await self._run_provider_middlewares(ctx, call)
+
+    async def _run_provider_middlewares(
+        self,
+        ctx: ProviderCallContext,
+        call: Callable[[], Awaitable[object]],
+    ) -> object:
+        next_call = call
+        for middleware in reversed(self._provider_middlewares):
+            current_next = next_call
+
+            async def wrapped(
+                middleware_fn=middleware,
+                chained=current_next,
+            ):
+                return await middleware_fn(ctx, chained)
+
+            next_call = wrapped
+        return await next_call()
+
+    async def _provider_health_middleware(
+        self,
+        ctx: ProviderCallContext,
+        call_next: Callable[[], Awaitable[object]],
+    ) -> object:
+        if self._provider_is_temporarily_disabled(ctx):
+            logger.warning(
+                "Provider %s skipped for %s/%s (%s): circuit open",
+                ctx.provider_name,
+                ctx.data_type,
+                ctx.market,
+                ctx.key,
+            )
+            return None
+
+        result = await call_next()
+        if ctx.had_error:
+            self._record_provider_failure(ctx)
+            return None
+
+        if result is not None:
+            self._record_provider_success(ctx)
+        return result
+
+    async def _provider_error_middleware(
+        self,
+        ctx: ProviderCallContext,
+        call_next: Callable[[], Awaitable[object]],
+    ) -> object:
+        try:
+            return await call_next()
+        except Exception as e:
+            ctx.had_error = True
+            logger.warning(
+                "Provider %s failed for %s/%s (%s): %s",
+                ctx.provider_name,
+                ctx.data_type,
+                ctx.market,
+                ctx.key,
+                e,
+            )
+            return None
+
+    def _provider_state_key(self, ctx: ProviderCallContext) -> tuple[ProviderDataType, str, str]:
+        return (ctx.data_type, ctx.market, ctx.provider_name)
+
+    def _provider_state(self, ctx: ProviderCallContext) -> dict[str, float | int]:
+        key = self._provider_state_key(ctx)
+        return self._provider_health.setdefault(
+            key,
+            {"failures": 0, "disabled_until": 0.0},
+        )
+
+    def _provider_is_temporarily_disabled(self, ctx: ProviderCallContext) -> bool:
+        state = self._provider_state(ctx)
+        disabled_until = float(state["disabled_until"])
+        if disabled_until <= 0:
+            return False
+
+        now = asyncio.get_running_loop().time()
+        if now < disabled_until:
+            return True
+
+        state["disabled_until"] = 0.0
+        state["failures"] = 0
+        return False
+
+    def _record_provider_failure(self, ctx: ProviderCallContext) -> None:
+        state = self._provider_state(ctx)
+        failures = int(state["failures"]) + 1
+        state["failures"] = failures
+        if failures < self.provider_failure_threshold:
+            return
+
+        now = asyncio.get_running_loop().time()
+        state["disabled_until"] = now + self.provider_cooldown_seconds
+        logger.warning(
+            "Provider %s disabled for %ss after %s consecutive failures (%s/%s)",
+            ctx.provider_name,
+            self.provider_cooldown_seconds,
+            failures,
+            ctx.data_type,
+            ctx.market,
+        )
+
+    def _record_provider_success(self, ctx: ProviderCallContext) -> None:
+        state = self._provider_state(ctx)
+        if int(state["failures"]) == 0 and float(state["disabled_until"]) <= 0:
+            return
+        state["failures"] = 0
+        state["disabled_until"] = 0.0
+
+    def _ticker_market(self, ticker: str) -> str:
+        if self._is_cn_ticker(ticker):
+            return "cn"
+        if self._is_hk_ticker(ticker):
+            return "hk"
+        return "us"
+
+    @staticmethod
+    def _is_cn_ticker(ticker: str) -> bool:
+        return ticker.endswith(".SH") or ticker.endswith(".SZ")
+
+    @staticmethod
+    def _is_hk_ticker(ticker: str) -> bool:
+        return ticker.endswith(".HK")
+
     async def _cache_quote_data(self, ticker: str, quote) -> None:
         data = {
             "price": quote.price,
@@ -468,9 +846,6 @@ class MarketDataService:
             "market_status": quote.market_status,
         }
         await self.redis.setex(f"quote:{ticker}", CACHE_TTL, json.dumps(data))
-
-    async def _empty_dict(self) -> dict:
-        return {}
 
     async def _load_cached_list(self, cache_key: str, model_cls):
         raw = await self.redis.get(cache_key)
