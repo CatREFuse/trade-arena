@@ -19,8 +19,8 @@ async def get_quote(ticker: str, request: Request):
 async def get_index(symbol: str, market: str = "us", request: Request = None):
     """获取大盘指数行情
 
-    - symbol: SPX/NDX/DJI (美股) 或 SH/SZ/CY (A股)
-    - market: us | cn
+    - symbol: SPX/NDX/DJI (美股) 或 SH/SZ/CY (A股) 或 HSI/HSCEI (港股)
+    - market: us | cn | hk
     """
     redis = request.app.state.redis
     svc = MarketDataService(redis)
