@@ -4,6 +4,11 @@ export default defineNuxtConfig({
   ssr: true,
   modules: ['@nuxtjs/tailwindcss'],
   css: ['~/assets/css/main.css'],
+  vite: {
+    server: {
+      allowedHosts: ['.serveousercontent.com', '.loca.lt', '.localtunnel.me'],
+    },
+  },
   app: {
     head: {
       title: 'AI 炒股竞技场',

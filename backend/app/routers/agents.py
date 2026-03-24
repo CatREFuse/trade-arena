@@ -140,6 +140,54 @@ async def download_hosted_skill():
     )
 
 
+@router.get("/skill/hosted/{file_path:path}")
+async def get_hosted_skill_file(file_path: str):
+    """直接访问托管 skill 包中的单个文件（如 SKILL.md、config.json 等）"""
+    from fastapi.responses import FileResponse, PlainTextResponse
+
+    skill_dir = (
+        Path(__file__).resolve().parent.parent.parent.parent / "cocoloop-trade-arena"
+    )
+    if not skill_dir.exists():
+        raise HTTPException(
+            404,
+            detail={
+                "error": "SKILL_NOT_FOUND",
+                "message": "Hosted skill package not found",
+            },
+        )
+
+    # 安全检查：防止目录遍历攻击
+    requested_path = (skill_dir / file_path).resolve()
+    if not str(requested_path).startswith(str(skill_dir.resolve())):
+        raise HTTPException(403, detail={"error": "FORBIDDEN", "message": "Access denied"})
+
+    if not requested_path.exists() or not requested_path.is_file():
+        raise HTTPException(
+            404,
+            detail={
+                "error": "FILE_NOT_FOUND",
+                "message": f"File '{file_path}' not found in skill package",
+            },
+        )
+
+    # 根据文件类型返回不同响应
+    suffix = requested_path.suffix.lower()
+    if suffix in ['.md', '.json', '.py', '.txt']:
+        # 文本文件直接返回内容
+        content = requested_path.read_text(encoding='utf-8')
+        media_type = {
+            '.md': 'text/markdown; charset=utf-8',
+            '.json': 'application/json',
+            '.py': 'text/x-python; charset=utf-8',
+            '.txt': 'text/plain; charset=utf-8',
+        }.get(suffix, 'text/plain; charset=utf-8')
+        return PlainTextResponse(content, media_type=media_type)
+    else:
+        # 二进制文件返回文件下载
+        return FileResponse(requested_path)
+
+
 @router.get("/template/download")
 async def download_template():
     raise HTTPException(
