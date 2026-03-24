@@ -20,3 +20,6 @@ DEPLOY_LOCK = Path("/tmp/trade-arena-deploy.lock")
 
 # Webhook 触发日志（Markdown 格式）
 WEBHOOK_LOG = PROJECT_ROOT / "webhook" / "DEPLOY_LOG.md"
+
+# 待处理部署标志文件（当部署锁存在时，标记有新的部署请求）
+PENDING_DEPLOY = Path("/tmp/trade-arena-pending-deploy")

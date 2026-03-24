@@ -67,3 +67,13 @@ cd "$PROJECT_ROOT/frontend"
 nohup npm run dev >> $LOG_FILE 2>&1 &
 
 echo "[$(date)] Deployment completed successfully!" | tee -a $LOG_FILE
+
+# 检查是否有待处理的部署
+PENDING_FILE="/tmp/trade-arena-pending-deploy"
+if [ -f "$PENDING_FILE" ]; then
+    PENDING_BRANCH=$(cat "$PENDING_FILE")
+    rm -f "$PENDING_FILE"
+    echo "[$(date)] Pending deployment detected for branch: $PENDING_BRANCH, redeploying..." | tee -a $LOG_FILE
+    # 重新执行部署（使用 nohup 避免被当前进程终止影响）
+    nohup /bin/bash "$0" "$PENDING_BRANCH" >> $LOG_FILE 2>&1 &
+fi

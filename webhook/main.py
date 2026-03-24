@@ -12,7 +12,7 @@ import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from config import DEPLOY_LOCK, DEPLOY_LOG, PROJECT_ROOT, WEBHOOK_LOG, WEBHOOK_PORT, WEBHOOK_SECRET
+from config import DEPLOY_LOCK, DEPLOY_LOG, PENDING_DEPLOY, PROJECT_ROOT, WEBHOOK_LOG, WEBHOOK_PORT, WEBHOOK_SECRET
 
 app = FastAPI(title="Trade Arena Webhook", version="1.0.0")
 
@@ -28,6 +28,37 @@ def verify_signature(body: bytes, signature: str) -> bool:
         hashlib.sha256
     ).hexdigest()
     return hmac.compare_digest(f"sha256={expected}", signature)
+
+
+def log_pending_event(branch: str, repository: str, pusher: dict, commit_msg: str = "") -> None:
+    """Log pending deployment event to markdown file."""
+    from datetime import datetime
+    
+    if not WEBHOOK_LOG.exists():
+        WEBHOOK_LOG.write_text("# Webhook Deployment Log\n\n", encoding="utf-8")
+    
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    pusher_name = pusher.get("name", "unknown") if pusher else "unknown"
+    pusher_email = pusher.get("email", "") if pusher else ""
+    
+    log_entry = f"""## {timestamp}
+
+- **Branch**: `{branch}`
+- **Repository**: {repository}
+- **Pusher**: {pusher_name} ({pusher_email})
+- **Status**: ⏳ Queued (waiting for current deployment)
+- **Commit Message**: {commit_msg or "N/A"}
+
+---
+
+"""
+    
+    content = WEBHOOK_LOG.read_text(encoding="utf-8")
+    content = content.replace(
+        "# Webhook Deployment Log\n\n",
+        f"# Webhook Deployment Log\n\n{log_entry}"
+    )
+    WEBHOOK_LOG.write_text(content, encoding="utf-8")
 
 
 def log_webhook_event(branch: str, repository: str, pusher: dict, commit_msg: str = "") -> None:
@@ -118,10 +149,17 @@ async def webhook(
     
     # 检查部署锁
     if DEPLOY_LOCK.exists():
-        return JSONResponse(
-            {"message": "Deployment already in progress", "branch": branch},
-            status_code=409
-        )
+        # 标记有待处理的部署
+        PENDING_DEPLOY.write_text(branch, encoding="utf-8")
+        
+        # 记录到日志
+        log_pending_event(branch, repository, pusher, commit_msg)
+        
+        return JSONResponse({
+            "message": "Deployment queued (another deployment in progress)",
+            "branch": branch,
+            "status": "queued"
+        })
     
     # 记录到 markdown 日志
     log_webhook_event(branch, repository, pusher, commit_msg)
