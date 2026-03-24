@@ -40,7 +40,9 @@ echo "[$(date)] Current branch: $CURRENT_BRANCH, target: $BRANCH" | tee -a $LOG_
 echo "[$(date)] Switching to branch: $BRANCH" | tee -a $LOG_FILE
 git fetch origin
 git checkout "$BRANCH"
-git pull origin "$BRANCH"
+# 避免服务器上残留改动导致 pull 失败，强制对齐到远端分支
+git reset --hard "origin/$BRANCH"
+git clean -fd
 
 # 3. 安装后端依赖
 echo "[$(date)] Installing backend dependencies..." | tee -a $LOG_FILE
