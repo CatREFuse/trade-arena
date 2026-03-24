@@ -6,6 +6,9 @@
         <p class="text-xs text-secondary mt-1">
           按收益率排序，支持反转查看强势和弱势分布。
         </p>
+        <div class="mt-2">
+          <MarketDataTimestamp :timestamp="updatedAt" />
+        </div>
       </div>
       <button
         class="px-3 py-1.5 rounded-xl text-xs font-medium bg-overlay-2 text-secondary hover:text-main transition"
@@ -72,6 +75,7 @@
 </template>
 
 <script setup lang="ts">
+import MarketDataTimestamp from './MarketDataTimestamp.vue'
 import MarketTrendSparkline from './MarketTrendSparkline.vue'
 
 interface MarketListItem {
@@ -86,6 +90,7 @@ defineProps<{
   items: MarketListItem[]
   pending: boolean
   error: unknown
+  updatedAt?: string | null
   sortDirection: 'asc' | 'desc'
   market: 'us' | 'cn'
   formatPrice: (value: number, market: 'us' | 'cn') => string

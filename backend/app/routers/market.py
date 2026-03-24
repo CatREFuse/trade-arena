@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
-from app.schemas import IndexQuoteOut, MarketBoardItemOut, MarketOverviewOut, QuoteOut
+from app.schemas import IndexQuoteOut, MarketBoardSnapshotOut, MarketOverviewOut, QuoteOut
 from app.services.market_data import MarketDataService
 
 router = APIRouter(prefix="/api/market", tags=["market"])
@@ -43,7 +43,7 @@ async def get_market_overview(request: Request, refresh: bool = False):
     return await svc.get_market_overview(refresh=refresh)
 
 
-@router.get("/board", response_model=list[MarketBoardItemOut])
+@router.get("/board", response_model=MarketBoardSnapshotOut)
 async def get_market_board(market: str = "us", request: Request = None, refresh: bool = False):
     """获取市场看盘榜单"""
     redis = request.app.state.redis

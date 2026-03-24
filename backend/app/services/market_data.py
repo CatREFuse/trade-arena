@@ -14,6 +14,7 @@ from app.config import settings
 from app.schemas import (
     IndexQuoteOut,
     MarketBoardItemOut,
+    MarketBoardSnapshotOut,
     MarketOverviewOut,
     MarketSummaryOut,
     QuoteOut,
@@ -421,16 +422,16 @@ class MarketDataService:
         await self._cache_model_list(cache_key, INDEX_CACHE_TTL, quotes)
         return quotes
 
-    async def get_market_board(self, market: str, refresh: bool = False) -> list[MarketBoardItemOut]:
+    async def get_market_board(self, market: str, refresh: bool = False) -> MarketBoardSnapshotOut:
         cache_key = f"market:board:{MARKET_CACHE_VERSION}:{market}"
         if not refresh:
-            cached_board = await self._load_cached_list(cache_key, MarketBoardItemOut)
-            if cached_board is not None:
-                return cached_board
+            cached_snapshot = await self._load_cached_model(cache_key, MarketBoardSnapshotOut)
+            if cached_snapshot is not None:
+                return cached_snapshot
 
         entries = MARKET_BOARD.get(market, [])
         if not entries:
-            return []
+            return MarketBoardSnapshotOut(items=[], updated_at=datetime.now(timezone.utc))
 
         tickers = [entry["ticker"] for entry in entries]
         quotes = await self._get_quotes_batch(tickers)
@@ -452,8 +453,16 @@ class MarketDataService:
                     market_status=quote.market_status,
                 )
             )
-        await self._cache_model_list(cache_key, BOARD_CACHE_TTL, board)
-        return board
+        snapshot = MarketBoardSnapshotOut(
+            items=board,
+            updated_at=datetime.now(timezone.utc),
+        )
+        await self.redis.setex(
+            cache_key,
+            BOARD_CACHE_TTL,
+            json.dumps(snapshot.model_dump(mode="json")),
+        )
+        return snapshot
 
     async def get_market_overview(self, refresh: bool = False) -> MarketOverviewOut:
         cache_key = f"market:overview:{MARKET_CACHE_VERSION}"
@@ -476,13 +485,13 @@ class MarketDataService:
         )
         overview = MarketOverviewOut(
             indices=indices,
-            boards={"us": us_board, "cn": cn_board, "hk": hk_board},
+            boards={"us": us_board.items, "cn": cn_board.items, "hk": hk_board.items},
             markets=[
-                self._build_market_summary("us", "美股", us_board),
-                self._build_market_summary("cn", "A 股", cn_board),
-                self._build_market_summary("hk", "港股", hk_board),
+                self._build_market_summary("us", "美股", us_board.items),
+                self._build_market_summary("cn", "A 股", cn_board.items),
+                self._build_market_summary("hk", "港股", hk_board.items),
             ],
-            updated_at=datetime.now(timezone.utc),
+            updated_at=max(us_board.updated_at, cn_board.updated_at, hk_board.updated_at),
         )
         await self.redis.setex(
             cache_key,
@@ -856,6 +865,17 @@ class MarketDataService:
             return [model_cls(**item) for item in payload]
         except Exception as e:
             logger.warning(f"Aggregate cache parse error for {cache_key}: {e}")
+            return None
+
+    async def _load_cached_model(self, cache_key: str, model_cls):
+        raw = await self.redis.get(cache_key)
+        if not raw:
+            return None
+        try:
+            payload = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+            return model_cls(**payload)
+        except Exception as e:
+            logger.warning(f"Model cache parse error for {cache_key}: {e}")
             return None
 
     async def _cache_model_list(self, cache_key: str, ttl: int, models: list) -> None:

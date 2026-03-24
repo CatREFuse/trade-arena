@@ -13,6 +13,11 @@ export interface MarketBoardItem {
   market_status: string
 }
 
+export interface MarketBoardSnapshot {
+  items: MarketBoardItem[]
+  updated_at?: string
+}
+
 export interface MarketPulsePoint {
   x: number
   y: number
@@ -67,12 +72,13 @@ export async function useMarketDetail(marketKey: MaybeRefOrGetter<MarketKey>) {
     () => `/api/market/board?market=${resolvedMarket.value}`,
     {
       watch: [resolvedMarket],
-      default: () => [],
-      transform: (items: MarketBoardItem[] = []) => items,
+      default: () => ({ items: [], updated_at: '' }),
+      transform: (snapshot: MarketBoardSnapshot = { items: [], updated_at: '' }) => snapshot,
     },
   )
 
-  const items = computed<MarketBoardItem[]>(() => boardData.value || [])
+  const items = computed<MarketBoardItem[]>(() => boardData.value?.items || [])
+  const updatedAt = computed(() => boardData.value?.updated_at || '')
 
   const sortedItems = computed(() => {
     const direction = sortDirection.value === 'desc' ? -1 : 1
@@ -127,6 +133,7 @@ export async function useMarketDetail(marketKey: MaybeRefOrGetter<MarketKey>) {
     pending,
     error,
     refresh,
+    updatedAt,
     sortDirection,
     toggleSort,
     positiveCount,

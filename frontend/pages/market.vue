@@ -9,6 +9,9 @@
           <p class="mt-2 max-w-2xl text-sm leading-7 text-secondary">
             两地主要指数与盘口快照。
           </p>
+          <div class="mt-2">
+            <MarketDataTimestamp :timestamp="overviewData.updated_at" />
+          </div>
         </div>
         <div class="flex items-center gap-2 text-xs text-tertiary">
           <span>最近更新 {{ updatedAtLabel }}</span>
@@ -50,12 +53,15 @@
                 <span class="text-lg font-bold text-blue-500">US</span>
               </div>
               <div>
-                <div>
-                  <span class="inline-flex items-center rounded-full border border-white/45 bg-white/20 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.18em] text-zinc-700 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25 dark:text-zinc-200">
+              <div>
+                <span class="inline-flex items-center rounded-full border border-white/45 bg-white/20 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.18em] text-zinc-700 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25 dark:text-zinc-200">
                     UNITED STATES
                   </span>
                 </div>
                 <h2 class="text-xl font-bold text-main tracking-tight">美股市场</h2>
+                <div class="mt-2">
+                  <MarketDataTimestamp :timestamp="overviewData.updated_at" />
+                </div>
               </div>
             </div>
             <NuxtLink
@@ -153,12 +159,15 @@
                 <span class="text-lg font-bold text-red-500">CN</span>
               </div>
               <div>
-                <div>
-                  <span class="inline-flex items-center rounded-full border border-white/45 bg-white/20 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.18em] text-zinc-700 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25 dark:text-zinc-200">
+              <div>
+                <span class="inline-flex items-center rounded-full border border-white/45 bg-white/20 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.18em] text-zinc-700 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25 dark:text-zinc-200">
                     CHINA MAINLAND
                   </span>
                 </div>
                 <h2 class="text-xl font-bold text-main tracking-tight">A 股市场</h2>
+                <div class="mt-2">
+                  <MarketDataTimestamp :timestamp="overviewData.updated_at" />
+                </div>
               </div>
             </div>
             <NuxtLink
@@ -239,6 +248,9 @@
         <div>
           <div class="text-[11px] uppercase tracking-[0.2em] text-tertiary">市场看盘</div>
           <h2 class="mt-2 text-2xl font-bold text-main tracking-tight">盘口与交易热度</h2>
+          <div class="mt-2">
+            <MarketDataTimestamp :timestamp="overviewData.updated_at" />
+          </div>
         </div>
         <div class="flex flex-wrap items-center gap-2 text-xs text-tertiary">
           <span>当前市场共 {{ sortedBoardItems.length }} 只股票</span>
@@ -438,6 +450,7 @@
 
 <script setup lang="ts">
 import { ref, computed, shallowRef, onMounted, onBeforeUnmount, watch } from 'vue'
+import MarketDataTimestamp from '~/components/market/MarketDataTimestamp.vue'
 import MarketTrendSparkline from '~/components/market/MarketTrendSparkline.vue'
 
 useHead({ title: '市场总览 - CocoLoop Agent 理财竞赛' })

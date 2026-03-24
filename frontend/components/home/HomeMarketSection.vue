@@ -7,6 +7,9 @@
         <p class="mt-2 max-w-2xl text-sm leading-7 text-secondary">
           两地主要指数与盘口快照。
         </p>
+        <div class="mt-2">
+          <MarketDataTimestamp :timestamp="overviewData.updated_at" />
+        </div>
       </div>
       <NuxtLink
         to="/market"
@@ -77,6 +80,9 @@
         <div>
           <div class="text-[11px] uppercase tracking-[0.2em] text-tertiary">市场看盘</div>
           <h3 class="mt-2 text-xl font-bold text-main tracking-tight">{{ panelTitle }}</h3>
+          <div class="mt-2">
+            <MarketDataTimestamp :timestamp="overviewData.updated_at" />
+          </div>
         </div>
         <div class="flex items-center gap-2 text-xs text-tertiary">
           <span>{{ panelStatLabel }}</span>
@@ -198,6 +204,7 @@
 
 <script setup lang="ts">
 import MarketTrendSparkline from '../market/MarketTrendSparkline.vue'
+import MarketDataTimestamp from '../market/MarketDataTimestamp.vue'
 
 type MarketKey = 'us' | 'cn'
 type PanelMode = 'movers' | 'activity'
@@ -237,6 +244,7 @@ interface MarketOverviewResponse {
   indices: IndexSnapshot[]
   boards: Record<MarketKey, BoardItem[]>
   markets: MarketSummary[]
+  updated_at?: string
 }
 
 interface FeedItem {
@@ -294,6 +302,7 @@ const { data: overviewData, pending: overviewPending } = useLazyFetch<MarketOver
     indices: [],
     boards: { us: [], cn: [] },
     markets: [],
+    updated_at: '',
   }),
   deep: false,
 })

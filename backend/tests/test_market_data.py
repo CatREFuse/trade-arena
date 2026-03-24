@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
 
-from app.schemas import IndexQuoteOut, MarketBoardItemOut, QuoteOut
+from app.schemas import IndexQuoteOut, MarketBoardItemOut, MarketBoardSnapshotOut, QuoteOut
 from app.services import market_data as md
 from app.services.market_providers import AkshareProvider, QuoteData
 
@@ -214,16 +215,17 @@ async def test_get_market_board_batches_large_universe_and_falls_back(fake_redis
 
     board = await service.get_market_board("us")
 
-    assert len(board) == len(md.MARKET_BOARD["us"])
-    assert isinstance(board[0], MarketBoardItemOut)
-    assert board[0].ticker == "AAPL"
-    assert board[0].name == "Fallback AAPL"
-    assert board[1].ticker == "MSFT"
+    assert len(board.items) == len(md.MARKET_BOARD["us"])
+    assert isinstance(board.items[0], MarketBoardItemOut)
+    assert board.items[0].ticker == "AAPL"
+    assert board.items[0].name == "Fallback AAPL"
+    assert board.items[1].ticker == "MSFT"
     assert batch_calls
     assert len(batch_calls) == (len(md.MARKET_BOARD["us"]) + 3) // 4
     assert len(fallback_calls) == len(batch_calls)
     assert fake_redis.set_calls[-1][0] == "market:board:v3:us"
-    assert board[0].price == Decimal("88.8")
+    assert board.items[0].price == Decimal("88.8")
+    assert board.updated_at is not None
 
 
 @pytest.mark.asyncio
@@ -241,17 +243,20 @@ async def test_get_market_overview_caches_aggregate_snapshot(fake_redis, monkeyp
 
     async def fake_get_market_board(market: str, refresh: bool = False):
         calls["boards"].append((market, refresh))
-        return [
-            MarketBoardItemOut(
-                ticker="AAPL" if market == "us" else ("600519.SH" if market == "cn" else "0700.HK"),
-                name="Sample",
-                market=market,
-                price=Decimal("200"),
-                change_pct=2.5 if market == "us" else (-1.1 if market == "cn" else 1.6),
-                volume=1000,
-                market_status="open",
-            )
-        ]
+        return MarketBoardSnapshotOut(
+            items=[
+                MarketBoardItemOut(
+                    ticker="AAPL" if market == "us" else ("600519.SH" if market == "cn" else "0700.HK"),
+                    name="Sample",
+                    market=market,
+                    price=Decimal("200"),
+                    change_pct=2.5 if market == "us" else (-1.1 if market == "cn" else 1.6),
+                    volume=1000,
+                    market_status="open",
+                )
+            ],
+            updated_at=datetime.now(timezone.utc),
+        )
 
     monkeypatch.setattr(service, "get_all_indices", fake_get_all_indices)
     monkeypatch.setattr(service, "get_market_board", fake_get_market_board)

@@ -11,6 +11,9 @@
         <p class="mt-1 text-sm text-secondary">
           {{ detail.meta.subtitle }}
         </p>
+        <div class="mt-2">
+          <MarketDataTimestamp :timestamp="detail.updatedAt.value" />
+        </div>
       </div>
       <div class="hidden sm:block text-right">
         <div>
@@ -50,6 +53,9 @@
           <p class="text-xs text-secondary mt-1">
             这是基于当前行情快照生成的市场热度曲线，不是历史分钟线。
           </p>
+          <div class="mt-2">
+            <MarketDataTimestamp :timestamp="detail.updatedAt.value" />
+          </div>
         </div>
         <div class="text-right">
           <div class="text-[10px] uppercase tracking-widest text-tertiary">当前排序</div>
@@ -81,6 +87,7 @@
       :items="detail.sortedItems.value"
       :pending="detail.pending.value"
       :error="detail.error.value"
+      :updated-at="detail.updatedAt.value"
       :sort-direction="detail.sortDirection.value"
       :market="marketKey"
       :format-price="detail.formatPrice"
@@ -90,7 +97,14 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
       <div class="card">
-        <div class="text-[10px] uppercase tracking-widest text-tertiary">最高收益</div>
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-[10px] uppercase tracking-widest text-tertiary">最高收益</div>
+            <div class="mt-2">
+              <MarketDataTimestamp :timestamp="detail.updatedAt.value" />
+            </div>
+          </div>
+        </div>
         <div class="mt-2 flex items-center justify-between gap-3">
           <div class="min-w-0">
             <div class="font-bold text-main truncate">{{ detail.bestMover.value?.ticker || 'N/A' }}</div>
@@ -106,7 +120,14 @@
       </div>
 
       <div class="card">
-        <div class="text-[10px] uppercase tracking-widest text-tertiary">最低收益</div>
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-[10px] uppercase tracking-widest text-tertiary">最低收益</div>
+            <div class="mt-2">
+              <MarketDataTimestamp :timestamp="detail.updatedAt.value" />
+            </div>
+          </div>
+        </div>
         <div class="mt-2 flex items-center justify-between gap-3">
           <div class="min-w-0">
             <div class="font-bold text-main truncate">{{ detail.worstMover.value?.ticker || 'N/A' }}</div>
@@ -126,6 +147,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import MarketDataTimestamp from '~/components/market/MarketDataTimestamp.vue'
 import MarketMoversSection from '~/components/market/MarketMoversSection.vue'
 import { useMarketDetail, type MarketKey } from '~/composables/useMarketDetail'
 
