@@ -72,7 +72,7 @@ pkill -f "nuxt preview" || true
 pkill -f "nuxt dev" || true
 sleep 2
 cd "$PROJECT_ROOT/frontend"
-nohup env HOST=0.0.0.0 PORT=3000 npm run start >> $LOG_FILE 2>&1 &
+nohup env NODE_ENV=production HOST=0.0.0.0 PORT=3000 npm run start >> $LOG_FILE 2>&1 &
 
 # 8. 前端健康检查
 echo "[$(date)] Verifying frontend health..." | tee -a $LOG_FILE
@@ -87,6 +87,25 @@ for i in {1..20}; do
     fi
     sleep 2
 done
+
+# 9. 核心路由与鉴权接口校验
+echo "[$(date)] Verifying console routes..." | tee -a $LOG_FILE
+CONSOLE_LOGIN_CODE=$(curl --noproxy '*' -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:3000/console/login")
+if [ "$CONSOLE_LOGIN_CODE" != "200" ] && [ "$CONSOLE_LOGIN_CODE" != "302" ]; then
+    echo "[$(date)] /console/login check failed with status: $CONSOLE_LOGIN_CODE" | tee -a $LOG_FILE
+    exit 1
+fi
+
+ADMIN_AUTH_STATUS_CODE=$(curl --noproxy '*' -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:3000/api/admin/auth/status")
+if [ "$ADMIN_AUTH_STATUS_CODE" != "200" ]; then
+    echo "[$(date)] /api/admin/auth/status check failed with status: $ADMIN_AUTH_STATUS_CODE" | tee -a $LOG_FILE
+    exit 1
+fi
+
+if pgrep -f "nuxt dev" > /dev/null; then
+    echo "[$(date)] Unexpected nuxt dev process detected after deployment" | tee -a $LOG_FILE
+    exit 1
+fi
 
 echo "[$(date)] Deployment completed successfully!" | tee -a $LOG_FILE
 
