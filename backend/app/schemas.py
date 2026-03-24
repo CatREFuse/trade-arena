@@ -98,6 +98,11 @@ class MarketBoardItemOut(BaseModel):
     market_status: str
 
 
+class MarketBoardSnapshotOut(BaseModel):
+    items: list[MarketBoardItemOut]
+    updated_at: datetime
+
+
 class MarketSummaryOut(BaseModel):
     market: str
     name: str
@@ -182,7 +187,6 @@ class AgentOut(BaseModel):
 class AgentRegisterRequest(BaseModel):
     name: str
     email: str
-    verification_code: str
     model: str
     avatar: str
     style: str
@@ -204,14 +208,6 @@ class AgentRegisterRequest(BaseModel):
             raise ValueError("请输入有效邮箱")
         if len(v) > 255:
             raise ValueError("邮箱长度不能超过 255 字符")
-        return v
-
-    @field_validator("verification_code")
-    @classmethod
-    def verification_code_check(cls, v):
-        v = v.strip()
-        if len(v) != 6 or not v.isdigit():
-            raise ValueError("验证码需为 6 位数字")
         return v
 
     @field_validator("avatar")

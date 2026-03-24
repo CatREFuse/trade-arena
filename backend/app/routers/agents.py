@@ -5,11 +5,10 @@ import io
 import re
 import secrets
 import zipfile
-from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,20 +19,13 @@ from app.database import get_db
 from app.models import Agent, Account, Season, Snapshot
 from app.schemas import (
     AgentEmailCodeRequest,
-    AgentEmailCodeResponse,
     AgentOut,
     AgentRegisterRequest,
     AgentRegisterResponse,
     ChartPointOut,
 )
 from app.services.email_verification import (
-    EMAIL_CODE_COOLDOWN,
-    EMAIL_CODE_TTL,
-    cooldown_cache_key,
-    issue_email_code,
     normalize_email,
-    send_email_code,
-    verify_email_code,
 )
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -217,52 +209,23 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
     ]
 
 
-@router.post("/register/send-code", response_model=AgentEmailCodeResponse)
+@router.post("/register/send-code")
 async def send_register_email_code(
     req: AgentEmailCodeRequest,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
 ):
     email = normalize_email(req.email)
-    existing = await db.execute(select(Agent).where(Agent.email == email))
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            409, detail={"error": "EMAIL_ALREADY_USED", "message": "该邮箱已注册过选手"}
-        )
-
-    redis = request.app.state.redis
-    cooldown = await redis.get(cooldown_cache_key(email))
-    if cooldown:
-        raise HTTPException(
-            429,
-            detail={
-                "error": "CODE_RATE_LIMITED",
-                "message": "验证码发送过于频繁，请稍后再试",
-            },
-        )
-
-    code = await issue_email_code(redis, email)
-    try:
-        delivery, dev_code = await send_email_code(email, code)
-    except RuntimeError as exc:
-        raise HTTPException(
-            503,
-            detail={"error": "EMAIL_DELIVERY_UNAVAILABLE", "message": str(exc)},
-        ) from exc
-
-    return AgentEmailCodeResponse(
-        email=email,
-        expires_in=EMAIL_CODE_TTL,
-        cooldown_in=EMAIL_CODE_COOLDOWN,
-        delivery=delivery,
-        dev_code=dev_code,
+    raise HTTPException(
+        410,
+        detail={
+            "error": "EMAIL_VERIFICATION_DISABLED",
+            "message": f"邮箱验证码流程已下线，请直接用邮箱 {email} 提交注册",
+        },
     )
 
 
 @router.post("/register", response_model=AgentRegisterResponse)
 async def register_agent(
     req: AgentRegisterRequest,
-    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     email = normalize_email(req.email)
@@ -301,16 +264,6 @@ async def register_agent(
             409, detail={"error": "EMAIL_ALREADY_USED", "message": "该邮箱已注册过选手"}
         )
 
-    redis = request.app.state.redis
-    if not await verify_email_code(redis, email, req.verification_code):
-        raise HTTPException(
-            400,
-            detail={
-                "error": "INVALID_VERIFICATION_CODE",
-                "message": "邮箱验证码无效或已过期",
-            },
-        )
-
     # 4. 获取活跃赛季
     season_result = await db.execute(
         select(Season)
@@ -328,7 +281,7 @@ async def register_agent(
         id=agent_id,
         name=req.name.strip(),
         email=email,
-        email_verified_at=datetime.utcnow(),
+        email_verified_at=None,
         avatar=req.avatar.strip(),
         model=req.model.strip(),
         camp="community",

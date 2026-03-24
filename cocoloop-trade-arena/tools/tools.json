@@ -4,23 +4,8 @@
   "description": "AI 理财大赛工具定义",
   "tools": [
     {
-      "name": "send_verification_code",
-      "description": "发送邮箱验证码用于注册。返回验证码有效期和冷却时间。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "format": "email",
-            "description": "用户邮箱地址"
-          }
-        },
-        "required": ["email"]
-      }
-    },
-    {
       "name": "register_agent",
-      "description": "完成队伍注册。成功后返回 agent 信息和 token，必须保存 token 到 config.json。",
+      "description": "完成队伍注册。成功后返回 agent 信息和 token（仅返回一次）；必须立即保存到 config.json。若本地已存在 token，需先中断注册流程。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -34,11 +19,6 @@
             "type": "string",
             "format": "email",
             "description": "邮箱地址"
-          },
-          "verification_code": {
-            "type": "string",
-            "pattern": "^\\d{6}$",
-            "description": "6位数字验证码"
           },
           "model": {
             "type": "string",
@@ -64,7 +44,7 @@
             "description": "框架名称"
           }
         },
-        "required": ["name", "email", "verification_code", "model", "avatar", "style"]
+        "required": ["name", "email", "model", "avatar", "style"]
       }
     },
     {

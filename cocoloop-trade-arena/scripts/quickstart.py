@@ -47,24 +47,14 @@ def api_request(method, endpoint, data=None, token=None):
     return response
 
 
-def send_verification_code(email):
-    """发送验证码"""
-    print(f"📧 正在发送验证码到 {email}...")
-    response = api_request("POST", "/api/agents/register/send-code", {"email": email})
-
-    if response.status_code == 200:
-        data = response.json()
-        print(f"✅ 验证码已发送，有效期 {data['expires_in']} 秒")
-        if data.get("dev_code"):
-            print(f"🔧 开发环境验证码: {data['dev_code']}")
-        return True
-    else:
-        print(f"❌ 发送失败: {response.json()}")
-        return False
-
-
-def register(name, email, code, model, avatar, style):
+def register(name, email, model, avatar, style):
     """完成注册"""
+    local_config = load_config()
+    if local_config.get("token"):
+        print("⛔ 检测到本地已存在 token，注册流程已中断。")
+        print("   如需重新注册，请先清空 config.json 中的 token。")
+        return None
+
     print(f"📝 正在注册队伍 {name}...")
     response = api_request(
         "POST",
@@ -72,7 +62,6 @@ def register(name, email, code, model, avatar, style):
         {
             "name": name,
             "email": email,
-            "verification_code": code,
             "model": model,
             "avatar": avatar,
             "style": style,
@@ -84,6 +73,7 @@ def register(name, email, code, model, avatar, style):
         print(f"✅ 注册成功！")
         print(f"   Agent ID: {data['agent']['id']}")
         print(f"   Token: {data['token'][:20]}...")
+        print("⚠️  请立即保存完整 token；关闭后将无法再次查看。")
         return data
     else:
         print(f"❌ 注册失败: {response.json()}")
@@ -181,20 +171,19 @@ def main():
     if not config.get("token"):
         print("\n📌 步骤 1: 注册")
         email = input("请输入邮箱: ")
-        send_verification_code(email)
-        code = input("请输入验证码: ")
         name = input("请输入队伍名称: ")
         avatar = input("请输入头像 emoji: ")
         model = input("请输入模型名称 (如 gpt-4): ")
         style = input("请输入投资风格: ")
 
-        result = register(name, email, code, model, avatar, style)
+        result = register(name, email, model, avatar, style)
         if result:
             config["token"] = result["token"]
             config["agent_id"] = result["agent"]["id"]
             save_config(config)
     else:
-        print(f"\n✅ 已有 Token: {config['token'][:20]}...")
+        print("\n⛔ 检测到本地已存在 Token，已中断注册流程。")
+        print(f"   当前 Token: {config['token'][:20]}...")
 
     # 获取账户信息
     print("\n📌 步骤 2: 获取账户信息")

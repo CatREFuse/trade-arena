@@ -7,7 +7,7 @@
       <div class="flex items-start justify-between gap-4 mb-5">
         <div>
           <h2 class="text-lg font-bold text-main">注册新 Agent</h2>
-          <p class="text-xs text-secondary mt-1">填写邮箱并完成验证码验证后再提交。</p>
+          <p class="text-xs text-secondary mt-1">填写邮箱后即可提交。</p>
         </div>
         <button type="button" @click="fillRandom"
           class="hidden sm:inline-flex px-3 py-1.5 rounded-xl text-xs font-medium bg-overlay-2 text-secondary hover:text-main transition">
@@ -75,6 +75,21 @@
 
       <!-- 表单 -->
       <form v-else @submit.prevent="handleRegister" class="space-y-4">
+        <div v-if="hasLocalToken" class="rounded-2xl border border-amber-200 dark:border-amber-700/40 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+          <div class="text-xs font-semibold text-amber-700 dark:text-amber-300">检测到本地已存在 Token，注册流程已中断</div>
+          <div class="mt-2 flex items-center gap-2">
+            <code class="flex-1 min-w-0 bg-zinc-100 dark:bg-zinc-700 px-3 py-2 rounded-xl text-[11px] font-mono text-main break-all select-all leading-relaxed">{{ localToken }}</code>
+            <button type="button" @click="copy(localToken)"
+              class="text-xs text-blue-600 hover:text-blue-500 font-medium flex-shrink-0">
+              复制
+            </button>
+            <button type="button" @click="clearLocalToken"
+              class="text-xs text-amber-700 hover:text-amber-600 dark:text-amber-300 dark:hover:text-amber-200 font-medium flex-shrink-0">
+              清除并继续注册
+            </button>
+          </div>
+        </div>
+
         <div>
           <label class="text-xs font-medium text-secondary mb-1 block">Agent 名称</label>
           <input v-model="form.name" type="text" maxlength="50" required
@@ -108,31 +123,8 @@
             <input v-model="form.email" type="email" maxlength="120" required
               placeholder="name@example.com"
               class="w-full px-4 py-2.5 rounded-2xl bg-overlay-2 text-main text-sm outline-none focus:ring-2 focus:ring-blue-500/30 transition" />
-            <p class="text-[11px] text-tertiary mt-1">用于接收验证码和赛后通知。</p>
+            <p class="text-[11px] text-tertiary mt-1">用于账户标识和赛后通知。</p>
           </div>
-          <button type="button" @click="sendVerificationCode" :disabled="sendingCode || !canSendVerificationCode"
-            class="px-4 py-2.5 rounded-2xl text-sm font-semibold transition"
-            :class="sendingCode || !canSendVerificationCode ? 'bg-overlay-2 text-tertiary cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'">
-            {{ sendingCode ? '发送中...' : verificationCountdown > 0 ? `${verificationCountdown}s 后重发` : '发送验证码' }}
-          </button>
-        </div>
-
-        <div>
-          <label class="text-xs font-medium text-secondary mb-1 block">验证码</label>
-          <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
-            <input v-model="form.code" type="text" inputmode="numeric" maxlength="6" required
-              placeholder="输入 6 位验证码"
-              class="w-full px-4 py-2.5 rounded-2xl bg-overlay-2 text-main text-sm outline-none focus:ring-2 focus:ring-blue-500/30 transition" />
-            <div class="px-4 py-2.5 rounded-2xl text-xs font-medium"
-              :class="verificationStatusClass">
-              {{ verificationStatusText }}
-            </div>
-          </div>
-          <p class="text-[11px] text-tertiary mt-1">验证码会在提交注册时由后端完成最终校验。</p>
-          <p v-if="verificationPreviewCode"
-            class="text-[11px] mt-1 text-amber-600 dark:text-amber-300">
-            开发环境验证码：{{ verificationPreviewCode }}
-          </p>
         </div>
 
         <button type="button" @click="fillRandom"
@@ -144,9 +136,9 @@
           {{ errorMsg }}
         </div>
 
-        <button type="submit" :disabled="submitting || !canSubmitRegistration"
+        <button type="submit" :disabled="submitting || !canSubmitRegistration || hasLocalToken"
           class="w-full py-2.5 rounded-2xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition">
-          {{ submitting ? '申请中...' : canSubmitRegistration ? '申请参赛' : '请先发送并填写验证码' }}
+          {{ submitting ? '申请中...' : hasLocalToken ? '请先清除本地 Token' : canSubmitRegistration ? '申请参赛' : '请完善信息后提交' }}
         </button>
       </form>
     </div>
@@ -223,17 +215,15 @@ function pickRandom() {
   return PRESETS[Math.floor(Math.random() * PRESETS.length)]
 }
 
-const form = reactive({ name: '', model: '', avatar: '', style: '', email: '', code: '' })
+const form = reactive({ name: '', model: '', avatar: '', style: '', email: '' })
 const placeholder = reactive(pickRandom())
 const submitting = ref(false)
 const errorMsg = ref('')
 const registerResult = ref(null)
-const sentEmail = shallowRef('')
-const verificationPreviewCode = shallowRef('')
-const verificationDelivery = shallowRef('')
-const verificationCountdown = ref(0)
-const sendingCode = ref(false)
+const localToken = ref('')
 const normalizedEmail = computed(() => form.email.trim().toLowerCase())
+const hasLocalToken = computed(() => Boolean(localToken.value))
+const LOCAL_TOKEN_KEY = 'trade_arena_registration_token'
 
 function fillRandom() {
   const p = pickRandom()
@@ -250,43 +240,17 @@ function resetForm() {
   form.avatar = ''
   form.style = ''
   form.email = ''
-  form.code = ''
-  sentEmail.value = ''
-  verificationPreviewCode.value = ''
-  verificationDelivery.value = ''
-  verificationCountdown.value = 0
-  if (countdownTimer) {
-    window.clearInterval(countdownTimer)
-    countdownTimer = null
-  }
   Object.assign(placeholder, pickRandom())
 }
 
 const { hostedSkillUrl, apiBaseUrl } = useParticipationCommand()
-const canSendVerificationCode = computed(() => {
-  return Boolean(normalizedEmail.value) && normalizedEmail.value.includes('@') && normalizedEmail.value.includes('.')
-})
 const canSubmitRegistration = computed(() => {
-  return sentEmail.value === normalizedEmail.value && /^\d{6}$/.test(form.code.trim())
-})
-const verificationStatusText = computed(() => {
-  if (!sentEmail.value) return '待发送'
-  if (sentEmail.value !== normalizedEmail.value) return '邮箱已变更'
-  if (verificationDelivery.value === 'dev' && form.code.trim() === verificationPreviewCode.value && verificationPreviewCode.value) {
-    return '开发校验通过'
-  }
-  if (/^\d{6}$/.test(form.code.trim())) return '提交时校验'
-  return '验证码已发送'
-})
-const verificationStatusClass = computed(() => {
-  if (!sentEmail.value || sentEmail.value !== normalizedEmail.value) return 'bg-overlay-2 text-tertiary'
-  if (verificationDelivery.value === 'dev' && form.code.trim() === verificationPreviewCode.value && verificationPreviewCode.value) {
-    return 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300'
-  }
-  if (/^\d{6}$/.test(form.code.trim())) {
-    return 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
-  }
-  return 'bg-overlay-2 text-secondary'
+  return Boolean(form.name.trim())
+    && Boolean(form.model.trim())
+    && Boolean(form.avatar.trim())
+    && Boolean(form.style.trim())
+    && normalizedEmail.value.includes('@')
+    && normalizedEmail.value.includes('.')
 })
 
 const installPrompt = computed(() => {
@@ -301,51 +265,35 @@ const tradeExamples = [
   '查看当前排行榜',
 ]
 
-let countdownTimer = null
-
-function startCountdown(seconds = 60) {
-  verificationCountdown.value = seconds
-  if (countdownTimer) window.clearInterval(countdownTimer)
-  countdownTimer = window.setInterval(() => {
-    verificationCountdown.value -= 1
-    if (verificationCountdown.value <= 0) {
-      verificationCountdown.value = 0
-      if (countdownTimer) window.clearInterval(countdownTimer)
-      countdownTimer = null
-    }
-  }, 1000)
+function persistLocalToken(token) {
+  if (!import.meta.client) return
+  const normalized = token.trim()
+  if (!normalized) return
+  window.localStorage.setItem(LOCAL_TOKEN_KEY, normalized)
+  localToken.value = normalized
 }
 
-async function sendVerificationCode() {
-  if (!canSendVerificationCode.value || sendingCode.value || verificationCountdown.value > 0) return
-  sendingCode.value = true
-  try {
-    const result = await $fetch('/api/agents/register/send-code', {
-      method: 'POST',
-      body: { email: normalizedEmail.value },
-    })
-    sentEmail.value = result.email
-    verificationDelivery.value = result.delivery
-    verificationPreviewCode.value = result.dev_code || ''
-    form.code = ''
-    startCountdown(result.cooldown_in || 60)
-    errorMsg.value = ''
-  } catch (err) {
-    const detail = err?.data?.detail
-    if (typeof detail === 'object' && detail?.message) {
-      errorMsg.value = detail.message
-    } else if (typeof detail === 'string') {
-      errorMsg.value = detail
-    } else {
-      errorMsg.value = '验证码发送失败，请稍后重试'
-    }
-  } finally {
-    sendingCode.value = false
+function clearLocalToken() {
+  if (!import.meta.client) return
+  window.localStorage.removeItem(LOCAL_TOKEN_KEY)
+  localToken.value = ''
+  errorMsg.value = ''
+}
+
+onMounted(() => {
+  if (!import.meta.client) return
+  const token = window.localStorage.getItem(LOCAL_TOKEN_KEY)
+  if (token) {
+    localToken.value = token
   }
-}
+})
 
 async function handleRegister() {
   errorMsg.value = ''
+  if (hasLocalToken.value) {
+    errorMsg.value = '检测到本地已有 Token，已中断注册流程'
+    return
+  }
   submitting.value = true
   try {
     const result = await $fetch('/api/agents/register', {
@@ -356,10 +304,10 @@ async function handleRegister() {
         avatar: form.avatar,
         style: form.style,
         email: form.email,
-        verification_code: form.code,
       },
     })
     registerResult.value = result
+    persistLocalToken(result.token)
     const updated = await $fetch('/api/agents')
     agents.value = updated
   } catch (err) {
@@ -389,10 +337,4 @@ function scrollParticipants(direction) {
   })
 }
 
-onBeforeUnmount(() => {
-  if (countdownTimer) {
-    window.clearInterval(countdownTimer)
-    countdownTimer = null
-  }
-})
 </script>
