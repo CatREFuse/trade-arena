@@ -248,6 +248,43 @@ class MarketDataService:
         ]
         self._register_default_providers()
 
+    def provider_chain_snapshot(self) -> dict[str, list[str]]:
+        keys = [
+            ("quote", "us"),
+            ("quote", "cn"),
+            ("quote", "hk"),
+            ("index", "us"),
+            ("index", "cn"),
+            ("index", "hk"),
+        ]
+        return {
+            f"{data_type}:{market}": [
+                entry.name for entry in self.provider_registry.chain(data_type, market)
+            ]
+            for data_type, market in keys
+        }
+
+    def provider_health_snapshot(self) -> list[dict]:
+        now = asyncio.get_running_loop().time()
+        snapshot: list[dict] = []
+        for (data_type, market, provider_name), state in sorted(
+            self._provider_health.items(),
+            key=lambda item: item[0],
+        ):
+            disabled_until = float(state.get("disabled_until", 0) or 0)
+            remaining = max(0.0, disabled_until - now)
+            snapshot.append(
+                {
+                    "data_type": data_type,
+                    "market": market,
+                    "provider": provider_name,
+                    "failures": int(state.get("failures", 0) or 0),
+                    "circuit_open": remaining > 0,
+                    "cooldown_remaining_seconds": round(remaining, 2),
+                }
+            )
+        return snapshot
+
     def _register_default_providers(self) -> None:
         # quote chain
         self.register_provider("quote", "cn", self.akshare, priority=0)

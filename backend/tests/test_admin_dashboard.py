@@ -1,0 +1,60 @@
+from __future__ import annotations
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_admin_users_endpoint_returns_seeded_user(client, seeded_accounts):
+    response = await client.get("/api/admin/users")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] >= 1
+    assert any(item["id"] == seeded_accounts.agent_id for item in payload["items"])
+
+
+@pytest.mark.asyncio
+async def test_admin_logs_endpoint_returns_trade_logs(client):
+    response = await client.get("/api/admin/logs")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["items"]) >= 1
+    assert "ticker" in payload["items"][0]
+    assert "action" in payload["items"][0]
+
+
+@pytest.mark.asyncio
+async def test_admin_data_sources_endpoint_returns_status(client):
+    response = await client.get("/api/admin/data-sources")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "db" in payload
+    assert "redis" in payload
+    assert "cache" in payload
+    assert "provider_chains" in payload
+
+
+@pytest.mark.asyncio
+async def test_admin_trade_stats_endpoint_returns_totals(client):
+    response = await client.get("/api/admin/trade-stats?days=7")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["totals"]["trade_count"] >= 1
+    assert "daily" in payload
+    assert "top_tickers" in payload
+
+
+@pytest.mark.asyncio
+async def test_admin_dashboard_endpoint_returns_all_modules(client):
+    response = await client.get("/api/admin/dashboard")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "users" in payload
+    assert "logs" in payload
+    assert "data_sources" in payload
+    assert "market" in payload
+    assert "trade_stats" in payload

@@ -19,6 +19,7 @@ from app.routers import (
     agents,
     dev,
     files,
+    admin,
 )
 from app.services.market_data import MarketDataService
 
@@ -69,3 +70,4 @@ app.include_router(sse.router)
 app.include_router(agents.router)
 app.include_router(dev.router)
 app.include_router(files.router)
+app.include_router(admin.router)
