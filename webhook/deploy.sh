@@ -50,21 +50,43 @@ pip install -e . >> $LOG_FILE 2>&1 || pip install fastapi uvicorn sqlalchemy asy
 # 4. 安装前端依赖
 echo "[$(date)] Installing frontend dependencies..." | tee -a $LOG_FILE
 cd "$PROJECT_ROOT/frontend"
-npm install >> $LOG_FILE 2>&1
+npm ci >> $LOG_FILE 2>&1
 
-# 5. 重启后端服务
+# 5. 构建前端生产产物
+echo "[$(date)] Building frontend production bundle..." | tee -a $LOG_FILE
+rm -rf .nuxt .output
+npm run build >> $LOG_FILE 2>&1
+
+# 6. 重启后端服务
 echo "[$(date)] Restarting backend..." | tee -a $LOG_FILE
 pkill -f "uvicorn app.main:app" || true
 sleep 2
 cd "$PROJECT_ROOT/backend"
 nohup uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 >> $LOG_FILE 2>&1 &
 
-# 6. 重启前端服务
+# 7. 重启前端服务
 echo "[$(date)] Restarting frontend..." | tee -a $LOG_FILE
+pkill -f "node .output/server/index.mjs" || true
+pkill -f "npm run start" || true
+pkill -f "nuxt preview" || true
 pkill -f "nuxt dev" || true
 sleep 2
 cd "$PROJECT_ROOT/frontend"
-nohup npm run dev >> $LOG_FILE 2>&1 &
+nohup env HOST=0.0.0.0 PORT=3000 npm run start >> $LOG_FILE 2>&1 &
+
+# 8. 前端健康检查
+echo "[$(date)] Verifying frontend health..." | tee -a $LOG_FILE
+for i in {1..20}; do
+    if curl --noproxy '*' -fsS "http://127.0.0.1:3000" > /dev/null 2>&1; then
+        echo "[$(date)] Frontend is healthy on port 3000" | tee -a $LOG_FILE
+        break
+    fi
+    if [ "$i" -eq 20 ]; then
+        echo "[$(date)] Frontend failed health check after startup" | tee -a $LOG_FILE
+        exit 1
+    fi
+    sleep 2
+done
 
 echo "[$(date)] Deployment completed successfully!" | tee -a $LOG_FILE
 
