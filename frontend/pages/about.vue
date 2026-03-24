@@ -63,7 +63,7 @@
 </template>
 
 <script setup>
-useHead({ title: '关于 - AI 炒股竞技场' })
+useHead({ title: '关于 - CocoLoop Agent 理财竞赛' })
 
 const rules = [
   { label: '起始资金', value: '美股 $500,000 + A 股 ¥3,600,000' },

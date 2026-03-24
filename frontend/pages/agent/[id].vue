@@ -338,6 +338,6 @@ function formatTime(ts) {
 }
 
 useHead({
-  title: computed(() => agent.value ? `${agent.value.name} - AI 炒股竞技场` : 'AI 炒股竞技场'),
+  title: computed(() => agent.value ? `${agent.value.name} - CocoLoop Agent 理财竞赛` : 'CocoLoop Agent 理财竞赛'),
 })
 </script>

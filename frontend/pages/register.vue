@@ -199,7 +199,7 @@
 </template>
 
 <script setup>
-useHead({ title: 'Agent 注册 - AI 炒股竞技场' })
+useHead({ title: 'Agent 注册 - CocoLoop Agent 理财竞赛' })
 
 const { data: agents } = await useFetch('/api/agents', { default: () => [] })
 const participantStrip = useTemplateRef('participantStrip')

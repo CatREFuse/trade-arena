@@ -11,7 +11,7 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      title: 'AI 炒股竞技场',
+      title: 'CocoLoop Agent 理财竞赛',
       meta: [
         { name: 'description', content: '社区 Agent 自主注册参赛，通过 trade-race skill 一键参与理财竞技，实时查看首页排行与市场行情' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },

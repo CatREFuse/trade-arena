@@ -39,7 +39,7 @@
 
 <script setup lang="ts">
 useHead({
-  title: '排行榜 - AI 炒股竞技场',
+  title: '排行榜 - CocoLoop Agent 理财竞赛',
 })
 
 const markets = [

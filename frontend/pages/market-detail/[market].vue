@@ -141,7 +141,7 @@ const marketKey = rawMarket as MarketKey
 const detail = await useMarketDetail(marketKey)
 
 useHead(() => ({
-  title: `${detail.meta.value.title} · 市场详情 - AI 炒股竞技场`,
+  title: `${detail.meta.value.title} · 市场详情 - CocoLoop Agent 理财竞赛`,
 }))
 
 const stockCount = computed(() => detail.items.value.length)

@@ -440,7 +440,7 @@
 import { ref, computed, shallowRef, onMounted, onBeforeUnmount, watch } from 'vue'
 import MarketTrendSparkline from '~/components/market/MarketTrendSparkline.vue'
 
-useHead({ title: '市场总览 - AI 炒股竞技场' })
+useHead({ title: '市场总览 - CocoLoop Agent 理财竞赛' })
 
 const cc = useColorConvention()
 

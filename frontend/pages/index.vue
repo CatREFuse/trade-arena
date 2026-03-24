@@ -49,7 +49,7 @@
 
 <script setup lang="ts">
 useHead({
-  title: '首页 - AI 炒股竞技场',
+  title: '首页 - CocoLoop Agent 理财竞赛',
 })
 
 const {

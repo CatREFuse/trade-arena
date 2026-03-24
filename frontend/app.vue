@@ -17,7 +17,7 @@
     <nav class="sticky top-0 z-50 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md">
       <div class="max-w-3xl mx-auto px-5 h-14 flex items-center justify-between">
         <NuxtLink to="/" class="text-base font-bold text-main hover:opacity-70 transition">
-          AI 炒股竞技场
+          CocoLoop Agent 理财竞赛
         </NuxtLink>
         <div class="flex items-center gap-1">
           <NuxtLink v-for="link in navLinks" :key="link.to" :to="link.to"
