@@ -20,6 +20,15 @@ yarn install
 bun install
 ```
 
+Admin console credentials can be configured through environment variables:
+
+```bash
+NUXT_ADMIN_USERNAME=admin
+NUXT_ADMIN_PASSWORD=replace-with-strong-password
+NUXT_ADMIN_SESSION_SALT=replace-with-random-salt
+NUXT_ADMIN_COOKIE_SECURE=false
+```
+
 ## Development Server
 
 Start the development server on `http://localhost:3000`:

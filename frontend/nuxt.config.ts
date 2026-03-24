@@ -1,6 +1,12 @@
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
   devtools: { enabled: true },
+  runtimeConfig: {
+    adminUsername: process.env.NUXT_ADMIN_USERNAME || 'admin',
+    adminPassword: process.env.NUXT_ADMIN_PASSWORD || 'admin123456',
+    adminSessionSalt: process.env.NUXT_ADMIN_SESSION_SALT || 'trade-arena-admin-session',
+    adminCookieSecure: process.env.NUXT_ADMIN_COOKIE_SECURE === 'true',
+  },
   experimental: {
     appManifest: false,
   },
