@@ -89,8 +89,10 @@ interface LeaderboardResponse {
 
 const cc = useColorConvention()
 
-const { data, pending, error } = await useFetch<LeaderboardResponse>('/api/leaderboard?market=overall', {
+const { data, pending, error } = useLazyFetch<LeaderboardResponse>('/api/leaderboard?market=overall', {
+  key: 'home-leaderboard-overall',
   default: () => ({ rankings: [] }),
+  deep: false,
 })
 
 const rankings = computed(() => data.value?.rankings || [])

@@ -57,30 +57,37 @@ const {
   copySkillInstruction,
 } = useParticipationCommand()
 
-const skillInstallBox = ref<HTMLElement | null>(null)
-const isHighlighted = ref(false)
+const skillInstallBox = useTemplateRef<HTMLElement>('skillInstallBox')
+const isHighlighted = shallowRef(false)
+let highlightTimer: number | null = null
 
 function focusInstallBox() {
-  if (skillInstallBox.value) {
-    skillInstallBox.value.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
+  skillInstallBox.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   isHighlighted.value = true
-  setTimeout(() => {
+  if (highlightTimer) {
+    window.clearTimeout(highlightTimer)
+  }
+  highlightTimer = window.setTimeout(() => {
     isHighlighted.value = false
   }, 2000)
 }
 
 async function copyCommandAndJoin() {
   await copySkillInstruction()
-  await navigateTo('/register')
 }
 
 onMounted(() => {
   const hash = window.location.hash
   if (hash === '#skill-install-box') {
-    setTimeout(() => {
+    window.setTimeout(() => {
       focusInstallBox()
     }, 100)
+  }
+})
+
+onUnmounted(() => {
+  if (highlightTimer) {
+    window.clearTimeout(highlightTimer)
   }
 })
 </script>
