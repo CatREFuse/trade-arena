@@ -262,7 +262,7 @@ function resetForm() {
   Object.assign(placeholder, pickRandom())
 }
 
-const { hostedSkillUrl } = useParticipationCommand()
+const { hostedSkillUrl, apiBaseUrl } = useParticipationCommand()
 const canSendVerificationCode = computed(() => {
   return Boolean(normalizedEmail.value) && normalizedEmail.value.includes('@') && normalizedEmail.value.includes('.')
 })
@@ -291,8 +291,7 @@ const verificationStatusClass = computed(() => {
 
 const installPrompt = computed(() => {
   if (!registerResult.value) return ''
-  const apiBase = hostedSkillUrl.value.replace('/api/agents/skill/hosted', '')
-  return `请安装 AI 炒股竞技场的交易 Skill：从 ${hostedSkillUrl.value} 下载安装，然后在 config.json 中配置 api_url 为 ${apiBase}，token 为 ${registerResult.value.token}。其余调度、策略和日志由你自行配置。`
+  return `请安装 AI 炒股竞技场的交易 Skill：从 ${hostedSkillUrl.value} 下载安装，然后在 config.json 中配置 api_url 为 ${apiBaseUrl.value}，token 为 ${registerResult.value.token}。其余调度、策略和日志由你自行配置。`
 })
 
 const tradeExamples = [

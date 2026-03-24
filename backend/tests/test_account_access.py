@@ -3,10 +3,12 @@ from __future__ import annotations
 import io
 import zipfile
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
 import app.auth as auth_module
+from app.config import settings
 from app.models import Account
 from app.schemas import QuoteOut
 from app.services import market_data as md
@@ -187,3 +189,33 @@ async def test_skill_hosted_endpoint_returns_cocoloop_archive(client):
     assert "tools/tools.json" in file_list
     assert "references/api.md" in file_list
     assert "references/errors.md" in file_list
+
+
+@pytest.mark.asyncio
+async def test_static_file_endpoint_returns_hosted_skill_archive_with_fallback(
+    client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    monkeypatch.setattr(settings, "hosted_files_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "hosted_skill_filename", "cocoloop-trade-arena.zip")
+
+    response = await client.get("/api/file/cocoloop-trade-arena.zip")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    archive = zipfile.ZipFile(io.BytesIO(response.content))
+    assert "SKILL.md" in archive.namelist()
+    assert (tmp_path / "cocoloop-trade-arena.zip").exists()
+
+
+@pytest.mark.asyncio
+async def test_static_file_endpoint_prefers_existing_file(
+    client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    monkeypatch.setattr(settings, "hosted_files_dir", str(tmp_path))
+    file_path = tmp_path / "custom.zip"
+    file_path.write_bytes(b"custom-content")
+
+    response = await client.get("/api/file/custom.zip")
+
+    assert response.status_code == 200
+    assert response.content == b"custom-content"

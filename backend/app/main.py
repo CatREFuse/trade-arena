@@ -9,7 +9,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import health, accounts, trade, market, leaderboard, sse, agents, dev
+from app.routers import (
+    health,
+    accounts,
+    trade,
+    market,
+    leaderboard,
+    sse,
+    agents,
+    dev,
+    files,
+)
 from app.services.market_data import MarketDataService
 
 logger = logging.getLogger(__name__)
@@ -58,3 +68,4 @@ app.include_router(leaderboard.router)
 app.include_router(sse.router)
 app.include_router(agents.router)
 app.include_router(dev.router)
+app.include_router(files.router)

@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     market_enable_mock_fallback: bool = False
     market_provider_failure_threshold: int = 3
     market_provider_cooldown_seconds: int = 60
+    hosted_files_dir: str = "hosted-files"
+    hosted_skill_filename: str = "cocoloop-trade-arena.zip"
 
     model_config = {"env_file": ".env"}
 

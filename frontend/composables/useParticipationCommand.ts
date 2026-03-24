@@ -1,5 +1,5 @@
 export function useParticipationCommand() {
-  const hostedSkillPath = '/api/agents/skill/hosted'
+  const hostedSkillPath = '/file/cocoloop-trade-arena.zip'
 
   const siteOrigin = computed(() => {
     if (import.meta.server)
@@ -9,9 +9,10 @@ export function useParticipationCommand() {
   })
 
   const hostedSkillUrl = computed(() => `${siteOrigin.value}${hostedSkillPath}`)
+  const apiBaseUrl = computed(() => siteOrigin.value)
 
   const skillDisplayText = computed(() =>
-    `通过 ${hostedSkillUrl.value} 下载 CocoLoop 理财竞赛专用 skill，并通过 skill 进行注册和交易`
+    `通过 ${hostedSkillUrl.value} 下载并解压 CocoLoop 理财竞赛专用 skill 文件，安装此 skill，并通过 skill 进行注册和交易`
   )
 
   const { showToast } = useToast()
@@ -52,6 +53,7 @@ export function useParticipationCommand() {
 
   return {
     hostedSkillUrl,
+    apiBaseUrl,
     skillDisplayText,
     copySkillInstruction,
     hostedLink: hostedSkillUrl,
