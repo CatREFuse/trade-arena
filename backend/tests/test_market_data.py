@@ -4,10 +4,11 @@ import json
 from decimal import Decimal
 
 import pytest
+from fastapi import HTTPException
 
 from app.schemas import IndexQuoteOut, MarketBoardItemOut, QuoteOut
 from app.services import market_data as md
-from app.services.market_providers import QuoteData
+from app.services.market_providers import AkshareProvider, QuoteData
 
 
 class RaisingProvider:
@@ -18,9 +19,64 @@ class RaisingProvider:
         raise RuntimeError(f"provider failure for {symbol}")
 
 
+class CountingFailProvider:
+    def __init__(self):
+        self.calls = 0
+
+    async def get_quote(self, ticker: str):
+        self.calls += 1
+        raise RuntimeError(f"forced provider error for {ticker}")
+
+    async def get_quotes_batch(self, tickers: list[str]):
+        self.calls += 1
+        raise RuntimeError(f"forced provider error for batch {tickers}")
+
+
+class CountingSuccessProvider:
+    def __init__(self):
+        self.calls = 0
+
+    async def get_quote(self, ticker: str):
+        self.calls += 1
+        return QuoteData(
+            ticker=ticker,
+            price=100.0,
+            change_pct=1.0,
+            volume=1000,
+            market_status="open",
+            previous_close=99.0,
+        )
+
+    async def get_quotes_batch(self, tickers: list[str]):
+        self.calls += 1
+        return {
+            ticker: QuoteData(
+                ticker=ticker,
+                price=100.0,
+                change_pct=1.0,
+                volume=1000,
+                market_status="open",
+                previous_close=99.0,
+            )
+            for ticker in tickers
+        }
+
+
 def test_market_board_catalog_is_substantially_larger():
     assert len(md.MARKET_BOARD["us"]) >= 40
     assert len(md.MARKET_BOARD["cn"]) >= 30
+    assert len(md.MARKET_BOARD["hk"]) >= 10
+
+
+def test_provider_chain_prioritizes_akshare_for_cn_and_hk(fake_redis):
+    service = md.MarketDataService(fake_redis)
+    cn_chain = service._quote_providers("600519.SH")
+    hk_chain = service._quote_providers("0700.HK")
+
+    assert cn_chain
+    assert hk_chain
+    assert isinstance(cn_chain[0], AkshareProvider)
+    assert isinstance(hk_chain[0], AkshareProvider)
 
 
 @pytest.mark.asyncio
@@ -50,8 +106,8 @@ async def test_get_quote_uses_cache_without_provider_call(fake_redis, monkeypatc
 
 @pytest.mark.asyncio
 async def test_get_quote_falls_back_to_mock_and_caches_result(fake_redis, monkeypatch):
-    service = md.MarketDataService(fake_redis)
-    monkeypatch.setattr(service, "_get_provider", lambda _ticker: RaisingProvider())
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=True)
+    monkeypatch.setattr(service, "_quote_providers", lambda _ticker: [RaisingProvider()])
 
     async def mock_get_quote(ticker: str):
         return QuoteData(
@@ -82,7 +138,7 @@ async def test_get_quote_falls_back_to_mock_and_caches_result(fake_redis, monkey
 
 @pytest.mark.asyncio
 async def test_get_index_falls_back_to_mock_and_caches_result(fake_redis, monkeypatch):
-    service = md.MarketDataService(fake_redis)
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=True)
 
     async def provider_returns_none(symbol: str):
         return None
@@ -118,7 +174,7 @@ async def test_get_index_falls_back_to_mock_and_caches_result(fake_redis, monkey
 
 @pytest.mark.asyncio
 async def test_get_market_board_batches_large_universe_and_falls_back(fake_redis, monkeypatch):
-    service = md.MarketDataService(fake_redis)
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=True)
     monkeypatch.setattr(md, "BOARD_FETCH_CHUNK_SIZE", 4)
 
     batch_calls: list[tuple[str, ...]] = []
@@ -166,7 +222,7 @@ async def test_get_market_board_batches_large_universe_and_falls_back(fake_redis
     assert batch_calls
     assert len(batch_calls) == (len(md.MARKET_BOARD["us"]) + 3) // 4
     assert len(fallback_calls) == len(batch_calls)
-    assert fake_redis.set_calls[-1][0] == "market:board:v2:us"
+    assert fake_redis.set_calls[-1][0] == "market:board:v3:us"
     assert board[0].price == Decimal("88.8")
 
 
@@ -180,17 +236,18 @@ async def test_get_market_overview_caches_aggregate_snapshot(fake_redis, monkeyp
         return [
             IndexQuoteOut(symbol="SPX", name="S&P 500", price=6000.0, change_pct=1.25, market="us"),
             IndexQuoteOut(symbol="SH", name="上证指数", price=3200.0, change_pct=-0.35, market="cn"),
+            IndexQuoteOut(symbol="HSI", name="恒生指数", price=20000.0, change_pct=0.28, market="hk"),
         ]
 
     async def fake_get_market_board(market: str, refresh: bool = False):
         calls["boards"].append((market, refresh))
         return [
             MarketBoardItemOut(
-                ticker="AAPL" if market == "us" else "600519.SH",
+                ticker="AAPL" if market == "us" else ("600519.SH" if market == "cn" else "0700.HK"),
                 name="Sample",
                 market=market,
                 price=Decimal("200"),
-                change_pct=2.5 if market == "us" else -1.1,
+                change_pct=2.5 if market == "us" else (-1.1 if market == "cn" else 1.6),
                 volume=1000,
                 market_status="open",
             )
@@ -203,14 +260,45 @@ async def test_get_market_overview_caches_aggregate_snapshot(fake_redis, monkeyp
     assert overview.markets[0].stock_count == 1
     assert overview.markets[0].leader is not None
     assert overview.boards["us"][0].ticker == "AAPL"
-    assert fake_redis.set_calls[-1][0] == "market:overview:v2"
+    assert fake_redis.set_calls[-1][0] == "market:overview:v3"
 
     second = await service.get_market_overview()
     assert second.markets[1].market == "cn"
     assert calls["indices"] == 1
-    assert calls["boards"] == [("us", False), ("cn", False)]
+    assert calls["boards"] == [("us", False), ("cn", False), ("hk", False)]
 
     refreshed = await service.get_market_overview(refresh=True)
     assert refreshed.updated_at is not None
     assert calls["indices"] == 2
-    assert calls["boards"][-2:] == [("us", True), ("cn", True)]
+    assert calls["boards"][-3:] == [("us", True), ("cn", True), ("hk", True)]
+
+
+@pytest.mark.asyncio
+async def test_get_quote_raises_when_mock_disabled_and_upstream_fails(fake_redis, monkeypatch):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+    monkeypatch.setattr(service, "_get_provider", lambda _ticker: RaisingProvider())
+    monkeypatch.setattr(service, "_quote_providers", lambda _ticker: [RaisingProvider()])
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.get_quote("AAPL")
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail["error"] == "MARKET_DATA_UNAVAILABLE"
+
+
+@pytest.mark.asyncio
+async def test_provider_circuit_breaker_skips_failing_provider_temporarily(fake_redis, monkeypatch):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+    service.provider_failure_threshold = 2
+    service.provider_cooldown_seconds = 120
+
+    failing = CountingFailProvider()
+    succeeding = CountingSuccessProvider()
+    monkeypatch.setattr(service, "_quote_providers", lambda _ticker: [failing, succeeding])
+
+    await service.get_quote("AAPL")
+    await service.get_quote("MSFT")
+    await service.get_quote("NVDA")
+
+    assert failing.calls == 2
+    assert succeeding.calls == 3

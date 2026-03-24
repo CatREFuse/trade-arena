@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     smtp_use_ssl: bool = False
     email_verification_dev_mode: bool = True
+    market_enable_mock_fallback: bool = False
+    market_provider_failure_threshold: int = 3
+    market_provider_cooldown_seconds: int = 60
 
     model_config = {"env_file": ".env"}
 
