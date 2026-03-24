@@ -17,3 +17,6 @@ DEPLOY_LOG = Path("/var/log/trade-arena-deploy.log")
 
 # 部署锁文件（防止并发部署）
 DEPLOY_LOCK = Path("/tmp/trade-arena-deploy.lock")
+
+# Webhook 触发日志（Markdown 格式）
+WEBHOOK_LOG = PROJECT_ROOT / "webhook" / "DEPLOY_LOG.md"

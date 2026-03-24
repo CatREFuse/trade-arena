@@ -12,7 +12,7 @@ import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from config import DEPLOY_LOCK, DEPLOY_LOG, PROJECT_ROOT, WEBHOOK_PORT, WEBHOOK_SECRET
+from config import DEPLOY_LOCK, DEPLOY_LOG, PROJECT_ROOT, WEBHOOK_LOG, WEBHOOK_PORT, WEBHOOK_SECRET
 
 app = FastAPI(title="Trade Arena Webhook", version="1.0.0")
 
@@ -28,6 +28,41 @@ def verify_signature(body: bytes, signature: str) -> bool:
         hashlib.sha256
     ).hexdigest()
     return hmac.compare_digest(f"sha256={expected}", signature)
+
+
+def log_webhook_event(branch: str, repository: str, pusher: dict, commit_msg: str = "") -> None:
+    """Log webhook trigger event to markdown file."""
+    from datetime import datetime
+    
+    # 初始化日志文件（如果不存在）
+    if not WEBHOOK_LOG.exists():
+        WEBHOOK_LOG.write_text("# Webhook Deployment Log\n\n", encoding="utf-8")
+    
+    # 构建日志条目
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    pusher_name = pusher.get("name", "unknown") if pusher else "unknown"
+    pusher_email = pusher.get("email", "") if pusher else ""
+    
+    log_entry = f"""## {timestamp}
+
+- **Branch**: `{branch}`
+- **Repository**: {repository}
+- **Pusher**: {pusher_name} ({pusher_email})
+- **Status**: ✅ Deployment triggered
+- **Commit Message**: {commit_msg or "N/A"}
+
+---
+
+"""
+    
+    # 追加到日志文件（插入到标题后面）
+    content = WEBHOOK_LOG.read_text(encoding="utf-8")
+    # 在标题后插入新记录
+    content = content.replace(
+        "# Webhook Deployment Log\n\n",
+        f"# Webhook Deployment Log\n\n{log_entry}"
+    )
+    WEBHOOK_LOG.write_text(content, encoding="utf-8")
 
 
 def run_deploy(branch: str) -> None:
@@ -74,6 +109,12 @@ async def webhook(
         return JSONResponse({"message": "Not a branch push", "ref": ref})
     
     branch = ref.replace("refs/heads/", "")
+    repository = payload.get("repository", {}).get("full_name", "unknown")
+    pusher = payload.get("pusher", {})
+    
+    # 获取最新 commit message
+    commits = payload.get("commits", [])
+    commit_msg = commits[0].get("message", "") if commits else ""
     
     # 检查部署锁
     if DEPLOY_LOCK.exists():
@@ -82,13 +123,17 @@ async def webhook(
             status_code=409
         )
     
+    # 记录到 markdown 日志
+    log_webhook_event(branch, repository, pusher, commit_msg)
+    
     # 触发部署
     run_deploy(branch)
     
     return JSONResponse({
         "message": "Deployment triggered",
         "branch": branch,
-        "repository": payload.get("repository", {}).get("full_name")
+        "repository": repository,
+        "commit_message": commit_msg
     })
 
 
@@ -96,6 +141,16 @@ async def webhook(
 async def health():
     """Health check endpoint."""
     return {"status": "ok", "service": "webhook"}
+
+
+@app.get("/webhook/logs")
+async def get_webhook_logs():
+    """Get webhook deployment logs."""
+    if not WEBHOOK_LOG.exists():
+        return {"logs": "No logs yet"}
+    
+    content = WEBHOOK_LOG.read_text(encoding="utf-8")
+    return {"logs": content}
 
 
 if __name__ == "__main__":
