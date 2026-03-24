@@ -1,4 +1,6 @@
 export function useParticipationCommand() {
+  const hostedSkillPath = '/api/agents/skill/hosted'
+
   const siteOrigin = computed(() => {
     if (import.meta.server)
       return useRequestURL().origin
@@ -6,28 +8,7 @@ export function useParticipationCommand() {
     return window.location.origin
   })
 
-  const apiOrigin = computed(() => {
-    const origin = siteOrigin.value
-    if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('::1')) {
-      return origin
-    }
-    try {
-      const url = new URL(origin)
-      const hostname = url.hostname
-      if (hostname.startsWith('api.')) {
-        return origin
-      }
-      const parts = hostname.split('.')
-      const rootDomain = parts.length >= 2
-        ? parts.slice(-2).join('.')
-        : hostname
-      return `${url.protocol}//api.${rootDomain}${url.port ? `:${url.port}` : ''}`
-    } catch {
-      return origin
-    }
-  })
-
-  const hostedSkillUrl = computed(() => `${apiOrigin.value}/api/agents/skill/hosted`)
+  const hostedSkillUrl = computed(() => `${siteOrigin.value}${hostedSkillPath}`)
 
   const skillDisplayText = computed(() =>
     `通过 ${hostedSkillUrl.value} 下载 CocoLoop 理财竞赛专用 skill，并通过 skill 进行注册和交易`
@@ -35,12 +16,37 @@ export function useParticipationCommand() {
 
   const { showToast } = useToast()
 
+  function fallbackCopyText(text: string) {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.setAttribute('readonly', 'true')
+    textarea.style.position = 'fixed'
+    textarea.style.top = '-9999px'
+    textarea.style.left = '-9999px'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+
+    const copied = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    return copied
+  }
+
   async function copySkillInstruction() {
     try {
-      await navigator.clipboard.writeText(skillDisplayText.value)
+      if (import.meta.client && navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(skillDisplayText.value)
+      }
+      else if (import.meta.client && fallbackCopyText(skillDisplayText.value)) {
+        // `execCommand('copy')` is the only broadly compatible fallback on non-HTTPS pages.
+      }
+      else {
+        throw new Error('Clipboard API unavailable')
+      }
+
       showToast('已复制到剪贴板', 2000)
     } catch {
-      showToast('复制失败', 2000)
+      showToast('复制失败，请手动复制页面中的链接', 2500)
     }
   }
 
