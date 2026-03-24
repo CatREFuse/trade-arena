@@ -4,7 +4,7 @@ from pathlib import Path
 
 # Webhook Secret - 用于验证 GitHub 请求
 # 生产环境应通过环境变量设置
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "your-webhook-secret-change-me")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "e8b2b964-43b2-4ab3-9bf8-c91bdd0f6cd3")
 
 # 项目根目录
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
