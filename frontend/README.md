@@ -72,4 +72,14 @@ yarn preview
 bun run preview
 ```
 
+Production runtime:
+
+```bash
+# npm
+npm run build
+npm run start
+```
+
+Do not run `.nuxt/dist/server/server.mjs` directly in production. The supported production entry is `.output/server/index.mjs`.
+
 Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.

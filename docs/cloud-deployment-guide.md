@@ -106,7 +106,7 @@ npm run build
 本地预览检查：
 
 ```bash
-npm run preview -- --host 127.0.0.1 --port 3000
+HOST=127.0.0.1 PORT=3000 node .output/server/index.mjs
 # 新开终端检查
 curl -I http://127.0.0.1:3000
 ```
@@ -151,7 +151,9 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/opt/trade-arena/frontend
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/npm run preview -- --host 127.0.0.1 --port 3000
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=3
 
@@ -238,7 +240,42 @@ sudo systemctl restart trade-arena-frontend
 sudo systemctl reload nginx
 ```
 
-## 11. 故障排查
+## 11. Nuxt 启动故障特征与修复
+
+如果前端日志里出现下面这种报错：
+
+```text
+Package import specifier "#internal/nuxt/paths" is not defined in package .../frontend/package.json imported from .../.nuxt/dist/server/server.mjs
+```
+
+说明：
+
+- 你启动的是 `.nuxt/dist/server/server.mjs` 这类 Nuxt 内部产物
+- 而不是正式的 Nitro 生产入口 `.output/server/index.mjs`
+
+正确修复步骤：
+
+```bash
+cd /opt/trade-arena/frontend
+rm -rf .nuxt .output
+npm ci
+npm run build
+HOST=127.0.0.1 PORT=3000 node .output/server/index.mjs
+```
+
+如果是 systemd 环境，确认 `trade-arena-frontend.service` 的 `ExecStart` 指向的是：
+
+```bash
+/usr/bin/npm run start
+```
+
+不要指向：
+
+- `nuxt preview`
+- `node .nuxt/dist/server/server.mjs`
+- 任何 `.nuxt/dist/*` 下的文件
+
+## 12. 故障排查
 
 查看日志：
 
