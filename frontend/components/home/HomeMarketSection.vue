@@ -288,22 +288,32 @@ const INDEX_META: Record<string, { shortLabel: string }> = {
   CY: { shortLabel: '创业板' },
 }
 
-const { data: overviewData, pending: overviewPending } = await useFetch<MarketOverviewResponse>('/api/market/overview', {
+const { data: overviewData, pending: overviewPending } = useLazyFetch<MarketOverviewResponse>('/api/market/overview', {
+  key: 'home-market-overview',
   default: () => ({
     indices: [],
     boards: { us: [], cn: [] },
     markets: [],
   }),
+  deep: false,
 })
 
-const { data: feedItems, pending: feedPending } = await useFetch<FeedItem[]>('/api/feed', {
+const {
+  data: feedItems,
+  pending: feedPending,
+  refresh: refreshFeedItems,
+} = useLazyFetch<FeedItem[]>('/api/feed', {
+  key: 'home-market-activity-feed',
   query: { limit: 160 },
   default: () => [],
+  immediate: false,
+  deep: false,
 })
 
 const selectedMarket = shallowRef<MarketKey>('us')
 const panelMode = shallowRef<PanelMode>('movers')
 const sortDirection = shallowRef<SortDirection>('desc')
+const hasRequestedFeed = shallowRef(false)
 
 const boardItems = computed(() => overviewData.value.boards?.[selectedMarket.value] || [])
 const boardItemMap = computed(() => new Map(boardItems.value.map(item => [item.ticker, item])))
@@ -415,6 +425,15 @@ const sortButtonLabel = computed(() => {
   }
   return sortDirection.value === 'desc' ? '涨幅优先' : '跌幅优先'
 })
+
+watch(panelMode, async (mode) => {
+  if (mode !== 'activity' || hasRequestedFeed.value) {
+    return
+  }
+
+  hasRequestedFeed.value = true
+  await refreshFeedItems()
+}, { immediate: true })
 
 function toggleSort() {
   sortDirection.value = sortDirection.value === 'desc' ? 'asc' : 'desc'
