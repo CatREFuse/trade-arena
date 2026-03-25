@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import io
+import logging
 import re
 import secrets
 import zipfile
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_account
@@ -29,6 +31,7 @@ from app.services.email_verification import (
 )
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
+logger = logging.getLogger(__name__)
 
 
 def _package_skill_archive(
@@ -91,19 +94,26 @@ async def get_me(
 
 @router.get("/skill/download")
 async def download_skill():
-    """下载可直接安装的 trade-race skill 包"""
+    """下载 cocoloop-trade-arena skill 包（与 /skill/hosted 相同）"""
     skill_dir = (
-        Path(__file__).resolve().parent.parent.parent.parent
-        / "agents"
-        / "trade-arena-skill"
+        Path(__file__).resolve().parent.parent.parent.parent / "cocoloop-trade-arena"
     )
-    buf = _package_skill_archive(
-        skill_dir, "trade-arena-skill", ["SKILL.md", "config.example.json"]
-    )
+    if not skill_dir.exists():
+        raise HTTPException(
+            404,
+            detail={
+                "error": "SKILL_NOT_FOUND",
+                "message": "Hosted skill package not found",
+            },
+        )
+
+    buf = _package_skill_archive(skill_dir, "cocoloop-trade-arena")
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=trade-arena-skill.zip"},
+        headers={
+            "Content-Disposition": "attachment; filename=cocoloop-trade-arena.zip"
+        },
     )
 
 
@@ -192,21 +202,44 @@ async def download_template():
 
 
 @router.get("/", response_model=list[AgentOut])
-async def list_agents(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Agent).order_by(Agent.created_at))
-    return [
-        AgentOut(
-            id=a.id,
-            name=a.name,
-            avatar=a.avatar,
-            model=a.model,
-            camp=a.camp,
-            style=a.style,
-            framework=a.framework,
-            created_at=a.created_at,
+async def list_agents(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """获取所有 Agent 列表"""
+    try:
+        result = await db.execute(select(Agent).order_by(Agent.created_at))
+        return [
+            AgentOut(
+                id=a.id,
+                name=a.name,
+                avatar=a.avatar,
+                model=a.model,
+                camp=a.camp,
+                style=a.style,
+                framework=a.framework,
+                created_at=a.created_at,
+            )
+            for a in result.scalars().all()
+        ]
+    except SQLAlchemyError as e:
+        logger.error(f"[{request.method} {request.url.path}] DB_ERROR: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "DATABASE_UNAVAILABLE",
+                "message": "数据库暂时不可用，请稍后重试",
+            },
         )
-        for a in result.scalars().all()
-    ]
+    except Exception as e:
+        logger.error(f"[{request.method} {request.url.path}] UNEXPECTED_ERROR: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "SERVICE_UNAVAILABLE",
+                "message": "服务暂时不可用，请稍后重试",
+            },
+        )
 
 
 @router.post("/register/send-code")
@@ -226,119 +259,154 @@ async def send_register_email_code(
 @router.post("/register", response_model=AgentRegisterResponse)
 async def register_agent(
     req: AgentRegisterRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    """注册新 Agent，创建美股和 A 股两个账户"""
     email = normalize_email(req.email)
+    log_prefix = f"[{request.method} {request.url.path}]"
 
-    # 1. 生成 agent_id
-    agent_id = _generate_agent_id(req.name)
+    try:
+        # 1. 生成 agent_id
+        agent_id = _generate_agent_id(req.name)
 
-    # 2. 确保 agent_id 唯一
-    existing = await db.execute(select(Agent).where(Agent.id == agent_id))
-    if existing.scalar_one_or_none():
-        for suffix in range(2, 100):
-            candidate = f"{agent_id}-{suffix}"
-            check = await db.execute(select(Agent).where(Agent.id == candidate))
-            if not check.scalar_one_or_none():
-                agent_id = candidate
-                break
-        else:
+        # 2. 确保 agent_id 唯一
+        existing = await db.execute(select(Agent).where(Agent.id == agent_id))
+        if existing.scalar_one_or_none():
+            for suffix in range(2, 100):
+                candidate = f"{agent_id}-{suffix}"
+                check = await db.execute(select(Agent).where(Agent.id == candidate))
+                if not check.scalar_one_or_none():
+                    agent_id = candidate
+                    break
+            else:
+                logger.warning(f"{log_prefix} AGENT_ID_CONFLICT: name={req.name}")
+                raise HTTPException(
+                    409,
+                    detail={
+                        "error": "AGENT_ID_CONFLICT",
+                        "message": "无法生成唯一 ID，请更换名称",
+                    },
+                )
+
+        # 3. 检查名称唯一
+        name_check = await db.execute(select(Agent).where(Agent.name == req.name.strip()))
+        if name_check.scalar_one_or_none():
+            logger.warning(f"{log_prefix} AGENT_NAME_CONFLICT: name={req.name}")
             raise HTTPException(
-                409,
+                409, detail={"error": "AGENT_NAME_CONFLICT", "message": "该名称已被使用"}
+            )
+
+        email_check = await db.execute(select(Agent).where(Agent.email == email))
+        if email_check.scalar_one_or_none():
+            logger.warning(f"{log_prefix} EMAIL_ALREADY_USED: email={email}")
+            raise HTTPException(
+                409, detail={"error": "EMAIL_ALREADY_USED", "message": "该邮箱已注册过选手"}
+            )
+
+        # 4. 获取活跃赛季
+        season_result = await db.execute(
+            select(Season)
+            .where(Season.status == "active")
+            .order_by(Season.start_date.desc())
+        )
+        season = season_result.scalar_one_or_none()
+        if not season:
+            logger.error(f"{log_prefix} NO_ACTIVE_SEASON")
+            raise HTTPException(
+                status_code=503,
                 detail={
-                    "error": "AGENT_ID_CONFLICT",
-                    "message": "无法生成唯一 ID，请更换名称",
+                    "error": "NO_ACTIVE_SEASON",
+                    "message": "当前没有活跃赛季，请等待赛季开始后再注册",
                 },
             )
 
-    # 3. 检查名称唯一
-    name_check = await db.execute(select(Agent).where(Agent.name == req.name.strip()))
-    if name_check.scalar_one_or_none():
-        raise HTTPException(
-            409, detail={"error": "AGENT_NAME_CONFLICT", "message": "该名称已被使用"}
+        # 5. 创建 Agent
+        agent = Agent(
+            id=agent_id,
+            name=req.name.strip(),
+            email=email,
+            email_verified_at=None,
+            avatar=req.avatar.strip(),
+            model=req.model.strip(),
+            camp="community",
+            style=req.style.strip(),
+            framework=req.framework.strip(),
         )
+        db.add(agent)
+        await db.flush()
 
-    email_check = await db.execute(select(Agent).where(Agent.email == email))
-    if email_check.scalar_one_or_none():
-        raise HTTPException(
-            409, detail={"error": "EMAIL_ALREADY_USED", "message": "该邮箱已注册过选手"}
+        # 6. 创建两个账户（共用一个 token）
+        # 新规则：总资金 100万人民币，按汇率兑换成美元，剩余为人民币
+        total_cny = Decimal(str(settings.total_starting_capital_cny))
+        exchange_rate = Decimal(str(settings.exchange_rate))
+        usd_amount = (total_cny / exchange_rate).quantize(Decimal("0.01"))
+        cny_remaining = total_cny - (usd_amount * exchange_rate)
+
+        api_token = secrets.token_hex(32)
+        us_account = Account(
+            id=f"{agent_id}-us",
+            season_id=season.id,
+            agent_id=agent_id,
+            market="us",
+            currency="USD",
+            initial_cash=usd_amount,
+            cash=usd_amount,
+            api_token=api_token,
         )
+        db.add(us_account)
 
-    # 4. 获取活跃赛季
-    season_result = await db.execute(
-        select(Season)
-        .where(Season.status == "active")
-        .order_by(Season.start_date.desc())
-    )
-    season = season_result.scalar_one_or_none()
-    if not season:
-        raise HTTPException(
-            500, detail={"error": "NO_ACTIVE_SEASON", "message": "当前没有活跃赛季"}
+        cn_account = Account(
+            id=f"{agent_id}-cn",
+            season_id=season.id,
+            agent_id=agent_id,
+            market="cn",
+            currency="CNY",
+            initial_cash=cny_remaining.quantize(Decimal("0.01")),
+            cash=cny_remaining.quantize(Decimal("0.01")),
+            api_token=api_token,
         )
+        db.add(cn_account)
 
-    # 5. 创建 Agent
-    agent = Agent(
-        id=agent_id,
-        name=req.name.strip(),
-        email=email,
-        email_verified_at=None,
-        avatar=req.avatar.strip(),
-        model=req.model.strip(),
-        camp="community",
-        style=req.style.strip(),
-        framework=req.framework.strip(),
-    )
-    db.add(agent)
-    await db.flush()
+        await db.commit()
+        await db.refresh(agent)
 
-    # 6. 创建两个账户（共用一个 token）
-    # 新规则：总资金 100万人民币，按汇率兑换成美元，剩余为人民币
-    total_cny = Decimal(str(settings.total_starting_capital_cny))
-    exchange_rate = Decimal(str(settings.exchange_rate))
-    usd_amount = (total_cny / exchange_rate).quantize(Decimal("0.01"))
-    cny_remaining = total_cny - (usd_amount * exchange_rate)
-
-    api_token = secrets.token_hex(32)
-    us_account = Account(
-        id=f"{agent_id}-us",
-        season_id=season.id,
-        agent_id=agent_id,
-        market="us",
-        currency="USD",
-        initial_cash=usd_amount,
-        cash=usd_amount,
-        api_token=api_token,
-    )
-    db.add(us_account)
-
-    cn_account = Account(
-        id=f"{agent_id}-cn",
-        season_id=season.id,
-        agent_id=agent_id,
-        market="cn",
-        currency="CNY",
-        initial_cash=cny_remaining.quantize(Decimal("0.01")),
-        cash=cny_remaining.quantize(Decimal("0.01")),
-        api_token=api_token,
-    )
-    db.add(cn_account)
-
-    await db.commit()
-    await db.refresh(agent)
-
-    return AgentRegisterResponse(
-        agent=AgentOut(
-            id=agent.id,
-            name=agent.name,
-            avatar=agent.avatar,
-            model=agent.model,
-            camp=agent.camp,
-            style=agent.style,
-            framework=agent.framework,
-            created_at=agent.created_at,
-        ),
-        token=api_token,
-    )
+        logger.info(f"{log_prefix} AGENT_REGISTERED: agent_id={agent_id}, email={email}")
+        return AgentRegisterResponse(
+            agent=AgentOut(
+                id=agent.id,
+                name=agent.name,
+                avatar=agent.avatar,
+                model=agent.model,
+                camp=agent.camp,
+                style=agent.style,
+                framework=agent.framework,
+                created_at=agent.created_at,
+            ),
+            token=api_token,
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(f"{log_prefix} REGISTRATION_DB_ERROR: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "REGISTRATION_UNAVAILABLE",
+                "message": "注册服务暂时不可用，请稍后重试",
+            },
+        )
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"{log_prefix} REGISTRATION_UNEXPECTED_ERROR: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "REGISTRATION_FAILED",
+                "message": "注册失败，请稍后重试",
+            },
+        )
 
 
 def _generate_agent_id(name: str) -> str:

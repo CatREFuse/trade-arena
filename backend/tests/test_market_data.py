@@ -307,3 +307,90 @@ async def test_provider_circuit_breaker_skips_failing_provider_temporarily(fake_
 
     assert failing.calls == 2
     assert succeeding.calls == 3
+
+
+class FailingRedis:
+    """模拟 Redis 连接失败的场景"""
+
+    async def get(self, key: str) -> bytes | None:
+        from redis.exceptions import RedisError
+        raise RedisError("Connection refused")
+
+    async def setex(self, key: str, ttl: int, value: str) -> None:
+        from redis.exceptions import RedisError
+        raise RedisError("Connection refused")
+
+
+@pytest.mark.asyncio
+async def test_redis_failure_does_not_block_quote_fetch(monkeypatch):
+    """测试 Redis 异常时不阻塞行情获取（fail-open）"""
+    failing_redis = FailingRedis()
+    service = md.MarketDataService(failing_redis, enable_mock_fallback=True)
+
+    async def mock_get_quote(ticker: str):
+        return QuoteData(
+            ticker=ticker,
+            price=150.0,
+            change_pct=2.5,
+            volume=10000,
+            market_status="open",
+            previous_close=146.34,
+        )
+
+    monkeypatch.setattr(service.mock, "get_quote", mock_get_quote)
+
+    # Redis 失败不应该阻塞行情获取
+    quote = await service.get_quote("AAPL")
+
+    assert isinstance(quote, QuoteOut)
+    assert quote.ticker == "AAPL"
+    assert quote.price == Decimal("150.0")
+    assert quote.change_pct == 2.5
+
+
+@pytest.mark.asyncio
+async def test_redis_failure_does_not_block_index_fetch(monkeypatch):
+    """测试 Redis 异常时不阻塞指数行情获取"""
+    failing_redis = FailingRedis()
+    service = md.MarketDataService(failing_redis, enable_mock_fallback=True)
+
+    async def mock_get_index(symbol: str):
+        return QuoteData(
+            ticker=symbol,
+            price=4200.0,
+            change_pct=1.2,
+            volume=0,
+            market_status="open",
+            name="S&P 500",
+        )
+
+    monkeypatch.setattr(service.mock, "get_index", mock_get_index)
+
+    index = await service.get_index("SPX", "us")
+
+    assert isinstance(index, IndexQuoteOut)
+    assert index.symbol == "SPX"
+    assert index.price == 4200.0
+
+
+@pytest.mark.asyncio
+async def test_redis_safe_wrapper_handles_exceptions():
+    """测试 Redis 安全封装函数正确处理异常"""
+    from app.services.market_data import _redis_get_safe, _redis_setex_safe
+
+    failing_redis = FailingRedis()
+
+    # get 应该返回 None 而不是抛出
+    result = await _redis_get_safe(failing_redis, "test:key")
+    assert result is None
+
+    # setex 应该返回 False 而不是抛出
+    result = await _redis_setex_safe(failing_redis, "test:key", 60, "value")
+    assert result is False
+
+    # None redis 应该安全处理
+    result = await _redis_get_safe(None, "test:key")
+    assert result is None
+
+    result = await _redis_setex_safe(None, "test:key", 60, "value")
+    assert result is False

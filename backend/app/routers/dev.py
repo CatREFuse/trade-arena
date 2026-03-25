@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import random
 import secrets
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, delete, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -16,16 +18,36 @@ from app.database import get_db
 from app.models import Agent, Account, Trade, Position, Season, Snapshot
 
 router = APIRouter(prefix="/api/dev", tags=["dev"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/status")
 async def dev_status(db: AsyncSession = Depends(get_db)):
     """检查当前是否有数据"""
-    from sqlalchemy import func
+    try:
+        from sqlalchemy import func
 
-    agent_count = (await db.execute(select(func.count()).select_from(Agent))).scalar()
-    trade_count = (await db.execute(select(func.count()).select_from(Trade))).scalar()
-    return {"has_data": agent_count > 0, "agents": agent_count, "trades": trade_count}
+        agent_count = (await db.execute(select(func.count()).select_from(Agent))).scalar()
+        trade_count = (await db.execute(select(func.count()).select_from(Trade))).scalar()
+        return {"has_data": agent_count > 0, "agents": agent_count, "trades": trade_count}
+    except SQLAlchemyError as e:
+        logger.error(f"[GET /api/dev/status] DB_ERROR: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "DATABASE_UNAVAILABLE",
+                "message": "数据库暂时不可用",
+            },
+        )
+    except Exception as e:
+        logger.error(f"[GET /api/dev/status] UNEXPECTED_ERROR: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "SERVICE_UNAVAILABLE",
+                "message": "服务暂时不可用",
+            },
+        )
 
 
 MOCK_AGENTS = [

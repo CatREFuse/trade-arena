@@ -9,6 +9,7 @@ from typing import Awaitable, Callable, Literal
 
 from fastapi import HTTPException
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from app.config import settings
 from app.schemas import (
@@ -22,6 +23,37 @@ from app.schemas import (
 from app.services.market_providers import AkshareProvider, MockProvider, SinaProvider, TencentProvider, YahooProvider
 
 logger = logging.getLogger(__name__)
+
+
+async def _redis_get_safe(redis: Redis | None, key: str) -> bytes | None:
+    """安全地获取 Redis 值，失败时返回 None 并记录 warning"""
+    if redis is None:
+        return None
+    try:
+        return await redis.get(key)
+    except RedisError as e:
+        logger.warning(f"Redis get failed for key={key}: {e}")
+        return None
+    except Exception as e:
+        logger.warning(f"Redis get unexpected error for key={key}: {e}")
+        return None
+
+
+async def _redis_setex_safe(
+    redis: Redis | None, key: str, ttl: int, value: str | bytes
+) -> bool:
+    """安全地设置 Redis 值，失败时返回 False 并记录 warning"""
+    if redis is None:
+        return False
+    try:
+        await redis.setex(key, ttl, value)
+        return True
+    except RedisError as e:
+        logger.warning(f"Redis setex failed for key={key}: {e}")
+        return False
+    except Exception as e:
+        logger.warning(f"Redis setex unexpected error for key={key}: {e}")
+        return False
 
 CACHE_TTL = 60  # 个股行情缓存60秒
 INDEX_CACHE_TTL = 300  # 大盘指数缓存5分钟
@@ -334,7 +366,7 @@ class MarketDataService:
         cache_key = f"quote:{ticker}"
 
         # 尝试从缓存获取
-        cached = await self.redis.get(cache_key)
+        cached = await _redis_get_safe(self.redis, cache_key)
         if cached:
             try:
                 raw = cached.decode() if isinstance(cached, bytes) else cached
@@ -363,8 +395,8 @@ class MarketDataService:
             "market_status": quote.market_status,
         }
 
-        # 写入缓存
-        await self.redis.setex(cache_key, CACHE_TTL, json.dumps(data))
+        # 写入缓存（Redis 失败不影响返回结果）
+        await _redis_setex_safe(self.redis, cache_key, CACHE_TTL, json.dumps(data))
         return QuoteOut(ticker=ticker, **data)
 
     async def get_index(self, symbol: str, market: str) -> IndexQuoteOut:
@@ -374,7 +406,7 @@ class MarketDataService:
         cache_key = f"index:{market}:{symbol}"
 
         # 尝试从缓存获取
-        cached = await self.redis.get(cache_key)
+        cached = await _redis_get_safe(self.redis, cache_key)
         if cached:
             try:
                 raw = cached.decode() if isinstance(cached, bytes) else cached
@@ -411,8 +443,8 @@ class MarketDataService:
             "market": market,
         }
 
-        # 写入缓存
-        await self.redis.setex(cache_key, INDEX_CACHE_TTL, json.dumps(data))
+        # 写入缓存（Redis 失败不影响返回结果）
+        await _redis_setex_safe(self.redis, cache_key, INDEX_CACHE_TTL, json.dumps(data))
         return IndexQuoteOut(**data)
 
     async def get_all_indices(self, refresh: bool = False) -> list[IndexQuoteOut]:
@@ -462,7 +494,7 @@ class MarketDataService:
     async def get_market_board(self, market: str, refresh: bool = False) -> MarketBoardSnapshotOut:
         cache_key = f"market:board:{MARKET_CACHE_VERSION}:{market}"
         if not refresh:
-            cached_snapshot = await self._load_cached_model(cache_key, MarketBoardSnapshotOut)
+            cached_snapshot = await self._load_cached_model_safe(cache_key, MarketBoardSnapshotOut)
             if cached_snapshot is not None:
                 return cached_snapshot
 
@@ -494,7 +526,8 @@ class MarketDataService:
             items=board,
             updated_at=datetime.now(timezone.utc),
         )
-        await self.redis.setex(
+        await _redis_setex_safe(
+            self.redis,
             cache_key,
             BOARD_CACHE_TTL,
             json.dumps(snapshot.model_dump(mode="json")),
@@ -504,7 +537,7 @@ class MarketDataService:
     async def get_market_overview(self, refresh: bool = False) -> MarketOverviewOut:
         cache_key = f"market:overview:{MARKET_CACHE_VERSION}"
         if not refresh:
-            cached = await self.redis.get(cache_key)
+            cached = await _redis_get_safe(self.redis, cache_key)
         else:
             cached = None
         if cached:
@@ -530,7 +563,8 @@ class MarketDataService:
             ],
             updated_at=max(us_board.updated_at, cn_board.updated_at, hk_board.updated_at),
         )
-        await self.redis.setex(
+        await _redis_setex_safe(
+            self.redis,
             cache_key,
             OVERVIEW_CACHE_TTL,
             json.dumps(overview.model_dump(mode="json")),
@@ -574,7 +608,7 @@ class MarketDataService:
         missing: list[str] = []
         for ticker in tickers:
             cache_key = f"quote:{ticker}"
-            raw = await self.redis.get(cache_key)
+            raw = await _redis_get_safe(self.redis, cache_key)
             if not raw:
                 missing.append(ticker)
                 continue
@@ -591,7 +625,7 @@ class MarketDataService:
         missing: list[tuple[str, str]] = []
         for symbol, market in indices:
             cache_key = f"index:{market}:{symbol}"
-            raw = await self.redis.get(cache_key)
+            raw = await _redis_get_safe(self.redis, cache_key)
             if not raw:
                 missing.append((symbol, market))
                 continue
@@ -643,7 +677,7 @@ class MarketDataService:
                 "change_pct": quote.change_pct,
                 "market": market,
             }
-            await self.redis.setex(f"index:{market}:{symbol}", INDEX_CACHE_TTL, json.dumps(data))
+            await _redis_setex_safe(self.redis, f"index:{market}:{symbol}", INDEX_CACHE_TTL, json.dumps(data))
             fetched[(symbol, market)] = IndexQuoteOut(**data)
         return fetched
 
@@ -891,10 +925,10 @@ class MarketDataService:
             "volume": quote.volume,
             "market_status": quote.market_status,
         }
-        await self.redis.setex(f"quote:{ticker}", CACHE_TTL, json.dumps(data))
+        await _redis_setex_safe(self.redis, f"quote:{ticker}", CACHE_TTL, json.dumps(data))
 
     async def _load_cached_list(self, cache_key: str, model_cls):
-        raw = await self.redis.get(cache_key)
+        raw = await _redis_get_safe(self.redis, cache_key)
         if not raw:
             return None
         try:
@@ -904,8 +938,9 @@ class MarketDataService:
             logger.warning(f"Aggregate cache parse error for {cache_key}: {e}")
             return None
 
-    async def _load_cached_model(self, cache_key: str, model_cls):
-        raw = await self.redis.get(cache_key)
+    async def _load_cached_model_safe(self, cache_key: str, model_cls):
+        """安全加载缓存模型（Redis 故障时返回 None）"""
+        raw = await _redis_get_safe(self.redis, cache_key)
         if not raw:
             return None
         try:
@@ -915,9 +950,11 @@ class MarketDataService:
             logger.warning(f"Model cache parse error for {cache_key}: {e}")
             return None
 
+
+
     async def _cache_model_list(self, cache_key: str, ttl: int, models: list) -> None:
         payload = [model.model_dump(mode="json") for model in models]
-        await self.redis.setex(cache_key, ttl, json.dumps(payload))
+        await _redis_setex_safe(self.redis, cache_key, ttl, json.dumps(payload))
 
     def _build_market_summary(
         self,
