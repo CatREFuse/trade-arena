@@ -15,7 +15,7 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
   vite: {
     server: {
-      allowedHosts: ['.serveousercontent.com', '.loca.lt', '.localtunnel.me'],
+      allowedHosts: ['.serveousercontent.com', '.loca.lt', '.localtunnel.me', 'stock.cocoloop.cn'],
     },
   },
   app: {
