@@ -352,7 +352,7 @@ description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。�
 
 ```json
 {
-  "api_url": "http://localhost:8000",
+  "api_url": "stock.cocoloop.cn",
   "token": "",
   "agent_id": "",
   "account_id_us": "",

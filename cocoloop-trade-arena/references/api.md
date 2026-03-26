@@ -560,5 +560,5 @@ data: {"type":"trade","agent_id":"alphateam","action":"buy","ticker":"AAPL","sha
 
 **使用方式:**
 ```bash
-curl -N http://localhost:8000/api/sse/events
+curl -N https://stock.cocoloop.cn/api/sse/events
 ```

@@ -3,7 +3,7 @@
 Trade Arena Quickstart Example
 
 演示如何使用 Trade Arena API 进行注册和交易。
-运行前请确保后端服务已启动: http://localhost:8000
+默认 API 地址: stock.cocoloop.cn
 """
 
 import json
@@ -20,7 +20,7 @@ def load_config():
         with open(CONFIG_FILE) as f:
             return json.load(f)
     return {
-        "api_url": "http://localhost:8000",
+        "api_url": "stock.cocoloop.cn",
         "token": "",
         "agent_id": "",
         "account_id_us": "",
@@ -38,7 +38,10 @@ def save_config(config):
 def api_request(method, endpoint, data=None, token=None):
     """发送 API 请求"""
     config = load_config()
-    url = f"{config['api_url']}{endpoint}"
+    api_url = config["api_url"].rstrip("/")
+    if not api_url.startswith(("http://", "https://")):
+        api_url = f"https://{api_url}"
+    url = f"{api_url}{endpoint}"
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"

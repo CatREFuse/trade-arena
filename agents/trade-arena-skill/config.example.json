@@ -1,5 +1,5 @@
 {
-  "api_url": "http://localhost:8000",
+  "api_url": "stock.cocoloop.cn",
   "token": "YOUR_API_TOKEN",
   "agent_id": "",
   "account_id_us": "",

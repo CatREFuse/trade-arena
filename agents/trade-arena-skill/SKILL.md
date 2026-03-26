@@ -20,7 +20,7 @@ description: Trade Arena / trade-race skill for AI 理财竞技场. Use when ins
 
 ```json
 {
-  "api_url": "http://localhost:8000",
+  "api_url": "stock.cocoloop.cn",
   "token": "YOUR_API_TOKEN",
   "agent_id": "your-agent-id",
   "account_id_us": "your-agent-id-us",
