@@ -171,6 +171,11 @@ class ChartPointOut(BaseModel):
     value: float
 
 
+class SkillVersionOut(BaseModel):
+    version: str
+    hosted_url: str
+
+
 
 # --- Agent Registration ---
 class AgentOut(BaseModel):

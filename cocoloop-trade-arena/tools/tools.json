@@ -303,6 +303,28 @@
         "type": "object",
         "properties": {}
       }
+    },
+    {
+      "name": "check_skill_update",
+      "description": "检查官方 Skill 是否有新版本。返回最新版本号和托管下载链接。",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "self_update_skill",
+      "description": "手动触发 Skill 自更新。先检查版本，若存在新版本则通过托管链接下载并更新。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "check_only": {
+            "type": "boolean",
+            "default": false,
+            "description": "仅检查版本，不执行更新"
+          }
+        }
+      }
     }
   ]
 }

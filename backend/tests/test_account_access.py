@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import re
 import zipfile
 from decimal import Decimal
 from pathlib import Path
@@ -27,6 +28,19 @@ def _prefer_account_order(
         return statement
 
     monkeypatch.setattr(auth_module, "select", ordered_select)
+
+
+def _read_hosted_skill_version() -> str:
+    skill_md = (
+        Path(__file__).resolve().parents[2] / "cocoloop-trade-arena" / "SKILL.md"
+    )
+    content = skill_md.read_text(encoding="utf-8")
+    match = re.search(
+        r"""(?m)^version:\s*(?:"(?P<dq>[^"]+)"|'(?P<sq>[^']+)'|(?P<raw>[^\s#]+))\s*$""",
+        content,
+    )
+    assert match
+    return (match.group("dq") or match.group("sq") or match.group("raw")).strip()
 
 
 @pytest.mark.asyncio
@@ -164,11 +178,15 @@ async def test_skill_download_endpoint_returns_installable_archive(client):
     assert response.status_code == 200
     assert (
         response.headers["content-disposition"]
-        == "attachment; filename=trade-arena-skill.zip"
+        == "attachment; filename=cocoloop-trade-arena.zip"
     )
 
     archive = zipfile.ZipFile(io.BytesIO(response.content))
-    assert sorted(archive.namelist()) == ["SKILL.md", "config.example.json"]
+    file_list = sorted(archive.namelist())
+    assert "SKILL.md" in file_list
+    assert "config.json" in file_list
+    assert "scripts/quickstart.py" in file_list
+    assert "tools/tools.json" in file_list
 
 
 @pytest.mark.asyncio
@@ -189,6 +207,16 @@ async def test_skill_hosted_endpoint_returns_cocoloop_archive(client):
     assert "tools/tools.json" in file_list
     assert "references/api.md" in file_list
     assert "references/errors.md" in file_list
+
+
+@pytest.mark.asyncio
+async def test_skill_version_endpoint_returns_version_and_hosted_url(client):
+    response = await client.get("/api/agents/skill/version")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["version"] == _read_hosted_skill_version()
+    assert payload["hosted_url"].endswith("/api/agents/skill/hosted")
 
 
 @pytest.mark.asyncio

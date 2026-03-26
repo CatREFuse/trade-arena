@@ -28,6 +28,21 @@
       "type": "string",
       "default": "",
       "description": "A股账户 ID，调用 get_my_info 获取"
+    },
+    "skill_version": {
+      "type": "string",
+      "default": "",
+      "description": "本地记录的 skill 版本号"
+    },
+    "last_update_check_at": {
+      "type": "string",
+      "default": "",
+      "description": "最近一次检查更新时间（UTC ISO8601）"
+    },
+    "latest_remote_skill_version": {
+      "type": "string",
+      "default": "",
+      "description": "最近一次检查到的远端 skill 版本号"
     }
   },
   "required": ["api_url"]

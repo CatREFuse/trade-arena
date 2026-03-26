@@ -25,6 +25,7 @@ from app.schemas import (
     AgentRegisterRequest,
     AgentRegisterResponse,
     ChartPointOut,
+    SkillVersionOut,
 )
 from app.services.email_verification import (
     normalize_email,
@@ -32,6 +33,25 @@ from app.services.email_verification import (
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 logger = logging.getLogger(__name__)
+
+
+def _hosted_skill_dir() -> Path:
+    return Path(__file__).resolve().parent.parent.parent.parent / "cocoloop-trade-arena"
+
+
+def _read_skill_version(skill_md_path: Path) -> str:
+    content = skill_md_path.read_text(encoding="utf-8")
+    front_matter_match = re.search(r"\A---\s*\n(?P<meta>.*?)\n---\s*\n", content, re.DOTALL)
+    if not front_matter_match:
+        raise ValueError("SKILL.md front matter is missing")
+    meta = front_matter_match.group("meta")
+    version_match = re.search(
+        r"""(?m)^version:\s*(?:"(?P<dq>[^"]+)"|'(?P<sq>[^']+)'|(?P<raw>[^\s#]+))\s*$""",
+        meta,
+    )
+    if not version_match:
+        raise ValueError("Skill version is missing in front matter")
+    return (version_match.group("dq") or version_match.group("sq") or version_match.group("raw")).strip()
 
 
 def _package_skill_archive(
@@ -95,9 +115,7 @@ async def get_me(
 @router.get("/skill/download")
 async def download_skill():
     """下载 cocoloop-trade-arena skill 包（与 /skill/hosted 相同）"""
-    skill_dir = (
-        Path(__file__).resolve().parent.parent.parent.parent / "cocoloop-trade-arena"
-    )
+    skill_dir = _hosted_skill_dir()
     if not skill_dir.exists():
         raise HTTPException(
             404,
@@ -120,9 +138,7 @@ async def download_skill():
 @router.get("/skill/hosted")
 async def download_hosted_skill():
     """下载托管的 cocoloop-trade-arena skill 包"""
-    skill_dir = (
-        Path(__file__).resolve().parent.parent.parent.parent / "cocoloop-trade-arena"
-    )
+    skill_dir = _hosted_skill_dir()
     if not skill_dir.exists():
         raise HTTPException(
             404,
@@ -142,14 +158,52 @@ async def download_hosted_skill():
     )
 
 
+@router.get("/skill/version", response_model=SkillVersionOut)
+async def get_hosted_skill_version(request: Request):
+    """返回当前托管 skill 的版本和下载链接"""
+    skill_dir = _hosted_skill_dir()
+    if not skill_dir.exists():
+        raise HTTPException(
+            404,
+            detail={
+                "error": "SKILL_NOT_FOUND",
+                "message": "Hosted skill package not found",
+            },
+        )
+
+    skill_md_path = skill_dir / "SKILL.md"
+    if not skill_md_path.exists():
+        raise HTTPException(
+            404,
+            detail={
+                "error": "SKILL_METADATA_NOT_FOUND",
+                "message": "SKILL.md not found in hosted skill package",
+            },
+        )
+
+    try:
+        version = _read_skill_version(skill_md_path)
+    except ValueError as exc:
+        raise HTTPException(
+            500,
+            detail={
+                "error": "SKILL_METADATA_INVALID",
+                "message": str(exc),
+            },
+        )
+
+    return SkillVersionOut(
+        version=version,
+        hosted_url=str(request.url_for("download_hosted_skill")),
+    )
+
+
 @router.get("/skill/hosted/{file_path:path}")
 async def get_hosted_skill_file(file_path: str):
     """直接访问托管 skill 包中的单个文件（如 SKILL.md、config.json 等）"""
     from fastapi.responses import FileResponse, PlainTextResponse
 
-    skill_dir = (
-        Path(__file__).resolve().parent.parent.parent.parent / "cocoloop-trade-arena"
-    )
+    skill_dir = _hosted_skill_dir()
     if not skill_dir.exists():
         raise HTTPException(
             404,
