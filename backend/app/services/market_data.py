@@ -197,6 +197,12 @@ MARKET_BOARD = {
     ],
 }
 
+SUPPORTED_TICKERS = {
+    entry["ticker"]
+    for market_entries in MARKET_BOARD.values()
+    for entry in market_entries
+}
+
 
 ProviderDataType = Literal["quote", "index"]
 ProviderMiddleware = Callable[["ProviderCallContext", Callable[[], Awaitable[object]]], Awaitable[object]]
@@ -363,6 +369,17 @@ class MarketDataService:
     async def get_quote(self, ticker: str) -> QuoteOut:
         """获取个股行情，带缓存"""
         ticker = ticker.upper()
+
+        if not self._is_supported_ticker(ticker):
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "TICKER_NOT_FOUND",
+                    "message": f"未找到行情标的：{ticker}",
+                    "detail": {"ticker": ticker},
+                },
+            )
+
         cache_key = f"quote:{ticker}"
 
         # 尝试从缓存获取
@@ -908,6 +925,10 @@ class MarketDataService:
         if self._is_hk_ticker(ticker):
             return "hk"
         return "us"
+
+    @staticmethod
+    def _is_supported_ticker(ticker: str) -> bool:
+        return ticker in SUPPORTED_TICKERS
 
     @staticmethod
     def _is_cn_ticker(ticker: str) -> bool:

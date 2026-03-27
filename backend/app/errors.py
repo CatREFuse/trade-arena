@@ -17,6 +17,16 @@ class InsufficientFunds(TradeError):
         )
 
 
+class InvalidTradeAmount(TradeError):
+    def __init__(self):
+        super().__init__("INVALID_TRADE_AMOUNT", "买入金额必须大于 0")
+
+
+class InvalidTradeShares(TradeError):
+    def __init__(self):
+        super().__init__("INVALID_TRADE_SHARES", "卖出数量必须大于 0")
+
+
 class PositionLimitExceeded(TradeError):
     def __init__(self):
         super().__init__("POSITION_LIMIT_EXCEEDED", "超过单股仓位上限 30%")

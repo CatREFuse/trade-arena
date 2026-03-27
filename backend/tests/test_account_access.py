@@ -93,7 +93,11 @@ async def test_shared_token_can_access_primary_account_routes(
     )
     assert portfolio_response.status_code == 200
     portfolio_payload = portfolio_response.json()
-    assert Decimal(str(portfolio_payload["cash"])) == Decimal("500000")
+    expected_usd_cash = (
+        Decimal(str(settings.total_starting_capital_cny))
+        / Decimal(str(settings.exchange_rate))
+    ).quantize(Decimal("0.01"))
+    assert Decimal(str(portfolio_payload["cash"])) == expected_usd_cash
     assert len(portfolio_payload["positions"]) == 1
     position = portfolio_payload["positions"][0]
     assert position["ticker"] == "AAPL"
@@ -148,7 +152,15 @@ async def test_shared_token_can_access_secondary_account_routes(
     )
     assert portfolio_response.status_code == 200
     portfolio_payload = portfolio_response.json()
-    assert Decimal(str(portfolio_payload["cash"])) == Decimal("3600000")
+    expected_usd_cash = (
+        Decimal(str(settings.total_starting_capital_cny))
+        / Decimal(str(settings.exchange_rate))
+    ).quantize(Decimal("0.01"))
+    expected_cny_cash = (
+        Decimal(str(settings.total_starting_capital_cny))
+        - (expected_usd_cash * Decimal(str(settings.exchange_rate)))
+    ).quantize(Decimal("0.01"))
+    assert Decimal(str(portfolio_payload["cash"])) == expected_cny_cash
     assert portfolio_payload["positions"] == []
 
     trades_response = await client.get(

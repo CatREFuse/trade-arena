@@ -292,6 +292,17 @@ async def test_get_quote_raises_when_mock_disabled_and_upstream_fails(fake_redis
 
 
 @pytest.mark.asyncio
+async def test_get_quote_returns_404_for_unsupported_ticker(fake_redis):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.get_quote("ZZZZ")
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail["error"] == "TICKER_NOT_FOUND"
+
+
+@pytest.mark.asyncio
 async def test_provider_circuit_breaker_skips_failing_provider_temporarily(fake_redis, monkeypatch):
     service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
     service.provider_failure_threshold = 2
@@ -326,6 +337,7 @@ async def test_redis_failure_does_not_block_quote_fetch(monkeypatch):
     """测试 Redis 异常时不阻塞行情获取（fail-open）"""
     failing_redis = FailingRedis()
     service = md.MarketDataService(failing_redis, enable_mock_fallback=True)
+    monkeypatch.setattr(service, "_quote_providers", lambda _ticker: [])
 
     async def mock_get_quote(ticker: str):
         return QuoteData(
@@ -353,6 +365,7 @@ async def test_redis_failure_does_not_block_index_fetch(monkeypatch):
     """测试 Redis 异常时不阻塞指数行情获取"""
     failing_redis = FailingRedis()
     service = md.MarketDataService(failing_redis, enable_mock_fallback=True)
+    monkeypatch.setattr(service, "_index_providers", lambda _market: [])
 
     async def mock_get_index(symbol: str):
         return QuoteData(

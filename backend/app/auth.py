@@ -7,10 +7,10 @@ from app.models import Account
 
 
 async def get_current_account(
-    authorization: str = Header(...),
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> Account:
-    if not authorization.startswith("Bearer "):
+    if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             401,
             detail={"error": "INVALID_TOKEN", "message": "Missing Bearer token"},

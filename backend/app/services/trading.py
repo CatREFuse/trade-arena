@@ -10,6 +10,8 @@ from app.models import Account, Position, Trade
 from app.schemas import BuyRequest, SellRequest, TradeOut
 from app.errors import (
     InsufficientFunds,
+    InvalidTradeAmount,
+    InvalidTradeShares,
     PositionLimitExceeded,
     InsufficientShares,
     DuplicateTrade,
@@ -23,6 +25,9 @@ class TradingService:
 
     async def buy(self, req: BuyRequest, price: Decimal) -> TradeOut:
         db = self.db
+
+        if req.amount <= 0:
+            raise InvalidTradeAmount()
 
         # --- 幂等性检查 ---
         if req.idempotency_key:
@@ -122,6 +127,9 @@ class TradingService:
 
     async def sell(self, req: SellRequest, price: Decimal) -> TradeOut:
         db = self.db
+
+        if req.shares <= 0:
+            raise InvalidTradeShares()
 
         # --- 幂等性检查 ---
         if req.idempotency_key:

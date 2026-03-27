@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- Account ---
@@ -41,7 +41,7 @@ class BuyRequest(BaseModel):
     account_id: Optional[str] = None
     market: Optional[str] = None  # "us" | "cn"，与 token 配合自动解析 account_id
     ticker: str
-    amount: Decimal
+    amount: Decimal = Field(gt=0)
     reasoning: Optional[str] = None
     reasoning_full: Optional[str] = None
     idempotency_key: Optional[str] = None
@@ -51,7 +51,7 @@ class SellRequest(BaseModel):
     account_id: Optional[str] = None
     market: Optional[str] = None
     ticker: str
-    shares: Decimal
+    shares: Decimal = Field(gt=0)
     reasoning: Optional[str] = None
     reasoning_full: Optional[str] = None
     idempotency_key: Optional[str] = None
