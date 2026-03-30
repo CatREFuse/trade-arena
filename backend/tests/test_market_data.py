@@ -109,6 +109,7 @@ async def test_get_quote_uses_cache_without_provider_call(fake_redis, monkeypatc
 async def test_get_quote_falls_back_to_mock_and_caches_result(fake_redis, monkeypatch):
     service = md.MarketDataService(fake_redis, enable_mock_fallback=True)
     monkeypatch.setattr(service, "_quote_providers", lambda _ticker: [RaisingProvider()])
+    monkeypatch.setattr(service.market_calendar, "status", lambda _market: "open")
 
     async def mock_get_quote(ticker: str):
         return QuoteData(
@@ -135,6 +136,32 @@ async def test_get_quote_falls_back_to_mock_and_caches_result(fake_redis, monkey
     assert cached["change_pct"] == -2.34
     assert cached["volume"] == 54321
     assert cached["market_status"] == "open"
+
+
+@pytest.mark.asyncio
+async def test_get_market_board_uses_calendar_status_over_provider_status(fake_redis, monkeypatch):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+    monkeypatch.setattr(service.market_calendar, "status", lambda _market: "closed")
+
+    async def fake_batch_quotes(tickers: list[str]):
+        return {
+            ticker: QuoteData(
+                ticker=ticker,
+                price=100.0,
+                change_pct=0.5,
+                volume=1000,
+                market_status="open",
+                name=f"Name {ticker}",
+                previous_close=99.5,
+            )
+            for ticker in tickers
+        }
+
+    monkeypatch.setattr(service, "_get_quotes_batch", fake_batch_quotes)
+
+    board = await service.get_market_board("cn", refresh=True)
+    assert board.items
+    assert all(item.market_status == "closed" for item in board.items)
 
 
 @pytest.mark.asyncio

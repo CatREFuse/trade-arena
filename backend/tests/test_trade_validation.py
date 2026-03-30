@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.schemas import BuyRequest, SellRequest
+from app.services.market_calendar import MarketCalendarService
 from app.services.trading import TradingService
 
 
@@ -116,3 +117,65 @@ async def test_trade_missing_authorization_header_returns_invalid_token(client):
     assert response.status_code == 401
     payload = response.json()
     assert payload["detail"]["error"] == "INVALID_TOKEN"
+
+
+@pytest.mark.asyncio
+async def test_trade_buy_rejects_when_market_closed(client, seeded_accounts, monkeypatch):
+    monkeypatch.setattr(MarketCalendarService, "is_trade_open", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        MarketCalendarService,
+        "now_local_iso",
+        lambda *_args, **_kwargs: "2026-03-30T18:45:00+08:00",
+    )
+    monkeypatch.setattr(
+        MarketCalendarService,
+        "next_open_local_iso",
+        lambda *_args, **_kwargs: "2026-03-31T09:30:00+08:00",
+    )
+
+    response = await client.post(
+        "/api/trade/buy",
+        headers={"Authorization": f"Bearer {seeded_accounts.token}"},
+        json={
+            "market": "cn",
+            "ticker": "600519.SH",
+            "amount": 100,
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["detail"]["error"] == "MARKET_CLOSED"
+    assert payload["detail"]["detail"]["market"] == "cn"
+    assert payload["detail"]["detail"]["next_open_at"] == "2026-03-31T09:30:00+08:00"
+
+
+@pytest.mark.asyncio
+async def test_trade_sell_rejects_when_market_closed(client, seeded_accounts, monkeypatch):
+    monkeypatch.setattr(MarketCalendarService, "is_trade_open", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        MarketCalendarService,
+        "now_local_iso",
+        lambda *_args, **_kwargs: "2026-03-30T17:00:00-04:00",
+    )
+    monkeypatch.setattr(
+        MarketCalendarService,
+        "next_open_local_iso",
+        lambda *_args, **_kwargs: "2026-03-31T09:30:00-04:00",
+    )
+
+    response = await client.post(
+        "/api/trade/sell",
+        headers={"Authorization": f"Bearer {seeded_accounts.token}"},
+        json={
+            "market": "us",
+            "ticker": "AAPL",
+            "shares": 1,
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["detail"]["error"] == "MARKET_CLOSED"
+    assert payload["detail"]["detail"]["market"] == "us"
+    assert payload["detail"]["detail"]["next_open_at"] == "2026-03-31T09:30:00-04:00"

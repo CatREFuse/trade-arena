@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -15,13 +15,16 @@ from app.errors import (
     PositionLimitExceeded,
     InsufficientShares,
     DuplicateTrade,
+    MarketClosed,
 )
 from app.config import settings
+from app.services.market_calendar import MarketCalendarService
 
 
 class TradingService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, market_calendar: MarketCalendarService | None = None):
         self.db = db
+        self.market_calendar = market_calendar or MarketCalendarService()
 
     async def buy(self, req: BuyRequest, price: Decimal) -> TradeOut:
         db = self.db
@@ -47,6 +50,13 @@ class TradingService:
         account = result.scalar_one_or_none()
         if account is None:
             raise InsufficientFunds(0, float(req.amount))
+        now_utc = datetime.now(timezone.utc)
+        if not self.market_calendar.is_trade_open(account.market, now_utc=now_utc):
+            raise MarketClosed(
+                market=account.market,
+                now_local=self.market_calendar.now_local_iso(account.market, now_utc=now_utc),
+                next_open_at=self.market_calendar.next_open_local_iso(account.market, now_utc=now_utc),
+            )
 
         fee = req.amount * Decimal(str(settings.trade_fee_rate))
         total_cost = req.amount + fee
@@ -149,6 +159,13 @@ class TradingService:
         account = result.scalar_one_or_none()
         if account is None:
             raise InsufficientFunds(0, 0)
+        now_utc = datetime.now(timezone.utc)
+        if not self.market_calendar.is_trade_open(account.market, now_utc=now_utc):
+            raise MarketClosed(
+                market=account.market,
+                now_local=self.market_calendar.now_local_iso(account.market, now_utc=now_utc),
+                next_open_at=self.market_calendar.next_open_local_iso(account.market, now_utc=now_utc),
+            )
 
         # --- 查询持仓 ---
         pos_result = await db.execute(

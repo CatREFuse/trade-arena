@@ -20,6 +20,7 @@ from app.schemas import (
     MarketSummaryOut,
     QuoteOut,
 )
+from app.services.market_calendar import MarketCalendarService
 from app.services.market_providers import AkshareProvider, MockProvider, SinaProvider, TencentProvider, YahooProvider
 
 logger = logging.getLogger(__name__)
@@ -278,6 +279,7 @@ class MarketDataService:
         )
         self.provider_failure_threshold = max(settings.market_provider_failure_threshold, 1)
         self.provider_cooldown_seconds = max(settings.market_provider_cooldown_seconds, 1)
+        self.market_calendar = MarketCalendarService()
         self.provider_registry = ProviderRegistry()
         self._provider_health: dict[tuple[ProviderDataType, str, str], dict[str, float | int]] = {}
         self._provider_middlewares: list[ProviderMiddleware] = [
@@ -369,6 +371,7 @@ class MarketDataService:
     async def get_quote(self, ticker: str) -> QuoteOut:
         """获取个股行情，带缓存"""
         ticker = ticker.upper()
+        market = self._ticker_market(ticker)
 
         if not self._is_supported_ticker(ticker):
             raise HTTPException(
@@ -388,6 +391,7 @@ class MarketDataService:
             try:
                 raw = cached.decode() if isinstance(cached, bytes) else cached
                 data = json.loads(raw)
+                data["market_status"] = self.market_calendar.status(market)
                 return QuoteOut(ticker=ticker, **data)
             except Exception as e:
                 logger.warning(f"Cache parse error: {e}")
@@ -409,7 +413,7 @@ class MarketDataService:
             "change_pct": quote.change_pct,
             "name": quote.name,
             "volume": quote.volume,
-            "market_status": quote.market_status,
+            "market_status": self.market_calendar.status(market),
         }
 
         # 写入缓存（Redis 失败不影响返回结果）
@@ -521,6 +525,7 @@ class MarketDataService:
 
         tickers = [entry["ticker"] for entry in entries]
         quotes = await self._get_quotes_batch(tickers)
+        current_market_status = self.market_calendar.status(market)
         board: list[MarketBoardItemOut] = []
         for entry in entries:
             quote = quotes.get(entry["ticker"])
@@ -536,7 +541,7 @@ class MarketDataService:
                     price=quote.price,
                     change_pct=quote.change_pct,
                     volume=quote.volume,
-                    market_status=quote.market_status,
+                    market_status=current_market_status,
                 )
             )
         snapshot = MarketBoardSnapshotOut(
@@ -631,6 +636,7 @@ class MarketDataService:
                 continue
             try:
                 payload = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+                payload["market_status"] = self.market_calendar.status(self._ticker_market(ticker))
                 cached[ticker] = QuoteOut(ticker=ticker, **payload)
             except Exception as e:
                 logger.warning(f"Batch quote cache parse error for {ticker}: {e}")
@@ -939,12 +945,13 @@ class MarketDataService:
         return ticker.endswith(".HK")
 
     async def _cache_quote_data(self, ticker: str, quote) -> None:
+        market = self._ticker_market(ticker)
         data = {
             "price": quote.price,
             "change_pct": quote.change_pct,
             "name": quote.name,
             "volume": quote.volume,
-            "market_status": quote.market_status,
+            "market_status": self.market_calendar.status(market),
         }
         await _redis_setex_safe(self.redis, f"quote:{ticker}", CACHE_TTL, json.dumps(data))
 

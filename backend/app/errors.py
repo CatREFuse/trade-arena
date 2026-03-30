@@ -2,10 +2,16 @@ from fastapi import HTTPException
 
 
 class TradeError(HTTPException):
-    def __init__(self, error_code: str, message: str, status_code: int = 422):
+    def __init__(
+        self,
+        error_code: str,
+        message: str,
+        status_code: int = 422,
+        detail: dict | None = None,
+    ):
         super().__init__(
             status_code=status_code,
-            detail={"error": error_code, "message": message, "detail": None},
+            detail={"error": error_code, "message": message, "detail": detail},
         )
 
 
@@ -33,8 +39,23 @@ class PositionLimitExceeded(TradeError):
 
 
 class MarketClosed(TradeError):
-    def __init__(self):
-        super().__init__("MARKET_CLOSED", "当前非交易时段")
+    def __init__(
+        self,
+        *,
+        market: str,
+        now_local: str | None = None,
+        next_open_at: str | None = None,
+    ):
+        super().__init__(
+            "MARKET_CLOSED",
+            "当前非交易时段",
+            status_code=400,
+            detail={
+                "market": market,
+                "now_local": now_local,
+                "next_open_at": next_open_at,
+            },
+        )
 
 
 class InsufficientShares(TradeError):
