@@ -81,6 +81,22 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+load_env_file_if_exists() {
+  local env_file="$1"
+  if [[ ! -f "$env_file" ]]; then
+    return
+  fi
+  # shellcheck disable=SC1090
+  set -a
+  . "$env_file"
+  set +a
+}
+
+load_ops_env() {
+  load_env_file_if_exists "$ROOT_DIR/.env.ops.local"
+  load_env_file_if_exists "$ROOT_DIR/.env.ops"
+}
+
 run_compose() {
   local compose_file="$ROOT_DIR/docker-compose.yml"
   local docker_sock=""
@@ -352,6 +368,7 @@ start_webhook() {
   log "Starting webhook on ${WEBHOOK_HOST}:${WEBHOOK_PORT}..."
   (
     cd "$ROOT_DIR/webhook"
+    load_ops_env
     nohup env WEBHOOK_PORT="$WEBHOOK_PORT" "$py" -m uvicorn main:app --host "$WEBHOOK_HOST" --port "$WEBHOOK_PORT" \
       >>"$WEBHOOK_LOG_FILE" 2>&1 &
     echo $! >"$WEBHOOK_PID_FILE"
