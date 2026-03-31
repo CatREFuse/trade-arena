@@ -340,12 +340,18 @@ start_frontend() {
   log "Starting frontend on ${FRONTEND_HOST}:${FRONTEND_PORT} (mode=$MODE)..."
   (
     cd "$ROOT_DIR/frontend"
+    local frontend_entry="$ROOT_DIR/frontend/.output/server/index.mjs"
     if [[ "$MODE" == "dev" ]]; then
       nohup npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
         >>"$FRONTEND_LOG_FILE" 2>&1 &
     else
-      nohup env NODE_ENV=production HOST="$FRONTEND_HOST" PORT="$FRONTEND_PORT" npm run start \
-        >>"$FRONTEND_LOG_FILE" 2>&1 &
+      if [[ -f "$frontend_entry" ]] && command_exists node; then
+        nohup env NODE_ENV=production HOST="$FRONTEND_HOST" PORT="$FRONTEND_PORT" \
+          node "$frontend_entry" >>"$FRONTEND_LOG_FILE" 2>&1 &
+      else
+        nohup env NODE_ENV=production HOST="$FRONTEND_HOST" PORT="$FRONTEND_PORT" npm run start \
+          >>"$FRONTEND_LOG_FILE" 2>&1 &
+      fi
     fi
     echo $! >"$FRONTEND_PID_FILE"
   )
