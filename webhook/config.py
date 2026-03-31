@@ -15,7 +15,28 @@ def _parse_branch_allowlist(raw: str) -> tuple[str, ...]:
     return cleaned or ("main",)
 
 
+def _load_env_file(path: Path) -> None:
+    if not path.is_file():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_load_env_file(PROJECT_ROOT / ".env.ops.local")
+_load_env_file(PROJECT_ROOT / ".env.ops")
+
 WEBHOOK_PORT = int(_normalized_env("WEBHOOK_PORT", "9000"))
 OPS_ENV = _normalized_env("OPS_ENV", "prod").lower()
 OPS_ALLOWED_BRANCHES = _parse_branch_allowlist(_normalized_env("OPS_ALLOWED_BRANCHES", "main"))

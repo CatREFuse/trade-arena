@@ -62,6 +62,8 @@
 bash scripts/opsctl.sh init-secrets --output .env.ops.local
 ```
 
+`webhook/config.py` 启动时会自动读取项目根目录的 `.env.ops.local`（以及可选 `.env.ops`）并注入 `WEBHOOK_SECRET`、`OPS_API_KEY` 等变量。
+
 ### 2.2 部署脚本执行序列
 
 `webhook/deploy.sh` 当前顺序：
