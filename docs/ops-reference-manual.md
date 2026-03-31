@@ -17,9 +17,12 @@
 - Webhook 服务：接收 GitHub `push`，调用部署脚本
 
 关键文件：
+- `scripts/opsctl.sh`：统一运维入口（deploy/migrate/restart/status/logs/smoke/doctor）
+- `scripts/ops_http.sh`：远程 HTTP 运维入口（调用 `/ops/*`，支持等待 job）
 - `webhook/main.py`：Webhook 接收、签名校验、排队逻辑、触发部署
 - `webhook/deploy.sh`：实际部署执行器
 - `webhook/config.py`：Webhook/日志/锁文件配置
+- `scripts/service_ctl.sh`：服务启停统一脚本（start/stop/restart/status）
 - `webhook/DEPLOY_LOG.md`：Markdown 格式部署事件记录
 - `/var/log/trade-arena-deploy.log`：部署运行日志（服务器）
 
@@ -28,23 +31,44 @@
 ### 2.1 触发链路
 
 1. GitHub `push` 请求到 `/webhook`
+   兼容入口仍为 `/webhook`，新推荐入口为 `/hooks/github/push`
 2. `webhook/main.py` 使用 `X-Hub-Signature-256` + `WEBHOOK_SECRET` 验签
-3. 若存在 `/tmp/trade-arena-deploy.lock`：写入待处理分支 `/tmp/trade-arena-pending-deploy` 并记入 `webhook/DEPLOY_LOG.md`
-4. 否则直接后台执行 `webhook/deploy.sh <branch>`
+   若分支不在 `OPS_ALLOWED_BRANCHES`（默认 `main`），请求会被忽略
+3. 网关创建 deploy job 并写入 `.runtime/ops/jobs/*.json` 与 `.runtime/ops/queue/*.queue`
+4. `scripts/opsctl.sh run-next-job` 消费队列并执行实际部署动作
+
+### 2.1.1 Ops API（白名单动作）
+
+- `POST /ops/jobs/deploy`
+- `POST /ops/jobs/service`
+- `POST /ops/jobs/migrate`
+- `POST /ops/jobs/smoke`
+- `POST /ops/jobs/doctor`
+- `GET /ops/jobs/{job_id}`
+- `GET /ops/status`
+- `GET /ops/logs`
+
+`/ops/jobs/service` 的 `target` 允许 `all|backend|frontend`。
+
+鉴权规则：
+
+- 使用 `Authorization: Bearer <OPS_API_KEY>`
+- 生产和 staging 必须设置 `OPS_API_KEY`
+- 本地 `OPS_ENV=local` 仅允许 `127.0.0.1` 免密联调
+
+密钥生成可使用：
+
+```bash
+bash scripts/opsctl.sh init-secrets --output .env.ops.local
+```
 
 ### 2.2 部署脚本执行序列
 
 `webhook/deploy.sh` 当前顺序：
 
-1. 上锁：`/tmp/trade-arena-deploy.lock`
-2. 记录开始信息并触发 webhook（阶段=开始）
-3. `git fetch origin && git checkout <branch>`
-4. 强制对齐远端：`git reset --hard origin/<branch> && git clean -fd`
-5. 安装后端依赖并执行 `alembic upgrade head`
-6. 前端 `npm ci && npm run build`（重建 `.output`）
-7. 重启后端与前端进程
-8. 健康检查与关键路由检查
-9. 退出时统一触发 webhook（阶段=结束，成功/失败）
+1. 作为薄入口只负责转发到 `scripts/opsctl.sh deploy --branch <branch>`
+2. 具体部署编排由 `scripts/ops/deploy.sh` 执行
+3. 实际部署脚本仍使用锁文件与 pending 机制，避免同机并发部署
 
 ### 2.3 开始/结束通知规则
 
@@ -82,6 +106,19 @@ bash scripts/online_regression.sh
 ```
 
 4. 若失败，先看日志再决定回滚或热修复
+
+服务状态可统一用脚本检查：
+
+```bash
+bash scripts/opsctl.sh status
+bash scripts/service_ctl.sh status
+```
+
+Webhook 事件日志读取需要鉴权：
+
+```bash
+curl --noproxy '*' -H "Authorization: Bearer <OPS_API_KEY>" http://127.0.0.1:9000/webhook/logs
+```
 
 ## 4. 数据库迁移 SOP（强制）
 
@@ -128,6 +165,7 @@ alembic upgrade head
 ### 6.1 常见故障入口
 
 - Webhook 401：签名错误或 `WEBHOOK_SECRET` 不一致
+- Webhook 503：`WEBHOOK_SECRET` 或 `OPS_API_KEY` 未正确配置
 - 部署一直排队：锁文件未清理
 - 前端启动异常：误用 `.nuxt` 产物，或构建产物损坏
 - API 500：迁移未完成或依赖安装失败

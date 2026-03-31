@@ -11,15 +11,7 @@
 
 ```bash
 git status --short
-docker compose up -d
-
-cd backend
-uvicorn app.main:app --reload --port 8000
-
-cd ../frontend
-npm run dev
-
-cd ..
+MODE=dev START_DOCKER=1 BUILD_FRONTEND=0 bash scripts/service_ctl.sh start
 bash scripts/dev_self_check.sh
 ```
 
@@ -60,6 +52,7 @@ bash scripts/dev_self_check.sh
 | 前端 API 代理 | `frontend/server/api/[...path].ts` |
 | 线上回归脚本 | `scripts/online_regression.sh` |
 | 本地自检脚本 | `scripts/dev_self_check.sh` |
+| 统一启停脚本 | `scripts/service_ctl.sh` |
 | 自动部署脚本 | `webhook/deploy.sh` |
 
 ## 4. 推荐开发流程（必须按顺序）

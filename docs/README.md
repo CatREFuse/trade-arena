@@ -28,6 +28,7 @@
 - `docs/ops-runbook-local-development-and-test-server.md`
 - `docs/testing-process-manual.md`
 - `docs/testing-checklist.md`
+- `docs/testing-dev-server-squad-report-2026-03-31.md`（本期 dev 小队测试记录）
 
 ### 我要发版、看 CI/CD、做线上回归
 
@@ -43,10 +44,15 @@
 
 ## 3. 核心脚本入口
 
+- `scripts/opsctl.sh`：统一运维入口（deploy/migrate/restart/status/logs/smoke/doctor）。
+- `scripts/ops_http.sh`：远程 HTTP 运维入口（调用 `/ops/*`，支持 `--wait` 等待 job 完成）。
+- `scripts/service_ctl.sh`：统一启停脚本（`start|stop|restart|status`）。
 - `scripts/dev_self_check.sh`：本地开发自检。
 - `scripts/online_regression.sh`：线上快速回归。
 - `webhook/deploy.sh`：服务器部署脚本（含开始/结束 webhook 通知）。
 - `webhook/main.py`：GitHub Webhook 入口服务。
+- `docs/ops-automation-manual.md`：人类与 Agent 共读的运维自动化手册。
+- `.env.ops.example`：运维网关环境变量模板（`WEBHOOK_SECRET`、`OPS_API_KEY` 等）。
 
 ## 4. 文档维护规则
 

@@ -6,3 +6,5 @@ node_modules/
 .nuxt/
 .output/
 agents/trade-arena-skill/config.json
+.runtime/
+.env.ops.local

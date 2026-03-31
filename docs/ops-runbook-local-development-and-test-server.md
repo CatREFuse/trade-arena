@@ -11,6 +11,32 @@
 
 ## 2. 当前已知运行方式
 
+### 一键启停（推荐）
+
+统一使用：
+
+```bash
+# 启动（本地开发模式）
+MODE=dev START_DOCKER=1 BUILD_FRONTEND=0 bash scripts/service_ctl.sh start
+
+# 查看状态
+bash scripts/service_ctl.sh status
+
+# 重启
+MODE=dev START_DOCKER=1 BUILD_FRONTEND=0 bash scripts/service_ctl.sh restart
+
+# 停止（仅停进程，不停 docker）
+bash scripts/service_ctl.sh stop
+```
+
+常用参数：
+- `MODE=dev|prod`
+- `START_DOCKER=1|0`
+- `STOP_DOCKER=1|0`
+- `START_WEBHOOK=1|0`
+- `PREPARE_BACKEND=1|0`
+- `PREPARE_FRONTEND=1|0`
+
 ### 后端
 
 在 `backend/` 目录启动：
@@ -207,4 +233,5 @@ npm run dev -- --host 0.0.0.0
 - `frontend/server/api/[...path].ts`
 - `backend/app/main.py`
 - `backend/app/config.py`
+- `scripts/service_ctl.sh`
 - `docs/README.md`

@@ -6,6 +6,7 @@ import logging
 import re
 import secrets
 import zipfile
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -33,6 +34,31 @@ from app.services.email_verification import (
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 logger = logging.getLogger(__name__)
+
+
+async def _resolve_registration_season(db: AsyncSession, log_prefix: str) -> Season:
+    """
+    Resolve a season for account binding without active-season business gating.
+
+    Business rule: registration should never be blocked by season status.
+    """
+    season_result = await db.execute(
+        select(Season).order_by(Season.start_date.desc(), Season.created_at.desc())
+    )
+    season = season_result.scalars().first()
+    if season:
+        return season
+
+    default_season = Season(
+        id="season-default",
+        name="默认赛季",
+        start_date=date.today(),
+        status="active",
+    )
+    db.add(default_season)
+    await db.flush()
+    logger.info(f"{log_prefix} DEFAULT_SEASON_CREATED: id={default_season.id}")
+    return default_season
 
 
 def _hosted_skill_dir() -> Path:
@@ -358,22 +384,8 @@ async def register_agent(
                 409, detail={"error": "EMAIL_ALREADY_USED", "message": "该邮箱已注册过选手"}
             )
 
-        # 4. 获取活跃赛季
-        season_result = await db.execute(
-            select(Season)
-            .where(Season.status == "active")
-            .order_by(Season.start_date.desc())
-        )
-        season = season_result.scalar_one_or_none()
-        if not season:
-            logger.error(f"{log_prefix} NO_ACTIVE_SEASON")
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "NO_ACTIVE_SEASON",
-                    "message": "当前没有活跃赛季，请等待赛季开始后再注册",
-                },
-            )
+        # 4. 解析可用 season（不再使用 active-season 门禁）
+        season = await _resolve_registration_season(db, log_prefix)
 
         # 5. 创建 Agent
         agent = Agent(

@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.models import Agent
+from app.models import Account, Agent, Season
 
 
 @pytest.mark.asyncio
@@ -81,14 +81,18 @@ async def test_register_agent_rejects_duplicate_email(client):
 
 
 @pytest.mark.asyncio
-async def test_register_agent_fails_without_active_season(
+async def test_register_agent_succeeds_without_active_season(
     client, db_session_factory
 ):
-    """测试无活跃赛季时返回 503 NO_ACTIVE_SEASON"""
-    # 注意：此测试依赖于 db_session_factory 没有活跃赛季的状态
-    # 在 seeded_accounts fixture 中已创建活跃赛季，需要清理
-    # 由于 fixture 自动创建活跃赛季，这个测试需要特殊处理或在隔离环境中运行
-    # 这里仅作断言说明，实际测试应在干净数据库中运行
+    """无 active 赛季时仍可注册，不应再触发赛季门禁。"""
+    async with db_session_factory() as session:
+        result = await session.execute(select(Season))
+        seasons = result.scalars().all()
+        assert seasons, "seed should create at least one season"
+        for season in seasons:
+            season.status = "ended"
+        await session.commit()
+
     register_response = await client.post(
         "/api/agents/register",
         json={
@@ -100,12 +104,17 @@ async def test_register_agent_fails_without_active_season(
             "framework": "custom",
         },
     )
-    # 如果有活跃赛季，返回 200；如果没有，应返回 503
-    # 这个测试主要用于验证错误码格式
-    if register_response.status_code == 503:
-        payload = register_response.json()
-        assert payload["detail"]["error"] == "NO_ACTIVE_SEASON"
-        assert "message" in payload["detail"]
+    assert register_response.status_code == 200
+    payload = register_response.json()
+    assert payload["agent"]["id"] == "noseasonagent"
+
+    async with db_session_factory() as session:
+        accounts_result = await session.execute(
+            select(Account).where(Account.agent_id == "noseasonagent")
+        )
+        accounts = accounts_result.scalars().all()
+        assert len(accounts) == 2
+        assert all(account.season_id for account in accounts)
 
 
 @pytest.mark.asyncio

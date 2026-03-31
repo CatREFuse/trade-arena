@@ -12,6 +12,43 @@
 4. 执行测试项时，必须结合 `docs/testing-checklist.md` 落具体检查。
 5. 若代码改动导致流程变化，提交中同步更新 `docs/` 对应文档。
 
+## 服务启停规范（强制）
+
+统一使用 `scripts/service_ctl.sh` 管理服务，不要手动分散执行 `uvicorn`、`npm run dev`、`npm run start` 做长期启停。
+
+标准命令：
+
+1. 启动开发环境：`MODE=dev START_DOCKER=1 BUILD_FRONTEND=0 bash scripts/service_ctl.sh start`
+2. 启动生产模式：`MODE=prod START_DOCKER=1 BUILD_FRONTEND=1 bash scripts/service_ctl.sh start`
+3. 查看状态：`bash scripts/service_ctl.sh status`
+4. 重启：`bash scripts/service_ctl.sh restart`
+5. 停止：`bash scripts/service_ctl.sh stop`
+6. 停止并关闭 docker 依赖：`STOP_DOCKER=1 bash scripts/service_ctl.sh stop`
+
+## 运维入口规范（强制）
+
+涉及部署、迁移、回归、运行状态、日志读取时，优先使用 `scripts/opsctl.sh`，避免直接调用分散脚本。
+
+标准命令：
+
+1. 部署：`bash scripts/opsctl.sh deploy --branch main`
+2. 迁移：`bash scripts/opsctl.sh migrate`
+3. 状态：`bash scripts/opsctl.sh status`
+4. 日志：`bash scripts/opsctl.sh logs --scope deploy --tail 200`
+5. 回归：`bash scripts/opsctl.sh smoke --profile local`
+6. 自检：`bash scripts/opsctl.sh doctor`
+7. 生成密钥文件：`bash scripts/opsctl.sh init-secrets --output .env.ops.local`
+8. 远程 HTTP 运维：`OPS_API_BASE=http://127.0.0.1:9000 OPS_API_KEY=<key> bash scripts/ops_http.sh <command>`
+
+约束：
+
+- 保留 `POST /webhook` 兼容入口，同时支持 `POST /hooks/github/push`
+- `GET /webhook/logs` 必须带 `Authorization: Bearer <OPS_API_KEY>`
+- 远程运维动作统一走 `/ops/jobs/*` 与 `/ops/status`、`/ops/logs`
+- `/ops/jobs/service` 的 `target` 允许 `all|backend|frontend`
+- 不开放远程 rollback 与 gateway 自重启动作
+- 生产和 staging 必须显式设置 `WEBHOOK_SECRET` 与 `OPS_API_KEY`
+
 ## Nuxt Build / Repair SOP
 
 当 Nuxt 报出下面这类错误时：
