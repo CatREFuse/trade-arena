@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  echo "[service_ctl] ERROR: do not source this script. Use: bash scripts/service_ctl.sh <start|stop|restart|status>" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -73,6 +79,22 @@ EOF
 
 command_exists() {
   command -v "$1" >/dev/null 2>&1
+}
+
+run_compose() {
+  local compose_file="$ROOT_DIR/docker-compose.yml"
+
+  if command_exists docker && docker compose version >/dev/null 2>&1; then
+    docker compose -f "$compose_file" "$@"
+    return
+  fi
+
+  if command_exists docker-compose; then
+    docker-compose -f "$compose_file" "$@"
+    return
+  fi
+
+  fail "No usable compose command found. Install Docker Compose plugin or docker-compose."
 }
 
 choose_backend_python() {
@@ -163,23 +185,23 @@ start_docker_if_needed() {
   if [[ "$START_DOCKER" != "1" ]]; then
     return
   fi
-  if ! command_exists docker; then
-    fail "START_DOCKER=1 but docker command not found."
+  if ! command_exists docker && ! command_exists docker-compose; then
+    fail "START_DOCKER=1 but neither docker nor docker-compose was found."
   fi
-  log "Starting infra containers (docker compose up -d)..."
-  docker compose -f "$ROOT_DIR/docker-compose.yml" up -d
+  log "Starting infra containers (compose up -d)..."
+  run_compose up -d
 }
 
 stop_docker_if_needed() {
   if [[ "$STOP_DOCKER" != "1" ]]; then
     return
   fi
-  if ! command_exists docker; then
-    log "STOP_DOCKER=1 but docker command not found, skipped."
+  if ! command_exists docker && ! command_exists docker-compose; then
+    log "STOP_DOCKER=1 but neither docker nor docker-compose was found, skipped."
     return
   fi
-  log "Stopping infra containers (docker compose down)..."
-  docker compose -f "$ROOT_DIR/docker-compose.yml" down
+  log "Stopping infra containers (compose down)..."
+  run_compose down
 }
 
 prepare_backend_if_needed() {
