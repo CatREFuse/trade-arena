@@ -1,5 +1,17 @@
 不要把功能说明写到 UI 文案里！我求你了！
 
+## Docs First（强制）
+
+所有 Agent 在执行任何改动、测试、部署前，先阅读 `docs/README.md`，并按其中“强制阅读顺序”完成文档对齐。
+
+最低要求：
+
+1. 先读 `docs/developer-handbook.md`，再开始改代码。
+2. 涉及部署、Webhook、迁移、日志时，必须读 `docs/ops-reference-manual.md`。
+3. 执行测试前，必须先读 `docs/testing-process-manual.md`，按标准流程执行。
+4. 执行测试项时，必须结合 `docs/testing-checklist.md` 落具体检查。
+5. 若代码改动导致流程变化，提交中同步更新 `docs/` 对应文档。
+
 ## Nuxt Build / Repair SOP
 
 当 Nuxt 报出下面这类错误时：

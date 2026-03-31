@@ -117,6 +117,28 @@ cd backend
 uvicorn app.main:app --reload --port 8000
 ```
 
+## 5.1 一键 Dev 自检脚本（推荐）
+
+项目内置开发态自检脚本，默认检查本地 `3000/8000`：
+
+```bash
+bash scripts/dev_self_check.sh
+```
+
+常用参数：
+
+```bash
+# 不检查 docker / 端口 / HTTP（仅验证脚本可执行）
+REQUIRE_PORTS=0 CHECK_DOCKER=0 RUN_HTTP_CHECKS=0 bash scripts/dev_self_check.sh
+
+# 非默认端口
+FRONTEND_BASE=http://localhost:3001 BACKEND_BASE=http://localhost:8001 bash scripts/dev_self_check.sh
+```
+
+通过标准：
+- 输出 `Summary: pass=... warn=... fail=0`
+- 退出码为 `0`
+
 ## 6. 数据与 Mock 状态
 
 当前可以通过后端开发接口检查是否已有测试数据：
