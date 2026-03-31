@@ -88,6 +88,7 @@ cmd_migrate() {
 
 cmd_restart() {
   local target="all"
+  local restart_webhook="${START_WEBHOOK:-1}"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --target)
@@ -103,11 +104,11 @@ cmd_restart() {
 
   case "$target" in
     all)
-      /bin/bash "$ROOT_DIR/scripts/service_ctl.sh" restart
+      START_WEBHOOK="$restart_webhook" /bin/bash "$ROOT_DIR/scripts/service_ctl.sh" restart
       ;;
     backend|frontend)
       log "Target '$target' currently triggers a full restart to keep dependency order stable."
-      /bin/bash "$ROOT_DIR/scripts/service_ctl.sh" restart
+      START_WEBHOOK="$restart_webhook" /bin/bash "$ROOT_DIR/scripts/service_ctl.sh" restart
       ;;
     *)
       fail "Unsupported restart target: $target"

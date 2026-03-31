@@ -70,7 +70,7 @@ bash scripts/opsctl.sh init-secrets --output .env.ops.local
 
 1. 作为薄入口只负责转发到 `scripts/opsctl.sh deploy --branch <branch>`
 2. 具体部署编排由 `scripts/ops/deploy.sh` 执行
-3. 服务重启统一调用 `scripts/opsctl.sh restart --target all`（内部再转发到 `scripts/service_ctl.sh`）
+3. 服务重启统一调用 `scripts/opsctl.sh restart --target all`（内部再转发到 `scripts/service_ctl.sh`，默认会拉起 webhook）
 4. 实际部署脚本仍使用锁文件与 pending 机制，避免同机并发部署
 5. 部署执行开始/结束会同步写入 `webhook/DEPLOY_LOG.md`
 

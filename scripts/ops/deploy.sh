@@ -221,7 +221,7 @@ rm -rf .nuxt .output
 npm run build >>"$LOG_FILE" 2>&1
 
 log_line "Restarting services via opsctl (target=all, mode=prod)..."
-MODE=prod START_DOCKER="$DEPLOY_START_DOCKER" BUILD_FRONTEND=0 HEALTHCHECK=1 \
+MODE=prod START_DOCKER="$DEPLOY_START_DOCKER" START_WEBHOOK=1 BUILD_FRONTEND=0 HEALTHCHECK=1 \
   /bin/bash "$PROJECT_ROOT/scripts/opsctl.sh" restart --target all >>"$LOG_FILE" 2>&1
 
 log_line "Verifying frontend health..."
