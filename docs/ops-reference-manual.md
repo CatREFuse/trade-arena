@@ -69,6 +69,7 @@ bash scripts/opsctl.sh init-secrets --output .env.ops.local
 1. 作为薄入口只负责转发到 `scripts/opsctl.sh deploy --branch <branch>`
 2. 具体部署编排由 `scripts/ops/deploy.sh` 执行
 3. 实际部署脚本仍使用锁文件与 pending 机制，避免同机并发部署
+4. 部署执行开始/结束会同步写入 `webhook/DEPLOY_LOG.md`
 
 ### 2.3 开始/结束通知规则
 
@@ -153,8 +154,8 @@ alembic upgrade head
 
 ### 5.1 两类日志的职责
 
-- `webhook/DEPLOY_LOG.md`：事件级日志（谁推了什么、是否触发/排队）
-- `/var/log/trade-arena-deploy.log`：执行级日志（构建、迁移、重启、健康检查细节）
+- `webhook/DEPLOY_LOG.md`：事件级 + 执行级摘要日志（触发/排队、执行开始/结束、成功/失败、失败上下文）
+- `/var/log/trade-arena-deploy.log`：执行级详细日志（构建、迁移、重启、健康检查细节）
 
 ### 5.2 维护原则
 

@@ -7,6 +7,7 @@ PROJECT_ROOT="${OPS_PROJECT_ROOT:-$ROOT_DIR}"
 LOCK_FILE="${OPS_DEPLOY_LOCK:-/tmp/trade-arena-deploy.lock}"
 PENDING_FILE="${OPS_PENDING_FILE:-/tmp/trade-arena-pending-deploy}"
 LOG_FILE="${OPS_DEPLOY_LOG:-/var/log/trade-arena-deploy.log}"
+DEPLOY_MARKDOWN_LOG="${OPS_MARKDOWN_LOG:-$PROJECT_ROOT/webhook/DEPLOY_LOG.md}"
 NOTIFY_URL="${OPS_NOTIFY_URL:-}"
 ALLOWED_BRANCHES="${OPS_ALLOWED_BRANCHES:-main}"
 HTTP_CHECK_RETRIES="${OPS_HTTP_CHECK_RETRIES:-10}"
@@ -60,6 +61,69 @@ log_line() {
   printf '[%s] %s\n' "$(date)" "$1" | tee -a "$LOG_FILE"
 }
 
+ensure_markdown_log() {
+  local log_dir
+  log_dir="$(dirname "$DEPLOY_MARKDOWN_LOG")"
+  mkdir -p "$log_dir"
+  if [[ ! -f "$DEPLOY_MARKDOWN_LOG" ]]; then
+    cat >"$DEPLOY_MARKDOWN_LOG" <<'EOF'
+# Webhook Deployment Log
+
+EOF
+  fi
+}
+
+append_cicd_markdown_record() {
+  local stage="$1"
+  local result="$2"
+  local exit_code="$3"
+  local fail_context="$4"
+  local status_text=""
+  local commit_display=""
+  local timestamp
+
+  case "$stage:$result" in
+    start:running)
+      status_text="Deployment execution started"
+      commit_display="$PRE_DEPLOY_COMMIT"
+      ;;
+    end:succeeded)
+      status_text="Deployment execution succeeded"
+      commit_display="$PRE_DEPLOY_COMMIT->$POST_DEPLOY_COMMIT"
+      ;;
+    end:skipped)
+      status_text="Deployment execution skipped"
+      commit_display="$PRE_DEPLOY_COMMIT->$POST_DEPLOY_COMMIT"
+      ;;
+    end:ignored)
+      status_text="Deployment execution ignored"
+      commit_display="$PRE_DEPLOY_COMMIT->$POST_DEPLOY_COMMIT"
+      ;;
+    *)
+      status_text="Deployment execution failed"
+      commit_display="$PRE_DEPLOY_COMMIT->$POST_DEPLOY_COMMIT"
+      ;;
+  esac
+
+  timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
+  ensure_markdown_log
+  cat >>"$DEPLOY_MARKDOWN_LOG" <<EOF
+## ${timestamp}
+
+- **Branch**: \`${BRANCH}\`
+- **Repository**: ${REPOSITORY_NAME:-unknown}
+- **Pusher**: ci-runner (system)
+- **Status**: ${status_text}
+- **Stage**: \`${stage}\`
+- **Commit**: \`${commit_display}\`
+- **Exit Code**: \`${exit_code}\`
+- **Fail Context**: \`${fail_context}\`
+
+---
+
+EOF
+}
+
 wait_for_expected_status() {
   local url="$1"
   local expected_csv="$2"
@@ -85,16 +149,19 @@ wait_for_expected_status() {
 
 if [[ -z "$BRANCH" ]]; then
   log_line "Error: No branch specified"
+  append_cicd_markdown_record "end" "failed" "1" "no_branch_specified"
   exit 1
 fi
 
 if ! is_branch_allowed "$BRANCH"; then
   log_line "Branch '$BRANCH' is not in OPS_ALLOWED_BRANCHES='$ALLOWED_BRANCHES', skipping deploy"
+  append_cicd_markdown_record "end" "ignored" "1" "branch_not_allowed"
   exit 1
 fi
 
 if [[ -f "$LOCK_FILE" ]]; then
   log_line "Deployment already in progress, skipping..."
+  append_cicd_markdown_record "end" "skipped" "0" "deploy_lock_active"
   exit 0
 fi
 
@@ -113,6 +180,7 @@ cleanup() {
   local deploy_end_time
   deploy_end_time="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   send_notify "stage=end(${deploy_result}) branch=${BRANCH} current_branch=${CURRENT_BRANCH} commit=${PRE_DEPLOY_COMMIT}->${POST_DEPLOY_COMMIT} start=${DEPLOY_START_TIME} end=${deploy_end_time} exit_code=${exit_code} fail_context=${fail_context}"
+  append_cicd_markdown_record "end" "$deploy_result" "$exit_code" "$fail_context"
   rm -f "$LOCK_FILE"
   log_line "Deployment finished"
   return "$exit_code"
@@ -123,8 +191,10 @@ cd "$PROJECT_ROOT"
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 PRE_DEPLOY_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+REPOSITORY_NAME="$(git config --get remote.origin.url | sed -E 's#^.*github.com[:/]([^/]+/[^/.]+)(\\.git)?$#\1#' || true)"
 log_line "Current branch: $CURRENT_BRANCH, target: $BRANCH"
 send_notify "stage=start branch=${BRANCH} current_branch=${CURRENT_BRANCH} current_commit=${PRE_DEPLOY_COMMIT} start=${DEPLOY_START_TIME}"
+append_cicd_markdown_record "start" "running" "-" "none"
 
 log_line "Switching to branch: $BRANCH"
 git fetch origin

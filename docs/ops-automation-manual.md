@@ -73,6 +73,7 @@ Ops API（同样需要 `Authorization: Bearer <OPS_API_KEY>`）：
 
 - GitHub push 事件会经过签名校验（`WEBHOOK_SECRET`）
 - 分支会经过 allowlist 校验（`OPS_ALLOWED_BRANCHES`，默认 `main`）
+- CI/CD 执行开始与结束会同步写入 `webhook/DEPLOY_LOG.md`
 
 ## 4. 必要环境变量
 
