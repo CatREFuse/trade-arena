@@ -7,6 +7,27 @@ BRANCH=$1
 PROJECT_ROOT="/etc/nginx/website/trade-arena"
 LOCK_FILE="/tmp/trade-arena-deploy.lock"
 LOG_FILE="/var/log/trade-arena-deploy.log"
+WEBHOOK_BASE="https://api.day.app/kGX9fqRpLM9SjjVvNtHcJc/Stock运维"
+DEPLOY_START_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+DEPLOY_SUCCESS=0
+CURRENT_BRANCH="unknown"
+PRE_DEPLOY_COMMIT="unknown"
+POST_DEPLOY_COMMIT="unknown"
+
+urlencode() {
+    python3 - "$1" <<'PY'
+import sys
+import urllib.parse
+print(urllib.parse.quote(sys.argv[1], safe=""))
+PY
+}
+
+send_webhook() {
+    local info="$1"
+    local encoded_info
+    encoded_info="$(urlencode "$info")"
+    curl --noproxy '*' -m 8 -fsS "${WEBHOOK_BASE}/${encoded_info}" >/dev/null || true
+}
 
 # 检查分支参数
 if [ -z "$BRANCH" ]; then
@@ -25,8 +46,17 @@ echo "[$(date)] Starting deployment for branch: $BRANCH" | tee -a $LOG_FILE
 
 # 清理函数
 cleanup() {
+    local exit_code=$?
+    local deploy_result="失败"
+    if [ "${DEPLOY_SUCCESS}" = "1" ] && [ "${exit_code}" -eq 0 ]; then
+        deploy_result="成功"
+    fi
+    local deploy_end_time
+    deploy_end_time="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    send_webhook "阶段=结束(${deploy_result}) 分支=${BRANCH} 当前分支=${CURRENT_BRANCH} 提交=${PRE_DEPLOY_COMMIT}->${POST_DEPLOY_COMMIT} 开始时间=${DEPLOY_START_TIME} 结束时间=${deploy_end_time} 退出码=${exit_code}"
     rm -f "$LOCK_FILE"
     echo "[$(date)] Deployment finished" | tee -a $LOG_FILE
+    return "$exit_code"
 }
 trap cleanup EXIT
 
@@ -34,7 +64,9 @@ cd "$PROJECT_ROOT"
 
 # 1. 获取当前分支
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+PRE_DEPLOY_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 echo "[$(date)] Current branch: $CURRENT_BRANCH, target: $BRANCH" | tee -a $LOG_FILE
+send_webhook "阶段=开始 分支=${BRANCH} 当前分支=${CURRENT_BRANCH} 当前提交=${PRE_DEPLOY_COMMIT} 开始时间=${DEPLOY_START_TIME}"
 
 # 2. 切换到目标分支
 echo "[$(date)] Switching to branch: $BRANCH" | tee -a $LOG_FILE
@@ -43,6 +75,7 @@ git checkout "$BRANCH"
 # 避免服务器上残留改动导致 pull 失败，强制对齐到远端分支
 git reset --hard "origin/$BRANCH"
 git clean -fd
+POST_DEPLOY_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # 3. 安装后端依赖并运行数据库迁移
 echo "[$(date)] Installing backend dependencies..." | tee -a $LOG_FILE
@@ -114,6 +147,7 @@ if pgrep -f "nuxt dev" > /dev/null; then
 fi
 
 echo "[$(date)] Deployment completed successfully!" | tee -a $LOG_FILE
+DEPLOY_SUCCESS=1
 
 # 检查是否有待处理的部署
 PENDING_FILE="/tmp/trade-arena-pending-deploy"
