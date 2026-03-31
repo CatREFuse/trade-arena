@@ -1,236 +1,254 @@
-# Trade Arena 初级开发者运维手册
+# Trade Arena 本地开发与联调手册
 
 最后更新：2026-03-31（Asia/Shanghai）
 
-这份手册是给刚接手项目、对运维不熟的人看的。
+这份手册用于本地启动、联调、重启、排查和最小验证。日常开发优先看这一份，不再分散查看多份本地运维说明。
 
-目标很简单：
-
-1. 把项目跑起来
-2. 改完代码后知道该点哪几步
-3. 出问题时先查最常见的地方
-
-如果你只想记最少的命令，先记下面这 7 条。
-
-## 1. 先记这 7 条命令
+## 1. 最常用的 6 条命令
 
 启动开发环境：
 
 ```bash
-bash scripts/dev_up.sh
+MODE=dev START_DOCKER=1 BUILD_FRONTEND=0 bash scripts/service_ctl.sh start
+```
+
+查看状态：
+
+```bash
+bash scripts/service_ctl.sh status
 ```
 
 重启开发环境：
 
 ```bash
-bash scripts/dev_restart.sh
+MODE=dev START_DOCKER=1 BUILD_FRONTEND=0 bash scripts/service_ctl.sh restart
 ```
 
 停止开发环境：
 
 ```bash
-bash scripts/dev_down.sh
+bash scripts/service_ctl.sh stop
 ```
 
-停止开发环境并关闭 Docker：
+停止并关闭 Docker 依赖：
 
 ```bash
-STOP_DOCKER=1 bash scripts/dev_down.sh
+STOP_DOCKER=1 bash scripts/service_ctl.sh stop
 ```
 
-查看服务状态：
+执行本地自检：
 
 ```bash
-bash scripts/service_ctl.sh status
+bash scripts/dev_self_check.sh
 ```
 
-做一次本地检查：
-
-```bash
-bash scripts/dev_check.sh
-```
-
-做一次更完整的检查：
-
-```bash
-RUN_PYTEST=1 RUN_REGRESSION=1 bash scripts/dev_check.sh
-```
-
-## 2. 我今天只想把项目跑起来
+## 2. 本地启动标准顺序
 
 推荐顺序：
 
 ```bash
-bash scripts/dev_up.sh
-bash scripts/dev_check.sh
+MODE=dev START_DOCKER=1 BUILD_FRONTEND=0 bash scripts/service_ctl.sh start
+bash scripts/dev_self_check.sh
 ```
 
-正常情况下你会得到这些结果：
+默认端口：
 
-- 前端地址：`http://localhost:3000`
-- 后端地址：`http://localhost:8000`
-- `dev_check.sh` 不报失败
+- 前端：`http://localhost:3000`
+- 后端：`http://localhost:8000`
+- PostgreSQL：`localhost:5432`
+- Redis：`localhost:6379`
 
-如果 `bash scripts/dev_up.sh` 提示 `docker command not found`，说明你电脑没有可用的 Docker 命令。
-
-这时可以先试：
+如果当前机器已经有 PostgreSQL 和 Redis，可跳过 Docker：
 
 ```bash
-START_DOCKER=0 bash scripts/dev_up.sh
+MODE=dev START_DOCKER=0 BUILD_FRONTEND=0 bash scripts/service_ctl.sh start
 ```
 
-前提是你的 PostgreSQL 和 Redis 已经在别处启动好了。
+## 3. 日常开发后的最小验证
 
-## 3. 我改完代码后该做什么
-
-最推荐的顺序是：
+推荐顺序：
 
 ```bash
-bash scripts/dev_check.sh
+bash scripts/dev_self_check.sh
 cd backend && pytest -q
+cd ..
 RUN_REGISTER=0 BASE_URL=http://127.0.0.1:3000 bash scripts/online_regression.sh
 ```
 
-如果你不想记这么多，可以直接用：
+如果只想先做一轮轻量检查，用：
 
 ```bash
-RUN_PYTEST=1 RUN_REGRESSION=1 bash scripts/dev_check.sh
+bash scripts/dev_self_check.sh
 ```
 
-这条命令会做三件事：
-
-1. 看服务状态
-2. 跑本地自检
-3. 可选地跑后端测试和页面/API 回归
-
-## 4. 我要重启服务该用什么
-
-平时不要手动分别敲 `uvicorn`、`npm run dev`、`npm run start`。
-
-优先用这几条：
+如果要看运维脚本和环境状态，再补：
 
 ```bash
-bash scripts/dev_restart.sh
-bash scripts/dev_down.sh
-bash scripts/dev_up.sh
+bash scripts/opsctl.sh doctor
+bash scripts/opsctl.sh status
 ```
 
-如果你只是想看当前状态：
+## 4. 统一启停约束
+
+平时不要手动常驻执行下面这些命令：
+
+- `uvicorn app.main:app ...`
+- `npm run dev`
+- `npm run start`
+
+统一使用：
+
+- `bash scripts/service_ctl.sh start`
+- `bash scripts/service_ctl.sh stop`
+- `bash scripts/service_ctl.sh restart`
+- `bash scripts/service_ctl.sh status`
+
+如果只是查看日志、状态、部署记录，优先用：
+
+- `bash scripts/opsctl.sh status`
+- `bash scripts/opsctl.sh logs --scope deploy --tail 200`
+- `bash scripts/opsctl.sh doctor`
+
+## 5. 代理环境的常见坑
+
+如果 shell 里配置了 `http_proxy`、`https_proxy` 或 `all_proxy`，直接访问 `localhost` 可能会误报 `502`。
+
+排查本地服务时，命令统一带上：
 
 ```bash
-bash scripts/service_ctl.sh status
+curl --noproxy '*' -sS http://localhost:8000/api/health
+curl --noproxy '*' -I http://localhost:3000
+curl --noproxy '*' -sS http://localhost:3000/api/health
+curl --noproxy '*' -sS 'http://localhost:3000/api/leaderboard?market=overall'
 ```
 
-## 5. 我要构建该用什么
+浏览器能打开页面，但命令行返回 `502` 时，先怀疑代理，不要先判断服务挂了。
 
-如果你只是想确认“现在这份代码能不能正常构建”，优先用：
+## 6. 本地健康检查与代理链路
+
+后端健康检查：
+
+```bash
+curl --noproxy '*' -sS http://localhost:8000/api/health | python3 -m json.tool
+```
+
+期望结果：
+
+```json
+{
+  "status": "ok",
+  "db": true,
+  "redis": true
+}
+```
+
+前端 API 代理入口：
+
+- `frontend/server/api/[...path].ts`
+
+浏览器访问 `http://localhost:3000/api/*` 时，由 Nuxt 服务端转发到 `http://127.0.0.1:8000/*`。如果后端地址变化，优先检查这个文件。
+
+## 7. 自检脚本常用模式
+
+标准执行：
+
+```bash
+bash scripts/dev_self_check.sh
+```
+
+只验证脚本基础能力：
+
+```bash
+REQUIRE_PORTS=0 CHECK_DOCKER=0 RUN_HTTP_CHECKS=0 bash scripts/dev_self_check.sh
+```
+
+非默认端口：
+
+```bash
+FRONTEND_BASE=http://localhost:3001 BACKEND_BASE=http://localhost:8001 bash scripts/dev_self_check.sh
+```
+
+通过标准：
+
+- 输出 `Summary: pass=... warn=... fail=0`
+- 退出码为 `0`
+
+## 8. 测试数据与开发接口
+
+查看开发数据状态：
+
+```bash
+curl --noproxy '*' -sS http://localhost:8000/api/dev/status | python3 -m json.tool
+```
+
+生成测试数据：
+
+```bash
+curl --noproxy '*' -X POST http://localhost:8000/api/dev/mock
+```
+
+清空测试数据：
+
+```bash
+curl --noproxy '*' -X POST http://localhost:8000/api/dev/reset
+```
+
+这些接口只用于本地联调和回归，不要写进生产流程。
+
+## 9. 构建与生产模式检查
+
+如果只是确认“当前代码能不能正常构建”，优先用：
 
 ```bash
 bash scripts/prod_build_check.sh
 ```
 
-这条命令会做两件事：
-
-1. 先跑一次基础环境检查
-2. 再执行前端生产构建
-
-如果你要以生产模式启动整套服务，用：
+如果要本地以生产模式启动整套服务，用：
 
 ```bash
 MODE=prod START_DOCKER=1 BUILD_FRONTEND=1 bash scripts/service_ctl.sh start
 ```
 
-这个命令更偏运维，不建议你每天都用。
+生产模式下前端正式入口应是 `.output/server/index.mjs`。不要把 `nuxt preview` 或 `.nuxt/dist/*` 当成常驻生产入口。
 
-## 6. Docker 什么时候要用
+## 10. 页面打不开时的排查顺序
 
-这个项目常见的 Docker 用途只有一个：拉起依赖服务。
-
-通常是：
-
-- PostgreSQL
-- Redis
-
-最简单的命令：
-
-```bash
-bash scripts/docker_up.sh
-bash scripts/docker_down.sh
-```
-
-如果你只想靠 `service_ctl.sh` 自动处理，也可以：
-
-```bash
-START_DOCKER=1 bash scripts/dev_up.sh
-STOP_DOCKER=1 bash scripts/dev_down.sh
-```
-
-## 7. 已经打包好的一键命令
-
-最适合你日常使用的：
-
-- `bash scripts/dev_up.sh`
-- `bash scripts/dev_restart.sh`
-- `bash scripts/dev_down.sh`
-- `bash scripts/dev_check.sh`
-- `bash scripts/prod_build_check.sh`
-- `bash scripts/docker_up.sh`
-- `bash scripts/docker_down.sh`
-
-稍微进阶一点的：
-
-- `bash scripts/service_ctl.sh status`
-- `bash scripts/opsctl.sh doctor`
-- `bash scripts/opsctl.sh status`
-- `bash scripts/opsctl.sh logs --scope deploy --tail 200`
-
-先不要直接碰的：
-
-- `bash scripts/ops_http.sh ...`
-- `bash webhook/deploy.sh ...`
-- `bash scripts/ops/deploy.sh ...`
-- 手动改 `.runtime/`、锁文件、队列文件
-
-## 8. 还能继续打包什么
-
-现在已经够你日常用了，但后面还可以继续加：
-
-- `scripts/dev_logs.sh`
-  作用：一次看前后端日志
-- `scripts/dev_reset.sh`
-  作用：停止服务、清理缓存、重新启动
-- `scripts/dev_bootstrap.sh`
-  作用：首次安装依赖并启动
-- `scripts/prod_smoke.sh`
-  作用：固定跑生产回归，不用再记参数
-
-## 9. 页面打不开时先查什么
-
-第一步先看状态：
+第一步看状态：
 
 ```bash
 bash scripts/service_ctl.sh status
 ```
 
-第二步跑自检：
+第二步做本地自检：
 
 ```bash
-bash scripts/dev_check.sh
+bash scripts/dev_self_check.sh
 ```
 
-第三步再看这两个地址：
+第三步看关键地址：
 
 ```bash
 curl --noproxy '*' -sS http://localhost:8000/api/health
 curl --noproxy '*' -I http://localhost:3000
 ```
 
-如果命令行看到 `502`，不要马上判断服务挂了。先确认你是不是被本机代理影响了，所以命令里尽量保留 `--noproxy '*'`。
+第四步再看运维状态和日志：
 
-## 10. 需要更详细时再看哪里
+```bash
+bash scripts/opsctl.sh status
+bash scripts/opsctl.sh logs --scope deploy --tail 200
+```
 
-如果这份手册不够，再继续看：
+## 11. 相关文档
 
-- `docs/ops-runbook-local-development-and-test-server.md`
-- `docs/ops-automation-manual.md`
+需要更完整的开发流程时继续看：
+
+- `docs/developer-handbook.md`
+- `docs/testing-process-manual.md`
+- `docs/testing-checklist.md`
+
+涉及部署、Webhook、迁移、日志和线上排障时继续看：
+
 - `docs/ops-reference-manual.md`
+- `docs/ops-runbook-online-regression-and-handoff.md`
+- `docs/ops-automation-manual.md`

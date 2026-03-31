@@ -522,7 +522,7 @@ bash scripts/opsctl.sh gateway-reload
 - `docs/README.md`
 - `docs/ops-reference-manual.md`
 - `docs/cloud-deployment-guide.md`
-- `docs/ops-runbook-local-development-and-test-server.md`
+- `docs/junior-dev-ops-handbook.md`
 - `docs/testing-process-manual.md`
 - `docs/testing-checklist.md`
 - `AGENTS.md`

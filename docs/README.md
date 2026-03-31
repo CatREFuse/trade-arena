@@ -26,10 +26,8 @@
 
 - `docs/junior-dev-ops-handbook.md`
 - `docs/developer-handbook.md`
-- `docs/ops-runbook-local-development-and-test-server.md`
 - `docs/testing-process-manual.md`
 - `docs/testing-checklist.md`
-- `docs/testing-dev-server-squad-report-2026-03-31.md`（本期 dev 小队测试记录）
 
 ### 我要发版、看 CI/CD、做线上回归
 
@@ -60,12 +58,13 @@
 - `webhook/deploy.sh`：服务器部署脚本（含开始/结束 webhook 通知）。
 - `webhook/main.py`：GitHub Webhook 入口服务。
 - `docs/ops-automation-manual.md`：人类与 Agent 共读的运维自动化手册。
-- `docs/junior-dev-ops-handbook.md`：面向初级开发者的运维上手手册。
+- `docs/junior-dev-ops-handbook.md`：本地开发、联调、自检和排查入口。
 - `.env.ops.example`：运维网关环境变量模板（`WEBHOOK_SECRET`、`OPS_API_KEY` 等）。
 
 ## 4. 文档维护规则
 
 - 代码路径、脚本参数、部署流程变化时，必须同步更新对应文档。
+- 阶段性测试记录、临时交接日志、一次性排查纪要不要长期留在 `docs/` 根目录。
 - 涉及发布链路的改动，至少同步检查：
   - `docs/ops-reference-manual.md`
   - `webhook/DEPLOY_LOG.md`
