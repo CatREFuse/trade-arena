@@ -12,6 +12,7 @@ NOTIFY_URL="${OPS_NOTIFY_URL:-}"
 ALLOWED_BRANCHES="${OPS_ALLOWED_BRANCHES:-main}"
 HTTP_CHECK_RETRIES="${OPS_HTTP_CHECK_RETRIES:-10}"
 HTTP_CHECK_INTERVAL="${OPS_HTTP_CHECK_INTERVAL:-2}"
+DEPLOY_START_DOCKER="${OPS_DEPLOY_START_DOCKER:-1}"
 DEPLOY_START_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 DEPLOY_SUCCESS=0
 CURRENT_BRANCH="unknown"
@@ -219,20 +220,9 @@ log_line "Building frontend production bundle..."
 rm -rf .nuxt .output
 npm run build >>"$LOG_FILE" 2>&1
 
-log_line "Restarting backend..."
-pkill -f "uvicorn app.main:app" || true
-sleep 2
-cd "$PROJECT_ROOT/backend"
-nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 >>"$LOG_FILE" 2>&1 &
-
-log_line "Restarting frontend..."
-pkill -f "node .output/server/index.mjs" || true
-pkill -f "npm run start" || true
-pkill -f "nuxt preview" || true
-pkill -f "nuxt dev" || true
-sleep 2
-cd "$PROJECT_ROOT/frontend"
-nohup env NODE_ENV=production HOST=0.0.0.0 PORT=3000 npm run start >>"$LOG_FILE" 2>&1 &
+log_line "Restarting services via opsctl (target=all, mode=prod)..."
+MODE=prod START_DOCKER="$DEPLOY_START_DOCKER" BUILD_FRONTEND=0 HEALTHCHECK=1 \
+  /bin/bash "$PROJECT_ROOT/scripts/opsctl.sh" restart --target all >>"$LOG_FILE" 2>&1
 
 log_line "Verifying frontend health..."
 for i in {1..20}; do
