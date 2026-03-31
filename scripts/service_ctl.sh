@@ -341,19 +341,32 @@ start_frontend() {
   (
     cd "$ROOT_DIR/frontend"
     local frontend_entry="$ROOT_DIR/frontend/.output/server/index.mjs"
+    local spawned_pid=""
     if [[ "$MODE" == "dev" ]]; then
       nohup npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
         >>"$FRONTEND_LOG_FILE" 2>&1 &
+      spawned_pid="$!"
     else
       if [[ -f "$frontend_entry" ]] && command_exists node; then
         nohup env NODE_ENV=production HOST="$FRONTEND_HOST" PORT="$FRONTEND_PORT" \
           node "$frontend_entry" >>"$FRONTEND_LOG_FILE" 2>&1 &
+        spawned_pid="$!"
       else
         nohup env NODE_ENV=production HOST="$FRONTEND_HOST" PORT="$FRONTEND_PORT" npm run start \
           >>"$FRONTEND_LOG_FILE" 2>&1 &
+        spawned_pid="$!"
       fi
     fi
-    echo $! >"$FRONTEND_PID_FILE"
+    local final_pid="$spawned_pid"
+    if command_exists lsof; then
+      sleep 1
+      local listen_pid
+      listen_pid="$(lsof -tiTCP:"$FRONTEND_PORT" -sTCP:LISTEN 2>/dev/null | head -n1 || true)"
+      if [[ -n "${listen_pid:-}" ]]; then
+        final_pid="$listen_pid"
+      fi
+    fi
+    echo "$final_pid" >"$FRONTEND_PID_FILE"
   )
 }
 
