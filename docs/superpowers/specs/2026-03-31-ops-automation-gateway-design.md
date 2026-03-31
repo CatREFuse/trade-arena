@@ -330,7 +330,7 @@ HTTP 对外暴露的是“运维动作协议”，不是“脚本执行协议”
 
 ### 7.4 job 执行模型
 
-第一阶段采用文件状态目录，不引入外部队列：
+HTTP 网关落地后，job 系统采用文件状态目录，不引入外部队列：
 
 - `.runtime/ops/jobs/<job_id>.json`
 - `.runtime/ops/logs/<job_id>.log`
@@ -369,7 +369,7 @@ HTTP 对外暴露的是“运维动作协议”，不是“脚本执行协议”
 去重规则：
 
 - 同一分支的 deploy job 只能同时存在一个 `running` 和一个 `queued`
-- 新的 deploy 到来时，如果已有同分支 `queued` job，则直接覆盖它的 ref 与元数据
+- 新的 deploy 到来时，如果已有同分支 `queued` job，则先把旧 job 标记为 `cancelled` 且 `result_reason=superseded`，再创建新的 job_id 入队
 - 非 deploy job 默认不做合并
 
 ## 8. 生产服务模型
@@ -473,7 +473,7 @@ bash scripts/opsctl.sh gateway-reload
 - `OPS_API_KEY=...`
 - `WEBHOOK_SECRET=...`
 - `OPS_RUNTIME_DIR=.runtime/ops`
-- `OPS_LOG_DIR=.runtime/logs`
+- `OPS_LOG_DIR=.runtime/ops/logs`
 - `OPS_NOTIFY_URL=...`
 - `OPS_PROJECT_ROOT=/opt/trade-arena`
 - `OPS_SERVICE_DRIVER=systemd|pidfile`
@@ -556,6 +556,7 @@ bash scripts/opsctl.sh gateway-reload
 - 加入 branch allowlist
 - 同步更新 `docs/README.md`、`docs/ops-reference-manual.md`、`AGENTS.md` 的入口描述
 - 保留 `/webhook` 兼容入口
+- 这一阶段仍允许沿用旧的单 deploy 锁与 pending 机制，先完成入口收口和安全收口
 
 ### 阶段 2：HTTP 网关与 job 系统
 
