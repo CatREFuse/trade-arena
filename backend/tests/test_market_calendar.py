@@ -41,3 +41,21 @@ def test_us_holiday_is_closed():
     svc = MarketCalendarService()
     # 2026-12-25 (US holiday), 15:00 ET would be open on normal weekdays
     assert not svc.is_trade_open("us", _utc(2026, 12, 25, 20, 0))
+
+
+def test_market_status_uses_short_ttl_cache(monkeypatch):
+    class FakeCalendar:
+        def __init__(self):
+            self.calls = 0
+
+        def is_open_on_minute(self, _timestamp):
+            self.calls += 1
+            return True
+
+    svc = MarketCalendarService()
+    fake_calendar = FakeCalendar()
+    monkeypatch.setattr(svc, "_calendar", lambda _market: fake_calendar)
+
+    assert svc.is_trade_open("us") is True
+    assert svc.is_trade_open("us") is True
+    assert fake_calendar.calls == 1

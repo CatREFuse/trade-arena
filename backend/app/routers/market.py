@@ -8,10 +8,14 @@ from app.services.market_data import MarketDataService
 router = APIRouter(prefix="/api/market", tags=["market"])
 
 
+def _market_service(request: Request) -> MarketDataService:
+    redis = request.app.state.redis
+    return getattr(request.app.state, "market_data_service", None) or MarketDataService(redis)
+
+
 @router.get("/quote/{ticker}", response_model=QuoteOut)
 async def get_quote(ticker: str, request: Request):
-    redis = request.app.state.redis
-    svc = MarketDataService(redis)
+    svc = _market_service(request)
     return await svc.get_quote(ticker.upper())
 
 
@@ -22,30 +26,26 @@ async def get_index(symbol: str, market: str = "us", request: Request = None):
     - symbol: SPX/NDX/DJI (美股) 或 SH/SZ/CY (A股) 或 HSI/HSCEI (港股)
     - market: us | cn | hk
     """
-    redis = request.app.state.redis
-    svc = MarketDataService(redis)
+    svc = _market_service(request)
     return await svc.get_index(symbol.upper(), market)
 
 
 @router.get("/indices", response_model=list[IndexQuoteOut])
 async def get_all_indices(request: Request, refresh: bool = False):
     """获取所有大盘指数"""
-    redis = request.app.state.redis
-    svc = MarketDataService(redis)
+    svc = _market_service(request)
     return await svc.get_all_indices(refresh=refresh)
 
 
 @router.get("/overview", response_model=MarketOverviewOut)
 async def get_market_overview(request: Request, refresh: bool = False):
     """获取市场总览快照"""
-    redis = request.app.state.redis
-    svc = MarketDataService(redis)
+    svc = _market_service(request)
     return await svc.get_market_overview(refresh=refresh)
 
 
 @router.get("/board", response_model=MarketBoardSnapshotOut)
 async def get_market_board(market: str = "us", request: Request = None, refresh: bool = False):
     """获取市场看盘榜单"""
-    redis = request.app.state.redis
-    svc = MarketDataService(redis)
+    svc = _market_service(request)
     return await svc.get_market_board(market.lower(), refresh=refresh)

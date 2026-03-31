@@ -8,6 +8,7 @@ import math
 import random
 import re
 from abc import ABC, abstractmethod
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
@@ -19,6 +20,76 @@ except Exception:  # pragma: no cover - 仅用于运行时降级
     ak = None
 
 logger = logging.getLogger(__name__)
+
+HTTP_CLIENT_LIMITS = httpx.Limits(max_connections=32, max_keepalive_connections=16, keepalive_expiry=30.0)
+DEFAULT_HTTP_TIMEOUT = httpx.Timeout(6.0, connect=2.5)
+FAST_HTTP_TIMEOUT = httpx.Timeout(4.0, connect=2.0)
+HTTP_CONCURRENCY_LIMITS = {
+    "yahoo": 4,
+    "stooq": 2,
+    "tencent": 6,
+    "sina": 4,
+}
+_SHARED_HTTP_CLIENTS: dict[tuple[int, str], httpx.AsyncClient] = {}
+_SHARED_HTTP_LIMITERS: dict[tuple[int, str], asyncio.Semaphore] = {}
+
+
+def _shared_http_key(name: str) -> tuple[int, str]:
+    return id(asyncio.get_running_loop()), name
+
+
+def _shared_http_client(
+    name: str,
+    *,
+    timeout: httpx.Timeout,
+    follow_redirects: bool = True,
+) -> httpx.AsyncClient:
+    key = _shared_http_key(name)
+    client = _SHARED_HTTP_CLIENTS.get(key)
+    if client is None or client.is_closed:
+        client = httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=follow_redirects,
+            limits=HTTP_CLIENT_LIMITS,
+        )
+        _SHARED_HTTP_CLIENTS[key] = client
+    return client
+
+
+def _shared_http_limiter(name: str) -> asyncio.Semaphore:
+    key = _shared_http_key(name)
+    limiter = _SHARED_HTTP_LIMITERS.get(key)
+    if limiter is None:
+        limiter = asyncio.Semaphore(HTTP_CONCURRENCY_LIMITS.get(name, 4))
+        _SHARED_HTTP_LIMITERS[key] = limiter
+    return limiter
+
+
+async def _limited_get(
+    upstream: str,
+    url: str,
+    *,
+    client_name: str | None = None,
+    timeout: httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
+    follow_redirects: bool = True,
+    **kwargs,
+) -> httpx.Response:
+    async with _shared_http_limiter(upstream):
+        client = _shared_http_client(
+            client_name or upstream,
+            timeout=timeout,
+            follow_redirects=follow_redirects,
+        )
+        return await client.get(url, **kwargs)
+
+
+async def close_shared_http_clients() -> None:
+    clients = list(_SHARED_HTTP_CLIENTS.values())
+    _SHARED_HTTP_CLIENTS.clear()
+    _SHARED_HTTP_LIMITERS.clear()
+    for client in clients:
+        with suppress(Exception):
+            await client.aclose()
 
 
 class QuoteData:
@@ -92,6 +163,7 @@ class BaseProvider(ABC):
 class YahooProvider(BaseProvider):
     """Yahoo Finance 提供商 - 用于美股"""
 
+    MAX_HISTORY_FALLBACKS = 2
     SPARK_URL = "https://query1.finance.yahoo.com/v7/finance/spark"
     STOOQ_SNAPSHOT_URL = "https://stooq.com/q/l/"
     STOOQ_HISTORY_URL = "https://stooq.com/q/d/l/"
@@ -178,12 +250,15 @@ class YahooProvider(BaseProvider):
             quotes.update(fallback)
             unresolved = [ticker for ticker in missing if ticker not in fallback or fallback[ticker] is None]
             if unresolved:
+                history_targets = unresolved[: self.MAX_HISTORY_FALLBACKS]
                 history = await asyncio.gather(
-                    *(self._fetch_stooq_history_quote(ticker) for ticker in unresolved),
+                    *(self._fetch_stooq_history_quote(ticker) for ticker in history_targets),
                     return_exceptions=True,
                 )
-                for ticker, result in zip(unresolved, history):
+                for ticker, result in zip(history_targets, history):
                     quotes[ticker] = None if isinstance(result, Exception) else result
+        for ticker in tickers:
+            quotes.setdefault(ticker, None)
         return quotes
 
     async def get_indices_batch(self, symbols: list[str]) -> dict[str, QuoteData | None]:
@@ -208,12 +283,15 @@ class YahooProvider(BaseProvider):
             quotes.update(fallback)
             unresolved = [symbol for symbol in missing if symbol not in fallback or fallback[symbol] is None]
             if unresolved:
+                history_targets = unresolved[: self.MAX_HISTORY_FALLBACKS]
                 history = await asyncio.gather(
-                    *(self._fetch_stooq_history_quote(symbol, is_index=True) for symbol in unresolved),
+                    *(self._fetch_stooq_history_quote(symbol, is_index=True) for symbol in history_targets),
                     return_exceptions=True,
                 )
-                for symbol, result in zip(unresolved, history):
+                for symbol, result in zip(history_targets, history):
                     quotes[symbol] = None if isinstance(result, Exception) else result
+        for symbol in symbols:
+            quotes.setdefault(symbol, None)
         return quotes
 
     async def _fetch_spark(self, symbol: str) -> dict | None:
@@ -229,10 +307,14 @@ class YahooProvider(BaseProvider):
             "includeTimestamps": "true",
         }
 
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            resp = await client.get(self.SPARK_URL, params=params, headers=self.HEADERS)
-            resp.raise_for_status()
-            payload = resp.json()
+        resp = await _limited_get(
+            "yahoo",
+            self.SPARK_URL,
+            params=params,
+            headers=self.HEADERS,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
 
         spark = payload.get("spark", {})
         results = spark.get("result") or []
@@ -298,9 +380,13 @@ class YahooProvider(BaseProvider):
             "f": self.STOOQ_FIELDS,
             "e": "csv",
         }
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            resp = await client.get(self.STOOQ_SNAPSHOT_URL, params=params, headers=self.HEADERS)
-            resp.raise_for_status()
+        resp = await _limited_get(
+            "stooq",
+            self.STOOQ_SNAPSHOT_URL,
+            params=params,
+            headers=self.HEADERS,
+        )
+        resp.raise_for_status()
         return self._parse_stooq_snapshot_csv(resp.text, symbol_map)
 
     async def _fetch_stooq_history_quote(self, ticker: str, is_index: bool = False) -> QuoteData | None:
@@ -316,10 +402,16 @@ class YahooProvider(BaseProvider):
             "d1": start.strftime("%Y%m%d"),
             "d2": today.strftime("%Y%m%d"),
         }
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            resp = await client.get(self.STOOQ_HISTORY_URL, params=params, headers=self.HEADERS)
-            resp.raise_for_status()
-            return self._parse_stooq_history_csv(ticker, resp.text)
+        resp = await _limited_get(
+            "stooq",
+            self.STOOQ_HISTORY_URL,
+            client_name="stooq-history",
+            timeout=FAST_HTTP_TIMEOUT,
+            params=params,
+            headers=self.HEADERS,
+        )
+        resp.raise_for_status()
+        return self._parse_stooq_history_csv(ticker, resp.text)
 
     @classmethod
     def _parse_stooq_snapshot_csv(
@@ -538,9 +630,8 @@ class TencentProvider(BaseProvider):
         if not codes:
             return {}
         url = f"{self.QUOTE_URL}{','.join(codes)}"
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            resp = await client.get(url, headers=self.HEADERS)
-            resp.raise_for_status()
+        resp = await _limited_get("tencent", url, headers=self.HEADERS)
+        resp.raise_for_status()
         return self._parse_response_text(resp.text)
 
     @classmethod
@@ -804,8 +895,10 @@ class AkshareProvider(BaseProvider):
         if ak is None:
             return {}
 
-        for name, loader in frames:
-            frame = await self._fetch_frame(name, loader)
+        fetched_frames = await asyncio.gather(
+            *(self._fetch_frame(name, loader) for name, loader in frames)
+        )
+        for frame in fetched_frames:
             if frame is None:
                 continue
             parsed = parser(frame)
@@ -828,7 +921,7 @@ class AkshareProvider(BaseProvider):
 
     def _parse_cn_quote_frame(self, frame) -> dict[str, QuoteData]:
         quotes: dict[str, QuoteData] = {}
-        for row in frame.to_dict(orient="records"):
+        for row in self._iter_frame_rows(frame, self._stock_frame_columns()):
             ticker = self._extract_cn_ticker(row)
             if not ticker:
                 continue
@@ -839,7 +932,7 @@ class AkshareProvider(BaseProvider):
 
     def _parse_hk_quote_frame(self, frame) -> dict[str, QuoteData]:
         quotes: dict[str, QuoteData] = {}
-        for row in frame.to_dict(orient="records"):
+        for row in self._iter_frame_rows(frame, self._stock_frame_columns()):
             ticker = self._extract_hk_ticker(row)
             if not ticker:
                 continue
@@ -850,7 +943,7 @@ class AkshareProvider(BaseProvider):
 
     def _parse_cn_index_frame(self, frame) -> dict[str, QuoteData]:
         quotes: dict[str, QuoteData] = {}
-        for row in frame.to_dict(orient="records"):
+        for row in self._iter_frame_rows(frame, self._index_frame_columns()):
             symbol = self._match_cn_index_symbol(row)
             if not symbol:
                 continue
@@ -861,7 +954,7 @@ class AkshareProvider(BaseProvider):
 
     def _parse_hk_index_frame(self, frame) -> dict[str, QuoteData]:
         quotes: dict[str, QuoteData] = {}
-        for row in frame.to_dict(orient="records"):
+        for row in self._iter_frame_rows(frame, self._index_frame_columns()):
             symbol = self._match_hk_index_symbol(row)
             if not symbol:
                 continue
@@ -921,6 +1014,34 @@ class AkshareProvider(BaseProvider):
             name=name,
             previous_close=round(previous_close, 2),
         )
+
+    def _stock_frame_columns(self) -> tuple[str, ...]:
+        return (
+            *self.QUOTE_CODE_COLUMNS,
+            *self.QUOTE_NAME_COLUMNS,
+            *self.QUOTE_PRICE_COLUMNS,
+            *self.QUOTE_CHANGE_PCT_COLUMNS,
+            *self.QUOTE_PREV_CLOSE_COLUMNS,
+            *self.QUOTE_VOLUME_COLUMNS,
+        )
+
+    def _index_frame_columns(self) -> tuple[str, ...]:
+        return (
+            *self.INDEX_CODE_COLUMNS,
+            *self.INDEX_NAME_COLUMNS,
+            *self.INDEX_PRICE_COLUMNS,
+            *self.INDEX_CHANGE_PCT_COLUMNS,
+            *self.INDEX_PREV_CLOSE_COLUMNS,
+        )
+
+    @staticmethod
+    def _iter_frame_rows(frame, candidate_columns: tuple[str, ...]):
+        available_columns = [column for column in candidate_columns if column in frame.columns]
+        if not available_columns:
+            return
+
+        for values in frame[available_columns].itertuples(index=False, name=None):
+            yield dict(zip(available_columns, values))
 
     def _extract_cn_ticker(self, row: dict) -> str | None:
         raw = self._pick_text(row, self.QUOTE_CODE_COLUMNS)
@@ -1073,15 +1194,14 @@ class SinaProvider(BaseProvider):
                 return None
 
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                url = f"https://hq.sinajs.cn/list={sina_code}"
-                headers = {
-                    "Referer": "https://finance.sina.com.cn",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                }
-                resp = await client.get(url, headers=headers)
-                resp.encoding = "gb2312"
-                return self._parse_stock_response(ticker, resp.text)
+            url = f"https://hq.sinajs.cn/list={sina_code}"
+            headers = {
+                "Referer": "https://finance.sina.com.cn",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+            resp = await _limited_get("sina", url, headers=headers)
+            resp.encoding = "gb2312"
+            return self._parse_stock_response(ticker, resp.text)
         except Exception as e:
             logger.warning(f"Sina fetch failed for {ticker}: {e}")
             return None
@@ -1093,15 +1213,14 @@ class SinaProvider(BaseProvider):
             return None
 
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                url = f"https://hq.sinajs.cn/list={sina_code}"
-                headers = {
-                    "Referer": "https://finance.sina.com.cn",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                }
-                resp = await client.get(url, headers=headers)
-                resp.encoding = "gb2312"
-                return self._parse_index_response(symbol, resp.text)
+            url = f"https://hq.sinajs.cn/list={sina_code}"
+            headers = {
+                "Referer": "https://finance.sina.com.cn",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+            resp = await _limited_get("sina", url, headers=headers)
+            resp.encoding = "gb2312"
+            return self._parse_index_response(symbol, resp.text)
         except Exception as e:
             logger.warning(f"Sina index fetch failed for {symbol}: {e}")
             return None

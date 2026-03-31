@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Awaitable, Callable, Literal
@@ -62,6 +63,7 @@ BOARD_CACHE_TTL = 120  # 市场看盘榜单缓存2分钟，兼顾新鲜度和负
 OVERVIEW_CACHE_TTL = 120  # 市场总览缓存2分钟，和看盘榜单保持一致
 BOARD_FETCH_CHUNK_SIZE = 24  # 大榜单分批抓取，避免单次 upstream 请求过大
 MARKET_CACHE_VERSION = "v3"
+SHADOW_CACHE_TTL_SECONDS = 300
 
 MARKET_BOARD = {
     "us": [
@@ -286,6 +288,9 @@ class MarketDataService:
             self._provider_health_middleware,
             self._provider_error_middleware,
         ]
+        self._shadow_cache: dict[str, tuple[float, object]] = {}
+        self._background_refresh_tasks: dict[str, asyncio.Task[None]] = {}
+        self._singleflight_tasks: dict[str, asyncio.Task[object]] = {}
         self._register_default_providers()
 
     def provider_chain_snapshot(self) -> dict[str, list[str]]:
@@ -384,6 +389,7 @@ class MarketDataService:
             )
 
         cache_key = f"quote:{ticker}"
+        market_status = self._market_status(market)
 
         # 尝试从缓存获取
         cached = await _redis_get_safe(self.redis, cache_key)
@@ -391,7 +397,7 @@ class MarketDataService:
             try:
                 raw = cached.decode() if isinstance(cached, bytes) else cached
                 data = json.loads(raw)
-                data["market_status"] = self.market_calendar.status(market)
+                data["market_status"] = market_status
                 return QuoteOut(ticker=ticker, **data)
             except Exception as e:
                 logger.warning(f"Cache parse error: {e}")
@@ -413,7 +419,7 @@ class MarketDataService:
             "change_pct": quote.change_pct,
             "name": quote.name,
             "volume": quote.volume,
-            "market_status": self.market_calendar.status(market),
+            "market_status": market_status,
         }
 
         # 写入缓存（Redis 失败不影响返回结果）
@@ -468,6 +474,24 @@ class MarketDataService:
         await _redis_setex_safe(self.redis, cache_key, INDEX_CACHE_TTL, json.dumps(data))
         return IndexQuoteOut(**data)
 
+    async def get_quotes_batch(self, tickers: list[str]) -> dict[str, QuoteOut | None]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for ticker in tickers:
+            normalized_ticker = ticker.upper()
+            if normalized_ticker in seen:
+                continue
+            seen.add(normalized_ticker)
+            if self._is_supported_ticker(normalized_ticker):
+                normalized.append(normalized_ticker)
+
+        status_cache = self._resolve_market_statuses(self._ticker_market(ticker) for ticker in normalized)
+        raw_quotes = await self._get_quotes_batch(normalized, status_cache=status_cache)
+        return {
+            ticker: self._coerce_quote_out(ticker, raw_quotes.get(ticker), status_cache=status_cache)
+            for ticker in normalized
+        }
+
     async def get_all_indices(self, refresh: bool = False) -> list[IndexQuoteOut]:
         """获取所有大盘指数"""
         cache_key = f"market:indices:all:{MARKET_CACHE_VERSION}"
@@ -518,87 +542,49 @@ class MarketDataService:
             cached_snapshot = await self._load_cached_model_safe(cache_key, MarketBoardSnapshotOut)
             if cached_snapshot is not None:
                 return cached_snapshot
-
-        entries = MARKET_BOARD.get(market, [])
-        if not entries:
-            return MarketBoardSnapshotOut(items=[], updated_at=datetime.now(timezone.utc))
-
-        tickers = [entry["ticker"] for entry in entries]
-        quotes = await self._get_quotes_batch(tickers)
-        current_market_status = self.market_calendar.status(market)
-        board: list[MarketBoardItemOut] = []
-        for entry in entries:
-            quote = quotes.get(entry["ticker"])
-            if not quote and self.enable_mock_fallback:
-                quote = await self.mock.get_quote(entry["ticker"])
-            if not quote:
-                continue
-            board.append(
-                MarketBoardItemOut(
-                    ticker=entry["ticker"],
-                    name=quote.name or entry["name"],
-                    market=market,
-                    price=quote.price,
-                    change_pct=quote.change_pct,
-                    volume=quote.volume,
-                    market_status=current_market_status,
-                )
-            )
-        snapshot = MarketBoardSnapshotOut(
-            items=board,
-            updated_at=datetime.now(timezone.utc),
-        )
-        await _redis_setex_safe(
-            self.redis,
+        return await self._run_singleflight(
             cache_key,
-            BOARD_CACHE_TTL,
-            json.dumps(snapshot.model_dump(mode="json")),
+            lambda: self._build_and_store_market_board(cache_key, market),
         )
-        return snapshot
 
     async def get_market_overview(self, refresh: bool = False) -> MarketOverviewOut:
         cache_key = f"market:overview:{MARKET_CACHE_VERSION}"
         if not refresh:
-            cached = await _redis_get_safe(self.redis, cache_key)
-        else:
-            cached = None
-        if cached:
-            try:
-                raw = cached.decode() if isinstance(cached, bytes) else cached
-                return MarketOverviewOut(**json.loads(raw))
-            except Exception as e:
-                logger.warning(f"Market overview cache parse error: {e}")
+            cached_overview = await self._load_cached_model_safe(cache_key, MarketOverviewOut)
+            if cached_overview is not None:
+                self._set_shadow_cache(cache_key, cached_overview)
+                return cached_overview
 
-        indices, us_board, cn_board, hk_board = await asyncio.gather(
-            self.get_all_indices(refresh=refresh),
-            self.get_market_board("us", refresh=refresh),
-            self.get_market_board("cn", refresh=refresh),
-            self.get_market_board("hk", refresh=refresh),
-        )
-        overview = MarketOverviewOut(
-            indices=indices,
-            boards={"us": us_board.items, "cn": cn_board.items, "hk": hk_board.items},
-            markets=[
-                self._build_market_summary("us", "美股", us_board.items),
-                self._build_market_summary("cn", "A 股", cn_board.items),
-                self._build_market_summary("hk", "港股", hk_board.items),
-            ],
-            updated_at=max(us_board.updated_at, cn_board.updated_at, hk_board.updated_at),
-        )
-        await _redis_setex_safe(
-            self.redis,
+            shadow_overview = self._get_shadow_cache(cache_key, MarketOverviewOut)
+            if shadow_overview is not None:
+                self._ensure_background_refresh(cache_key, self._refresh_market_overview_cache)
+                return shadow_overview
+
+            in_flight = self._background_refresh_tasks.get(cache_key)
+            if in_flight and not in_flight.done():
+                with suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(asyncio.shield(in_flight), timeout=0.35)
+                cached_overview = await self._load_cached_model_safe(cache_key, MarketOverviewOut)
+                if cached_overview is not None:
+                    self._set_shadow_cache(cache_key, cached_overview)
+                    return cached_overview
+
+        return await self._run_singleflight(
             cache_key,
-            OVERVIEW_CACHE_TTL,
-            json.dumps(overview.model_dump(mode="json")),
+            lambda: self._build_and_store_market_overview(cache_key, refresh=refresh),
         )
-        return overview
 
     def _get_provider(self, ticker: str):
         providers = self._quote_providers(ticker)
         return providers[0] if providers else self.yahoo
 
-    async def _get_quotes_batch(self, tickers: list[str]):
-        cached, missing = await self._get_cached_quotes(tickers)
+    async def _get_quotes_batch(
+        self,
+        tickers: list[str],
+        *,
+        status_cache: dict[str, str] | None = None,
+    ):
+        cached, missing = await self._get_cached_quotes(tickers, status_cache=status_cache)
         fetched: dict[str, object] = {}
 
         for chunk_start in range(0, len(missing), BOARD_FETCH_CHUNK_SIZE):
@@ -625,7 +611,12 @@ class MarketDataService:
 
         return {**cached, **fetched}
 
-    async def _get_cached_quotes(self, tickers: list[str]):
+    async def _get_cached_quotes(
+        self,
+        tickers: list[str],
+        *,
+        status_cache: dict[str, str] | None = None,
+    ):
         cached: dict[str, object] = {}
         missing: list[str] = []
         for ticker in tickers:
@@ -636,7 +627,8 @@ class MarketDataService:
                 continue
             try:
                 payload = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
-                payload["market_status"] = self.market_calendar.status(self._ticker_market(ticker))
+                market = self._ticker_market(ticker)
+                payload["market_status"] = self._market_status(market, status_cache)
                 cached[ticker] = QuoteOut(ticker=ticker, **payload)
             except Exception as e:
                 logger.warning(f"Batch quote cache parse error for {ticker}: {e}")
@@ -951,9 +943,188 @@ class MarketDataService:
             "change_pct": quote.change_pct,
             "name": quote.name,
             "volume": quote.volume,
-            "market_status": self.market_calendar.status(market),
+            "market_status": self._market_status(market),
         }
         await _redis_setex_safe(self.redis, f"quote:{ticker}", CACHE_TTL, json.dumps(data))
+
+    def _coerce_quote_out(
+        self,
+        ticker: str,
+        quote,
+        status_cache: dict[str, str] | None = None,
+    ) -> QuoteOut | None:
+        if quote is None:
+            return None
+        if isinstance(quote, QuoteOut):
+            return quote
+
+        market = self._ticker_market(ticker)
+        return QuoteOut(
+            ticker=ticker,
+            price=quote.price,
+            change_pct=quote.change_pct,
+            name=getattr(quote, "name", None),
+            volume=getattr(quote, "volume", None),
+            market_status=self._market_status(market, status_cache),
+        )
+
+    async def _build_and_store_market_board(self, cache_key: str, market: str) -> MarketBoardSnapshotOut:
+        entries = MARKET_BOARD.get(market, [])
+        if not entries:
+            return MarketBoardSnapshotOut(items=[], updated_at=datetime.now(timezone.utc))
+
+        tickers = [entry["ticker"] for entry in entries]
+        status_cache = {market: self._market_status(market)}
+        quotes = await self._get_quotes_batch(tickers, status_cache=status_cache)
+        current_market_status = status_cache[market]
+        board: list[MarketBoardItemOut] = []
+        for entry in entries:
+            quote = quotes.get(entry["ticker"])
+            if not quote and self.enable_mock_fallback:
+                quote = await self.mock.get_quote(entry["ticker"])
+            if not quote:
+                continue
+            board.append(
+                MarketBoardItemOut(
+                    ticker=entry["ticker"],
+                    name=quote.name or entry["name"],
+                    market=market,
+                    price=quote.price,
+                    change_pct=quote.change_pct,
+                    volume=quote.volume,
+                    market_status=current_market_status,
+                )
+            )
+        snapshot = MarketBoardSnapshotOut(items=board, updated_at=datetime.now(timezone.utc))
+        await _redis_setex_safe(
+            self.redis,
+            cache_key,
+            BOARD_CACHE_TTL,
+            json.dumps(snapshot.model_dump(mode="json")),
+        )
+        return snapshot
+
+    async def _build_market_overview(self, refresh: bool = False) -> MarketOverviewOut:
+        indices, us_board, cn_board, hk_board = await asyncio.gather(
+            self.get_all_indices(refresh=refresh),
+            self.get_market_board("us", refresh=refresh),
+            self.get_market_board("cn", refresh=refresh),
+            self.get_market_board("hk", refresh=refresh),
+        )
+        return MarketOverviewOut(
+            indices=indices,
+            boards={"us": us_board.items, "cn": cn_board.items, "hk": hk_board.items},
+            markets=[
+                self._build_market_summary("us", "美股", us_board.items),
+                self._build_market_summary("cn", "A 股", cn_board.items),
+                self._build_market_summary("hk", "港股", hk_board.items),
+            ],
+            updated_at=max(us_board.updated_at, cn_board.updated_at, hk_board.updated_at),
+        )
+
+    async def _store_market_overview(self, cache_key: str, overview: MarketOverviewOut) -> None:
+        await _redis_setex_safe(
+            self.redis,
+            cache_key,
+            OVERVIEW_CACHE_TTL,
+            json.dumps(overview.model_dump(mode="json")),
+        )
+        self._set_shadow_cache(cache_key, overview)
+
+    async def _build_and_store_market_overview(
+        self,
+        cache_key: str,
+        *,
+        refresh: bool,
+    ) -> MarketOverviewOut:
+        overview = await self._build_market_overview(refresh=refresh)
+        await self._store_market_overview(cache_key, overview)
+        return overview
+
+    async def _refresh_market_overview_cache(self) -> None:
+        cache_key = f"market:overview:{MARKET_CACHE_VERSION}"
+        overview = await self._build_market_overview(refresh=True)
+        await self._store_market_overview(cache_key, overview)
+
+    def _ensure_background_refresh(
+        self,
+        cache_key: str,
+        refresh_factory: Callable[[], Awaitable[None]],
+    ) -> None:
+        task = self._background_refresh_tasks.get(cache_key)
+        if task and not task.done():
+            return
+
+        async def runner() -> None:
+            try:
+                await refresh_factory()
+            except Exception as exc:
+                logger.warning("Background refresh failed for %s: %s", cache_key, exc)
+            finally:
+                current = self._background_refresh_tasks.get(cache_key)
+                if current is asyncio.current_task():
+                    self._background_refresh_tasks.pop(cache_key, None)
+
+        self._background_refresh_tasks[cache_key] = asyncio.create_task(runner())
+
+    async def _run_singleflight(
+        self,
+        cache_key: str,
+        factory: Callable[[], Awaitable[object]],
+    ):
+        task = self._singleflight_tasks.get(cache_key)
+        if task and not task.done():
+            return await asyncio.shield(task)
+
+        async def runner():
+            try:
+                return await factory()
+            finally:
+                current = self._singleflight_tasks.get(cache_key)
+                if current is asyncio.current_task():
+                    self._singleflight_tasks.pop(cache_key, None)
+
+        task = asyncio.create_task(runner())
+        self._singleflight_tasks[cache_key] = task
+        return await asyncio.shield(task)
+
+    def _get_shadow_cache(self, cache_key: str, model_cls):
+        cached = self._shadow_cache.get(cache_key)
+        if not cached:
+            return None
+
+        cached_at, payload = cached
+        now = asyncio.get_running_loop().time()
+        if now - cached_at > SHADOW_CACHE_TTL_SECONDS:
+            self._shadow_cache.pop(cache_key, None)
+            return None
+
+        return payload if isinstance(payload, model_cls) else None
+
+    def _set_shadow_cache(self, cache_key: str, payload: object) -> None:
+        self._shadow_cache[cache_key] = (asyncio.get_running_loop().time(), payload)
+
+    def _market_status(
+        self,
+        market: str,
+        status_cache: dict[str, str] | None = None,
+    ) -> str:
+        if status_cache is not None:
+            cached_status = status_cache.get(market)
+            if cached_status is not None:
+                return cached_status
+
+        market_status = self.market_calendar.status(market)
+        if status_cache is not None:
+            status_cache[market] = market_status
+        return market_status
+
+    def _resolve_market_statuses(self, markets) -> dict[str, str]:
+        resolved: dict[str, str] = {}
+        for market in markets:
+            if market not in resolved:
+                resolved[market] = self.market_calendar.status(market)
+        return resolved
 
     async def _load_cached_list(self, cache_key: str, model_cls):
         raw = await _redis_get_safe(self.redis, cache_key)

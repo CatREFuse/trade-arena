@@ -15,7 +15,12 @@ from app.routers.agents import record_snapshot
 router = APIRouter(prefix="/api/trade", tags=["trade"])
 
 
-async def _record_account_snapshot(db: AsyncSession, account_id: str, redis):
+async def _record_account_snapshot(
+    db: AsyncSession,
+    account_id: str,
+    redis,
+    market_svc: MarketDataService | None = None,
+):
     """记录账户资产快照"""
     from sqlalchemy import select
     from decimal import Decimal
@@ -31,11 +36,14 @@ async def _record_account_snapshot(db: AsyncSession, account_id: str, redis):
     positions = positions.scalars().all()
 
     # 计算持仓市值
-    market_svc = MarketDataService(redis)
+    market_svc = market_svc or MarketDataService(redis)
+    quote_map = await market_svc.get_quotes_batch([pos.ticker for pos in positions])
     position_value = Decimal("0")
     for pos in positions:
         try:
-            quote = await market_svc.get_quote(pos.ticker)
+            quote = quote_map.get(pos.ticker)
+            if quote is None:
+                raise LookupError(pos.ticker)
             position_value += pos.shares * quote.price
         except Exception:
             # 如果行情获取失败，使用成本价
@@ -77,7 +85,7 @@ async def buy(
     _resolve_account_id(req, account)
 
     redis = request.app.state.redis
-    market_svc = MarketDataService(redis)
+    market_svc = getattr(request.app.state, "market_data_service", None) or MarketDataService(redis)
     quote = await market_svc.get_quote(req.ticker.upper())
 
     req.ticker = req.ticker.upper()
@@ -87,7 +95,7 @@ async def buy(
     await db.commit()
 
     # 记录资产快照
-    await _record_account_snapshot(db, req.account_id, redis)
+    await _record_account_snapshot(db, req.account_id, redis, market_svc)
     await db.commit()
 
     event_svc = EventService(redis)
@@ -117,7 +125,7 @@ async def sell(
     _resolve_account_id(req, account)
 
     redis = request.app.state.redis
-    market_svc = MarketDataService(redis)
+    market_svc = getattr(request.app.state, "market_data_service", None) or MarketDataService(redis)
     quote = await market_svc.get_quote(req.ticker.upper())
 
     req.ticker = req.ticker.upper()
@@ -127,7 +135,7 @@ async def sell(
     await db.commit()
 
     # 记录资产快照
-    await _record_account_snapshot(db, req.account_id, redis)
+    await _record_account_snapshot(db, req.account_id, redis, market_svc)
     await db.commit()
 
     event_svc = EventService(redis)

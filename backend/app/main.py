@@ -22,13 +22,14 @@ from app.routers import (
     admin,
 )
 from app.services.market_data import MarketDataService
+from app.services.market_providers import close_shared_http_clients
 
 logger = logging.getLogger(__name__)
 
 
 async def _warm_market_cache(app: FastAPI) -> None:
     try:
-        service = MarketDataService(app.state.redis)
+        service = app.state.market_data_service
         await service.get_market_overview()
         logger.info("Market cache warmed")
     except asyncio.CancelledError:
@@ -43,11 +44,19 @@ async def lifespan(app: FastAPI):
     app.state.redis = aioredis.from_url(
         settings.redis_url, decode_responses=False
     )
-    try:
-        await asyncio.wait_for(_warm_market_cache(app), timeout=6)
-    except asyncio.TimeoutError:
-        logger.warning("Market cache warm-up timed out")
+    app.state.market_data_service = MarketDataService(app.state.redis)
+    app.state.market_cache_warm_task = asyncio.create_task(_warm_market_cache(app))
     yield
+    warm_task = getattr(app.state, "market_cache_warm_task", None)
+    if warm_task:
+        warm_task.cancel()
+        try:
+            await warm_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+    await close_shared_http_clients()
     # Shutdown: 关闭 Redis 连接
     await app.state.redis.aclose()
 

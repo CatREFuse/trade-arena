@@ -55,14 +55,21 @@ MARKET_RULES: dict[str, MarketRule] = {
 class MarketCalendarService:
     """统一市场交易时段校验（严格模式优先使用 exchange_calendars）。"""
 
+    STATUS_CACHE_TTL_SECONDS = 15
+
     def __init__(self):
         self._calendars: dict[str, object] = {}
+        self._status_cache: dict[str, tuple[float, bool]] = {}
 
     def status(self, market: str, now_utc: datetime | None = None) -> str:
         return "open" if self.is_trade_open(market, now_utc=now_utc) else "closed"
 
     def is_trade_open(self, market: str, now_utc: datetime | None = None) -> bool:
         market = market.lower()
+        if now_utc is None:
+            cached_status = self._get_cached_status(market)
+            if cached_status is not None:
+                return cached_status
         now = self._normalize_utc(now_utc)
         rule = self._rule(market)
         if rule is None:
@@ -71,11 +78,17 @@ class MarketCalendarService:
         calendar = self._calendar(market)
         if calendar is not None and pd is not None:
             try:
-                return bool(calendar.is_open_on_minute(pd.Timestamp(now)))
+                is_open = bool(calendar.is_open_on_minute(pd.Timestamp(now)))
+                if now_utc is None:
+                    self._set_cached_status(market, is_open)
+                return is_open
             except Exception as exc:  # pragma: no cover - 运行时兜底
                 logger.warning("calendar is_open_on_minute failed for %s: %s", market, exc)
 
-        return self._is_open_by_clock(rule, now)
+        is_open = self._is_open_by_clock(rule, now)
+        if now_utc is None:
+            self._set_cached_status(market, is_open)
+        return is_open
 
     def next_open_at(self, market: str, now_utc: datetime | None = None) -> datetime | None:
         market = market.lower()
@@ -127,6 +140,21 @@ class MarketCalendarService:
                 logger.warning("load exchange calendar failed for %s: %s", market, exc)
                 self._calendars[market] = None
         return self._calendars.get(market)
+
+    def _get_cached_status(self, market: str) -> bool | None:
+        cached = self._status_cache.get(market)
+        if not cached:
+            return None
+
+        cached_at, is_open = cached
+        now = datetime.now(timezone.utc).timestamp()
+        if now - cached_at > self.STATUS_CACHE_TTL_SECONDS:
+            self._status_cache.pop(market, None)
+            return None
+        return is_open
+
+    def _set_cached_status(self, market: str, is_open: bool) -> None:
+        self._status_cache[market] = (datetime.now(timezone.utc).timestamp(), is_open)
 
     @staticmethod
     def _normalize_utc(now_utc: datetime | None) -> datetime:

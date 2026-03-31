@@ -24,6 +24,7 @@
 
 ### 我要改功能并本地验证
 
+- `docs/junior-dev-ops-handbook.md`
 - `docs/developer-handbook.md`
 - `docs/ops-runbook-local-development-and-test-server.md`
 - `docs/testing-process-manual.md`
@@ -47,11 +48,19 @@
 - `scripts/opsctl.sh`：统一运维入口（deploy/migrate/restart/status/logs/smoke/doctor）。
 - `scripts/ops_http.sh`：远程 HTTP 运维入口（调用 `/ops/*`，支持 `--wait` 等待 job 完成）。
 - `scripts/service_ctl.sh`：统一启停脚本（`start|stop|restart|status`）。
+- `scripts/dev_up.sh`：开发环境一键启动。
+- `scripts/dev_restart.sh`：开发环境一键重启。
+- `scripts/dev_down.sh`：开发环境一键停止。
+- `scripts/dev_check.sh`：开发环境一键检查。
+- `scripts/prod_build_check.sh`：生产构建前检查。
+- `scripts/docker_up.sh`：依赖容器一键启动。
+- `scripts/docker_down.sh`：依赖容器一键停止。
 - `scripts/dev_self_check.sh`：本地开发自检。
 - `scripts/online_regression.sh`：线上快速回归。
 - `webhook/deploy.sh`：服务器部署脚本（含开始/结束 webhook 通知）。
 - `webhook/main.py`：GitHub Webhook 入口服务。
 - `docs/ops-automation-manual.md`：人类与 Agent 共读的运维自动化手册。
+- `docs/junior-dev-ops-handbook.md`：面向初级开发者的运维上手手册。
 - `.env.ops.example`：运维网关环境变量模板（`WEBHOOK_SECRET`、`OPS_API_KEY` 等）。
 
 ## 4. 文档维护规则

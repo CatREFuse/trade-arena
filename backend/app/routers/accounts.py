@@ -44,14 +44,17 @@ async def get_portfolio(
     positions = result.scalars().all()
 
     redis = request.app.state.redis
-    market_svc = MarketDataService(redis)
+    market_svc = getattr(request.app.state, "market_data_service", None) or MarketDataService(redis)
+    quote_map = await market_svc.get_quotes_batch([pos.ticker for pos in positions])
 
     pos_out: list[PositionOut] = []
     for pos in positions:
         current_price: Optional[Decimal] = None
         pnl: Optional[Decimal] = None
         try:
-            quote = await market_svc.get_quote(pos.ticker)
+            quote = quote_map.get(pos.ticker)
+            if quote is None:
+                raise LookupError(pos.ticker)
             current_price = quote.price
             pnl = (current_price - pos.avg_cost) * pos.shares
         except Exception:

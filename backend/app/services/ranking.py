@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from decimal import Decimal
 from typing import Optional
 
@@ -16,16 +15,22 @@ CNY_TO_USD = Decimal("0.138889")  # 1 / 7.2
 
 
 class RankingService:
-    def __init__(self, db: AsyncSession, redis: Redis):
+    def __init__(self, db: AsyncSession, redis: Redis, market_svc: MarketDataService | None = None):
         self.db = db
         self.redis = redis
-        self.market_svc = MarketDataService(redis)
+        self.market_svc = market_svc or MarketDataService(redis)
 
-    async def _calc_position_value(self, positions: list[Position]) -> Decimal:
+    async def _calc_position_value(
+        self,
+        positions: list[Position],
+        quote_map: dict[str, object | None],
+    ) -> Decimal:
         total = Decimal("0")
         for pos in positions:
             try:
-                quote = await self.market_svc.get_quote(pos.ticker)
+                quote = quote_map.get(pos.ticker)
+                if quote is None:
+                    raise LookupError(pos.ticker)
                 total += pos.shares * quote.price
             except Exception:
                 total += pos.shares * pos.avg_cost
@@ -48,6 +53,10 @@ class RankingService:
         for pos in all_positions:
             pos_by_account.setdefault(pos.account_id, []).append(pos)
 
+        quote_map = await self.market_svc.get_quotes_batch(
+            list({pos.ticker for pos in all_positions})
+        )
+
         # 按 agent_id 分组 accounts
         agent_accounts: dict[str, list[Account]] = {}
         for acc in accounts:
@@ -63,7 +72,7 @@ class RankingService:
 
             for acc in accs:
                 positions = pos_by_account.get(acc.id, [])
-                pos_value = await self._calc_position_value(positions)
+                pos_value = await self._calc_position_value(positions, quote_map)
                 asset = acc.cash + pos_value
 
                 if acc.market == "us":

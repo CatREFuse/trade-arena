@@ -521,7 +521,8 @@ interface HotActivityItem {
   agentSampleLabel: string
 }
 
-const REFRESH_INTERVAL_MS = 30000
+const REFRESH_INTERVAL_MS = 60000
+const FEED_LIMIT = 120
 
 const marketOptions = [
   { label: '美股', value: 'us' },
@@ -547,6 +548,8 @@ const selectedMarket = shallowRef<MarketKey>('us')
 const panelMode = shallowRef<PanelMode>('movers')
 const sortDirection = shallowRef<SortDirection>('desc')
 const isLoading = ref(false)
+const hasLoadedFeed = shallowRef(false)
+const isPageVisible = shallowRef(true)
 
 // Pagination state
 const ITEMS_PER_PAGE = 15
@@ -586,11 +589,13 @@ async function fetchOverview() {
 }
 
 async function fetchFeed() {
+  if (panelMode.value !== 'activity') return
   try {
-    const response = await fetch('/api/feed?limit=300')
+    const response = await fetch(`/api/feed?limit=${FEED_LIMIT}`)
     if (!response.ok) throw new Error('Failed to fetch feed')
     const data = await response.json()
     feedItems.value = data
+    hasLoadedFeed.value = true
   } catch (error) {
     console.error('Error fetching feed:', error)
   }
@@ -598,28 +603,56 @@ async function fetchFeed() {
 
 async function fetchAll() {
   isLoading.value = true
-  await Promise.all([fetchOverview(), fetchFeed()])
+  const tasks = [fetchOverview()]
+  if (panelMode.value === 'activity') {
+    tasks.push(fetchFeed())
+  }
+  await Promise.all(tasks)
   isLoading.value = false
 }
 
-// Initial fetch on client
-onMounted(() => {
-  fetchAll()
-})
-
 // Auto refresh
 let refreshTimer: number | null = null
+let removeVisibilityListener: (() => void) | null = null
 onMounted(() => {
+  isPageVisible.value = !document.hidden
+  const handleVisibilityChange = () => {
+    isPageVisible.value = !document.hidden
+    if (!isPageVisible.value) return
+    void fetchOverview()
+    if (panelMode.value === 'activity') {
+      void fetchFeed()
+    }
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  removeVisibilityListener = () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+
+  void fetchOverview()
+  if (panelMode.value === 'activity') {
+    void fetchFeed()
+  }
+
   refreshTimer = window.setInterval(() => {
-    fetchOverview()
-    fetchFeed()
+    if (!isPageVisible.value) return
+    void fetchOverview()
+    if (panelMode.value === 'activity') {
+      void fetchFeed()
+    }
   }, REFRESH_INTERVAL_MS)
 })
 
 onBeforeUnmount(() => {
+  removeVisibilityListener?.()
+  removeVisibilityListener = null
   if (refreshTimer !== null) {
     window.clearInterval(refreshTimer)
     refreshTimer = null
+  }
+})
+
+watch(panelMode, (mode) => {
+  if (mode === 'activity' && !hasLoadedFeed.value) {
+    void fetchFeed()
   }
 })
 

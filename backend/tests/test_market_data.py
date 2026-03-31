@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -7,7 +8,7 @@ from decimal import Decimal
 import pytest
 from fastapi import HTTPException
 
-from app.schemas import IndexQuoteOut, MarketBoardItemOut, MarketBoardSnapshotOut, QuoteOut
+from app.schemas import IndexQuoteOut, MarketBoardItemOut, MarketBoardSnapshotOut, MarketOverviewOut, QuoteOut
 from app.services import market_data as md
 from app.services.market_providers import AkshareProvider, QuoteData
 
@@ -143,7 +144,7 @@ async def test_get_market_board_uses_calendar_status_over_provider_status(fake_r
     service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
     monkeypatch.setattr(service.market_calendar, "status", lambda _market: "closed")
 
-    async def fake_batch_quotes(tickers: list[str]):
+    async def fake_batch_quotes(tickers: list[str], *, status_cache=None):
         return {
             ticker: QuoteData(
                 ticker=ticker,
@@ -208,7 +209,7 @@ async def test_get_market_board_batches_large_universe_and_falls_back(fake_redis
     batch_calls: list[tuple[str, ...]] = []
     fallback_calls: list[str] = []
 
-    async def fake_batch_quotes(tickers: list[str]):
+    async def fake_batch_quotes(tickers: list[str], *, status_cache=None):
         batch_calls.append(tuple(tickers))
         quotes = {}
         for index, ticker in enumerate(tickers):
@@ -303,6 +304,35 @@ async def test_get_market_overview_caches_aggregate_snapshot(fake_redis, monkeyp
     assert refreshed.updated_at is not None
     assert calls["indices"] == 2
     assert calls["boards"][-3:] == [("us", True), ("cn", True), ("hk", True)]
+
+
+@pytest.mark.asyncio
+async def test_refresh_requests_share_singleflight_build(fake_redis, monkeypatch):
+    service = md.MarketDataService(fake_redis)
+    build_calls = 0
+
+    async def fake_build_and_store(cache_key: str, *, refresh: bool):
+        nonlocal build_calls
+        build_calls += 1
+        await asyncio.sleep(0.05)
+        overview = MarketOverviewOut(
+            indices=[],
+            boards={"us": [], "cn": [], "hk": []},
+            markets=[],
+            updated_at=datetime.now(timezone.utc),
+        )
+        await service._store_market_overview(cache_key, overview)
+        return overview
+
+    monkeypatch.setattr(service, "_build_and_store_market_overview", fake_build_and_store)
+
+    first, second = await asyncio.gather(
+        service.get_market_overview(refresh=True),
+        service.get_market_overview(refresh=True),
+    )
+
+    assert build_calls == 1
+    assert first.updated_at == second.updated_at
 
 
 @pytest.mark.asyncio

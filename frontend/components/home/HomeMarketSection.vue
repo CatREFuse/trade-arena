@@ -313,7 +313,7 @@ const {
   refresh: refreshFeedItems,
 } = useLazyFetch<FeedItem[]>('/api/feed', {
   key: 'home-market-activity-feed',
-  query: { limit: 160 },
+  query: { limit: 80 },
   default: () => [],
   immediate: false,
   deep: false,

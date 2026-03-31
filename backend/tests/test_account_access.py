@@ -43,6 +43,19 @@ def _read_hosted_skill_version() -> str:
     return (match.group("dq") or match.group("sq") or match.group("raw")).strip()
 
 
+def _mock_quote_map(*tickers: str) -> dict[str, QuoteOut]:
+    return {
+        ticker: QuoteOut(
+            ticker=ticker,
+            price=Decimal("198.50"),
+            change_pct=1.25,
+            volume=1000,
+            market_status="open",
+        )
+        for ticker in tickers
+    }
+
+
 @pytest.mark.asyncio
 async def test_shared_token_lists_both_accounts_via_me(client, seeded_accounts):
     response = await client.get(
@@ -65,16 +78,10 @@ async def test_shared_token_can_access_primary_account_routes(
 ):
     _prefer_account_order(monkeypatch, descending=True)
 
-    async def fake_get_quote(self, ticker: str):
-        return QuoteOut(
-            ticker=ticker,
-            price=Decimal("198.50"),
-            change_pct=1.25,
-            volume=1000,
-            market_status="open",
-        )
+    async def fake_get_quotes_batch(self, tickers: list[str]):
+        return _mock_quote_map(*tickers)
 
-    monkeypatch.setattr(md.MarketDataService, "get_quote", fake_get_quote)
+    monkeypatch.setattr(md.MarketDataService, "get_quotes_batch", fake_get_quotes_batch)
 
     headers = {"Authorization": f"Bearer {seeded_accounts.token}"}
 
@@ -123,16 +130,10 @@ async def test_shared_token_can_access_secondary_account_routes(
 ):
     _prefer_account_order(monkeypatch, descending=False)
 
-    async def fake_get_quote(self, ticker: str):
-        return QuoteOut(
-            ticker=ticker,
-            price=Decimal("198.50"),
-            change_pct=1.25,
-            volume=1000,
-            market_status="open",
-        )
+    async def fake_get_quotes_batch(self, tickers: list[str]):
+        return _mock_quote_map(*tickers)
 
-    monkeypatch.setattr(md.MarketDataService, "get_quote", fake_get_quote)
+    monkeypatch.setattr(md.MarketDataService, "get_quotes_batch", fake_get_quotes_batch)
 
     headers = {"Authorization": f"Bearer {seeded_accounts.token}"}
 

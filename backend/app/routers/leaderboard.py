@@ -25,7 +25,8 @@ async def leaderboard(
     """获取排行榜"""
     try:
         redis = request.app.state.redis
-        svc = RankingService(db, redis)
+        market_svc = getattr(request.app.state, "market_data_service", None)
+        svc = RankingService(db, redis, market_svc=market_svc)
         return await svc.get_leaderboard(market)
     except SQLAlchemyError as e:
         logger.error(f"[GET /api/leaderboard] DB_ERROR: {e}")
