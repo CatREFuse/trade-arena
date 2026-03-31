@@ -17,6 +17,8 @@
 
 ## 2. 场景化索引
 
+本地开发与联调相关说明统一维护在 `docs/junior-dev-ops-handbook.md`，不再新增平行的本地运维手册。
+
 ### 我刚接手项目
 
 - `docs/developer-handbook.md`
