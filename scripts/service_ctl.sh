@@ -91,26 +91,23 @@ run_compose() {
   fi
 
   if command_exists docker-compose; then
-    if [[ "${DOCKER_HOST:-}" == http+docker://* ]]; then
-      if [[ -S /var/run/docker.sock ]]; then
-        docker_sock="/var/run/docker.sock"
-      elif [[ -S /run/docker.sock ]]; then
-        docker_sock="/run/docker.sock"
-      fi
-
-      if [[ -n "$docker_sock" ]]; then
-        log "DOCKER_HOST uses unsupported scheme for docker-compose v1, switching to unix://$docker_sock"
-        env DOCKER_HOST="unix://$docker_sock" DOCKER_TLS_VERIFY= DOCKER_CERT_PATH= \
-          docker-compose -f "$compose_file" "$@"
-      else
-        log "DOCKER_HOST uses unsupported scheme for docker-compose v1, unsetting DOCKER_HOST"
-        env DOCKER_HOST= DOCKER_TLS_VERIFY= DOCKER_CERT_PATH= \
-          docker-compose -f "$compose_file" "$@"
-      fi
-      return
+    # docker-compose v1 often breaks with context-based http+docker endpoints.
+    # For this project we always target the local daemon, so force a local context.
+    if [[ -S /var/run/docker.sock ]]; then
+      docker_sock="/var/run/docker.sock"
+    elif [[ -S /run/docker.sock ]]; then
+      docker_sock="/run/docker.sock"
     fi
 
-    docker-compose -f "$compose_file" "$@"
+    if [[ -n "$docker_sock" ]]; then
+      log "Using docker-compose v1 with local socket: unix://$docker_sock"
+      env DOCKER_CONTEXT= DOCKER_HOST="unix://$docker_sock" DOCKER_TLS_VERIFY= DOCKER_CERT_PATH= \
+        docker-compose -f "$compose_file" "$@"
+    else
+      log "Using docker-compose v1 with cleared Docker context variables"
+      env DOCKER_CONTEXT= DOCKER_HOST= DOCKER_TLS_VERIFY= DOCKER_CERT_PATH= \
+        docker-compose -f "$compose_file" "$@"
+    fi
     return
   fi
 
