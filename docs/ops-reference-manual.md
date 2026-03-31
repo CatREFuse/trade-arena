@@ -81,9 +81,11 @@ bash scripts/opsctl.sh init-secrets --output .env.ops.local
 - 提交信息（部署前后 commit）
 - 开始/结束时间（UTC）
 - 退出码与结果（成功/失败）
+- 失败上下文（`fail_context`，包含失败行号与失败命令）
 
 实现细节：
 - 使用 `urlencode()` 对整个信息文本做 URL 编码，确保特殊字符可安全传输。
+- 控制台路由检查支持重试，降低启动瞬态导致的误报失败。
 
 ## 3. 部署前后操作清单
 

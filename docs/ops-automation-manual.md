@@ -81,6 +81,8 @@ Ops API（同样需要 `Authorization: Bearer <OPS_API_KEY>`）：
 - `OPS_ALLOWED_BRANCHES`：允许部署的分支列表，例如 `main` 或 `main release`
 - `OPS_ENV`：`local|staging|prod`
 - `OPS_PROJECT_ROOT`：项目根目录（默认当前仓库）
+- `OPS_HTTP_CHECK_RETRIES`：部署后路由检查重试次数（默认 10）
+- `OPS_HTTP_CHECK_INTERVAL`：部署后路由检查重试间隔秒数（默认 2）
 
 建议先生成密钥文件：
 

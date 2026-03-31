@@ -9,11 +9,22 @@ PENDING_FILE="${OPS_PENDING_FILE:-/tmp/trade-arena-pending-deploy}"
 LOG_FILE="${OPS_DEPLOY_LOG:-/var/log/trade-arena-deploy.log}"
 NOTIFY_URL="${OPS_NOTIFY_URL:-}"
 ALLOWED_BRANCHES="${OPS_ALLOWED_BRANCHES:-main}"
+HTTP_CHECK_RETRIES="${OPS_HTTP_CHECK_RETRIES:-10}"
+HTTP_CHECK_INTERVAL="${OPS_HTTP_CHECK_INTERVAL:-2}"
 DEPLOY_START_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 DEPLOY_SUCCESS=0
 CURRENT_BRANCH="unknown"
 PRE_DEPLOY_COMMIT="unknown"
 POST_DEPLOY_COMMIT="unknown"
+LAST_ERROR_CMD=""
+LAST_ERROR_LINE="0"
+
+capture_error_context() {
+  LAST_ERROR_CMD="$BASH_COMMAND"
+  LAST_ERROR_LINE="$1"
+}
+
+trap 'capture_error_context "${LINENO}"' ERR
 
 urlencode() {
   python3 - "$1" <<'PY'
@@ -49,6 +60,29 @@ log_line() {
   printf '[%s] %s\n' "$(date)" "$1" | tee -a "$LOG_FILE"
 }
 
+wait_for_expected_status() {
+  local url="$1"
+  local expected_csv="$2"
+  local label="$3"
+  local expected_list
+  expected_list="$(printf '%s' "$expected_csv" | tr ',' ' ')"
+  local code=""
+
+  for ((i=1; i<=HTTP_CHECK_RETRIES; i++)); do
+    code="$(curl --noproxy '*' -s -o /dev/null -w "%{http_code}" "$url" || true)"
+    for expected in $expected_list; do
+      if [[ "$code" == "$expected" ]]; then
+        log_line "${label} check passed with status=${code} (attempt ${i}/${HTTP_CHECK_RETRIES})"
+        return 0
+      fi
+    done
+    sleep "$HTTP_CHECK_INTERVAL"
+  done
+
+  log_line "${label} check failed with status=${code} after ${HTTP_CHECK_RETRIES} attempts"
+  return 1
+}
+
 if [[ -z "$BRANCH" ]]; then
   log_line "Error: No branch specified"
   exit 1
@@ -70,12 +104,15 @@ log_line "Starting deployment for branch: $BRANCH"
 cleanup() {
   local exit_code=$?
   local deploy_result="failed"
+  local fail_context="none"
   if [[ "$DEPLOY_SUCCESS" == "1" && "$exit_code" -eq 0 ]]; then
     deploy_result="succeeded"
+  elif [[ -n "$LAST_ERROR_CMD" ]]; then
+    fail_context="line=${LAST_ERROR_LINE},cmd=${LAST_ERROR_CMD}"
   fi
   local deploy_end_time
   deploy_end_time="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-  send_notify "stage=end(${deploy_result}) branch=${BRANCH} current_branch=${CURRENT_BRANCH} commit=${PRE_DEPLOY_COMMIT}->${POST_DEPLOY_COMMIT} start=${DEPLOY_START_TIME} end=${deploy_end_time} exit_code=${exit_code}"
+  send_notify "stage=end(${deploy_result}) branch=${BRANCH} current_branch=${CURRENT_BRANCH} commit=${PRE_DEPLOY_COMMIT}->${POST_DEPLOY_COMMIT} start=${DEPLOY_START_TIME} end=${deploy_end_time} exit_code=${exit_code} fail_context=${fail_context}"
   rm -f "$LOCK_FILE"
   log_line "Deployment finished"
   return "$exit_code"
@@ -135,26 +172,30 @@ for i in {1..20}; do
   fi
   if [[ "$i" -eq 20 ]]; then
     log_line "Frontend failed health check after startup"
+    LAST_ERROR_CMD="frontend_health_timeout"
+    LAST_ERROR_LINE="${LINENO}"
     exit 1
   fi
   sleep 2
 done
 
 log_line "Verifying console routes..."
-CONSOLE_LOGIN_CODE="$(curl --noproxy '*' -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:3000/console/login")"
-if [[ "$CONSOLE_LOGIN_CODE" != "200" && "$CONSOLE_LOGIN_CODE" != "302" ]]; then
-  log_line "/console/login check failed with status: $CONSOLE_LOGIN_CODE"
+if ! wait_for_expected_status "http://127.0.0.1:3000/console/login" "200,302" "/console/login"; then
+  LAST_ERROR_CMD="console_login_status_check"
+  LAST_ERROR_LINE="${LINENO}"
   exit 1
 fi
 
-ADMIN_AUTH_STATUS_CODE="$(curl --noproxy '*' -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:3000/api/admin/auth/status")"
-if [[ "$ADMIN_AUTH_STATUS_CODE" != "200" ]]; then
-  log_line "/api/admin/auth/status check failed with status: $ADMIN_AUTH_STATUS_CODE"
+if ! wait_for_expected_status "http://127.0.0.1:3000/api/admin/auth/status" "200,301,302,401" "/api/admin/auth/status"; then
+  LAST_ERROR_CMD="admin_auth_status_check"
+  LAST_ERROR_LINE="${LINENO}"
   exit 1
 fi
 
 if pgrep -f "nuxt dev" >/dev/null; then
   log_line "Unexpected nuxt dev process detected after deployment"
+  LAST_ERROR_CMD="unexpected_nuxt_dev_process"
+  LAST_ERROR_LINE="${LINENO}"
   exit 1
 fi
 
