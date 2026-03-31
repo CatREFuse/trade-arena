@@ -111,7 +111,8 @@ run_compose() {
     return
   fi
 
-  fail "No usable compose command found. Install Docker Compose plugin or docker-compose."
+  echo "[service_ctl] ERROR: No usable compose command found. Install Docker Compose plugin or docker-compose." >&2
+  return 1
 }
 
 choose_backend_python() {
@@ -199,6 +200,8 @@ wait_http() {
 }
 
 start_docker_if_needed() {
+  local compose_output=""
+
   if [[ "$START_DOCKER" != "1" ]]; then
     return
   fi
@@ -206,10 +209,23 @@ start_docker_if_needed() {
     fail "START_DOCKER=1 but neither docker nor docker-compose was found."
   fi
   log "Starting infra containers (compose up -d)..."
-  run_compose up -d
+  if ! compose_output="$(run_compose up -d 2>&1)"; then
+    if [[ "$compose_output" == *"Not supported URL scheme http+docker"* ]]; then
+      log "Compose failed with docker-python http+docker incompatibility. Continue startup without compose."
+      log "Tip: if PostgreSQL/Redis are already running, this is safe. Otherwise set START_DOCKER=0 and start dependencies manually."
+      return
+    fi
+    printf '%s\n' "$compose_output" >&2
+    fail "Failed to start infra containers via compose."
+  fi
+  if [[ -n "$compose_output" ]]; then
+    printf '%s\n' "$compose_output"
+  fi
 }
 
 stop_docker_if_needed() {
+  local compose_output=""
+
   if [[ "$STOP_DOCKER" != "1" ]]; then
     return
   fi
@@ -218,7 +234,17 @@ stop_docker_if_needed() {
     return
   fi
   log "Stopping infra containers (compose down)..."
-  run_compose down
+  if ! compose_output="$(run_compose down 2>&1)"; then
+    if [[ "$compose_output" == *"Not supported URL scheme http+docker"* ]]; then
+      log "Compose down failed with docker-python http+docker incompatibility, skipped."
+      return
+    fi
+    printf '%s\n' "$compose_output" >&2
+    fail "Failed to stop infra containers via compose."
+  fi
+  if [[ -n "$compose_output" ]]; then
+    printf '%s\n' "$compose_output"
+  fi
 }
 
 prepare_backend_if_needed() {
