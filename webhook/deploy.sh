@@ -44,10 +44,14 @@ git checkout "$BRANCH"
 git reset --hard "origin/$BRANCH"
 git clean -fd
 
-# 3. 安装后端依赖
+# 3. 安装后端依赖并运行数据库迁移
 echo "[$(date)] Installing backend dependencies..." | tee -a $LOG_FILE
 cd "$PROJECT_ROOT/backend"
 pip install -e . >> $LOG_FILE 2>&1 || pip install fastapi uvicorn sqlalchemy asyncpg alembic pydantic-settings redis sse-starlette yfinance httpx >> $LOG_FILE 2>&1
+
+echo "[$(date)] Running database migrations..." | tee -a $LOG_FILE
+source .venv/bin/activate
+alembic upgrade head >> $LOG_FILE 2>&1
 
 # 4. 安装前端依赖
 echo "[$(date)] Installing frontend dependencies..." | tee -a $LOG_FILE
