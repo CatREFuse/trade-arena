@@ -201,7 +201,13 @@ log_line "Switching to branch: $BRANCH"
 git fetch origin
 git checkout "$BRANCH"
 git reset --hard "origin/$BRANCH"
-git clean -fd
+# Keep runtime state, docker bind-mount data, and ops secrets on server.
+# Removing these paths can break PostgreSQL volume data or drop webhook credentials.
+git clean -fd \
+  -e data/ \
+  -e .runtime/ \
+  -e .env.ops.local \
+  -e .env.ops
 POST_DEPLOY_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 
 log_line "Installing backend dependencies..."
