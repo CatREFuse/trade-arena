@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs
 from uuid import uuid4
 
 import uvicorn
@@ -288,6 +289,25 @@ def _redact_text(text: str) -> str:
     return redacted
 
 
+def _parse_github_payload(body: bytes) -> dict[str, Any]:
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError as json_exc:
+        # GitHub can be configured with `application/x-www-form-urlencoded`,
+        # where the JSON payload is sent in `payload=<json>`.
+        try:
+            form_data = parse_qs(body.decode("utf-8"), keep_blank_values=False)
+        except UnicodeDecodeError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload") from exc
+        payload_values = form_data.get("payload")
+        if payload_values:
+            try:
+                return json.loads(payload_values[0])
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload") from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload") from json_exc
+
+
 async def _handle_github_push(
     request: Request,
     x_hub_signature_256: str,
@@ -301,10 +321,7 @@ async def _handle_github_push(
     if x_github_event != "push":
         return JSONResponse({"message": "Event ignored", "event": x_github_event})
 
-    try:
-        payload = json.loads(body)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload") from exc
+    payload = _parse_github_payload(body)
 
     ref = payload.get("ref", "")
     if not ref.startswith("refs/heads/"):

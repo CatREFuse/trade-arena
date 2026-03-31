@@ -34,6 +34,7 @@
    兼容入口仍为 `/webhook`，新推荐入口为 `/hooks/github/push`
 2. `webhook/main.py` 使用 `X-Hub-Signature-256` + `WEBHOOK_SECRET` 验签
    若分支不在 `OPS_ALLOWED_BRANCHES`（默认 `main`），请求会被忽略
+   Webhook 请求体兼容 `application/json` 与 `application/x-www-form-urlencoded`（`payload=<json>`）
 3. 网关创建 deploy job 并写入 `.runtime/ops/jobs/*.json` 与 `.runtime/ops/queue/*.queue`
 4. `scripts/opsctl.sh run-next-job` 消费队列并执行实际部署动作
 
