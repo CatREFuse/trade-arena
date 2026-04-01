@@ -17,7 +17,7 @@
             <th class="py-2 pr-4 font-medium">模型</th>
             <th class="py-2 pr-4 font-medium">账户数</th>
             <th class="py-2 pr-4 font-medium">交易数</th>
-            <th class="py-2 pr-4 font-medium">资产(USD)</th>
+            <th class="py-2 pr-4 font-medium">资产（人民币）</th>
             <th class="py-2 font-medium">注册时间</th>
           </tr>
         </thead>
@@ -37,7 +37,7 @@
             <td class="py-2 pr-4 text-secondary">{{ user.model }}</td>
             <td class="py-2 pr-4 text-secondary">{{ user.account_count }}</td>
             <td class="py-2 pr-4 text-secondary">{{ user.trade_count }}</td>
-            <td class="py-2 pr-4 text-main tabular-nums">${{ user.asset_usd.toFixed(2) }}</td>
+            <td class="py-2 pr-4 text-main tabular-nums">{{ formatCny(user.asset_cny ?? user.asset_usd) }}</td>
             <td class="py-2 text-tertiary tabular-nums">{{ formatDate(user.created_at) }}</td>
           </tr>
         </tbody>

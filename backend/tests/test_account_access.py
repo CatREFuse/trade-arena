@@ -12,6 +12,7 @@ import app.auth as auth_module
 from app.config import settings
 from app.models import Account
 from app.schemas import QuoteOut
+from app.services import fx as fx_module
 from app.services import market_data as md
 
 
@@ -57,7 +58,7 @@ def _mock_quote_map(*tickers: str) -> dict[str, QuoteOut]:
 
 
 @pytest.mark.asyncio
-async def test_shared_token_lists_both_accounts_via_me(client, seeded_accounts):
+async def test_shared_token_lists_market_accounts_via_me(client, seeded_accounts):
     response = await client.get(
         "/api/agents/me",
         headers={"Authorization": f"Bearer {seeded_accounts.token}"},
@@ -68,6 +69,7 @@ async def test_shared_token_lists_both_accounts_via_me(client, seeded_accounts):
     assert payload["agent_id"] == seeded_accounts.agent_id
     assert payload["accounts"]["us"]["id"] == seeded_accounts.us_account_id
     assert payload["accounts"]["cn"]["id"] == seeded_accounts.cn_account_id
+    assert payload["accounts"]["hk"]["id"] == seeded_accounts.hk_account_id
 
 
 @pytest.mark.asyncio
@@ -81,7 +83,15 @@ async def test_shared_token_can_access_primary_account_routes(
     async def fake_get_quotes_batch(self, tickers: list[str]):
         return _mock_quote_map(*tickers)
 
+    async def fake_get_rate_to_cny(self, market: str):
+        if market == "us":
+            return Decimal("7.20"), "USD/CNY", None
+        if market == "hk":
+            return Decimal("0.92"), "HKD/CNY", None
+        return Decimal("1"), "CNY/CNY", None
+
     monkeypatch.setattr(md.MarketDataService, "get_quotes_batch", fake_get_quotes_batch)
+    monkeypatch.setattr(fx_module.FXService, "get_rate_to_cny", fake_get_rate_to_cny)
 
     headers = {"Authorization": f"Bearer {seeded_accounts.token}"}
 
@@ -92,7 +102,8 @@ async def test_shared_token_can_access_primary_account_routes(
     account_payload = account_response.json()
     assert account_payload["id"] == seeded_accounts.us_account_id
     assert account_payload["market"] == "us"
-    assert account_payload["currency"] == "USD"
+    assert account_payload["currency"] == "CNY"
+    assert Decimal(str(account_payload["available_cash_cny"])) == Decimal(str(settings.total_starting_capital_cny))
 
     portfolio_response = await client.get(
         f"/api/accounts/{seeded_accounts.us_account_id}/portfolio",
@@ -100,16 +111,16 @@ async def test_shared_token_can_access_primary_account_routes(
     )
     assert portfolio_response.status_code == 200
     portfolio_payload = portfolio_response.json()
-    expected_usd_cash = (
-        Decimal(str(settings.total_starting_capital_cny))
-        / Decimal(str(settings.exchange_rate))
-    ).quantize(Decimal("0.01"))
-    assert Decimal(str(portfolio_payload["cash"])) == expected_usd_cash
+    assert Decimal(str(portfolio_payload["cash"])) == Decimal(str(settings.total_starting_capital_cny))
+    assert portfolio_payload["cash_currency"] == "CNY"
+    assert portfolio_payload["fx_pair"] == "USD/CNY"
+    assert Decimal(str(portfolio_payload["fx_rate"])) == Decimal("7.20")
     assert len(portfolio_payload["positions"]) == 1
     position = portfolio_payload["positions"][0]
     assert position["ticker"] == "AAPL"
-    assert Decimal(str(position["current_price"])) == Decimal("198.50")
+    assert Decimal(str(position["current_price"])) == Decimal("1429.20")
     assert Decimal(str(position["pnl"])) == Decimal("97.00")
+    assert Decimal(str(position["pnl_cny"])) == Decimal("698.40")
 
     trades_response = await client.get(
         f"/api/accounts/{seeded_accounts.us_account_id}/trades?limit=5",
@@ -133,7 +144,15 @@ async def test_shared_token_can_access_secondary_account_routes(
     async def fake_get_quotes_batch(self, tickers: list[str]):
         return _mock_quote_map(*tickers)
 
+    async def fake_get_rate_to_cny(self, market: str):
+        if market == "us":
+            return Decimal("7.20"), "USD/CNY", None
+        if market == "hk":
+            return Decimal("0.92"), "HKD/CNY", None
+        return Decimal("1"), "CNY/CNY", None
+
     monkeypatch.setattr(md.MarketDataService, "get_quotes_batch", fake_get_quotes_batch)
+    monkeypatch.setattr(fx_module.FXService, "get_rate_to_cny", fake_get_rate_to_cny)
 
     headers = {"Authorization": f"Bearer {seeded_accounts.token}"}
 
@@ -153,15 +172,11 @@ async def test_shared_token_can_access_secondary_account_routes(
     )
     assert portfolio_response.status_code == 200
     portfolio_payload = portfolio_response.json()
-    expected_usd_cash = (
-        Decimal(str(settings.total_starting_capital_cny))
-        / Decimal(str(settings.exchange_rate))
-    ).quantize(Decimal("0.01"))
-    expected_cny_cash = (
-        Decimal(str(settings.total_starting_capital_cny))
-        - (expected_usd_cash * Decimal(str(settings.exchange_rate)))
-    ).quantize(Decimal("0.01"))
+    expected_cny_cash = Decimal(str(settings.total_starting_capital_cny))
     assert Decimal(str(portfolio_payload["cash"])) == expected_cny_cash
+    assert portfolio_payload["cash_currency"] == "CNY"
+    assert portfolio_payload["fx_pair"] == "CNY/CNY"
+    assert Decimal(str(portfolio_payload["fx_rate"])) == Decimal("1")
     assert portfolio_payload["positions"] == []
 
     trades_response = await client.get(

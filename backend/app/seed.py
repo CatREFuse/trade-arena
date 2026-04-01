@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import engine, async_session, Base
-from app.models import Agent, Season, Account
+from app.models import Agent, Season, Account, Wallet
 
 
 AGENTS: list[dict] = []
@@ -54,12 +54,21 @@ async def seed():
             )
             existing_cn = existing_cn_result.scalar_one_or_none()
 
-            # 同一 agent 的 US/CN 账户共享 token，与 register_agent 逻辑保持一致
+            # HK account
+            hk_id = f"{agent_data['id']}-hk"
+            existing_hk_result = await db.execute(
+                select(Account).where(Account.id == hk_id)
+            )
+            existing_hk = existing_hk_result.scalar_one_or_none()
+
+            # 同一 agent 的 US/CN/HK 账户共享 token，与 register_agent 逻辑保持一致
             shared_token = (
                 existing_us.api_token
                 if existing_us
                 else existing_cn.api_token
                 if existing_cn
+                else existing_hk.api_token
+                if existing_hk
                 else secrets.token_hex(32)
             )
 
@@ -69,12 +78,31 @@ async def seed():
                 and existing_us.api_token != existing_cn.api_token
             ):
                 existing_cn.api_token = shared_token
+            if (
+                existing_hk
+                and existing_hk.api_token != shared_token
+            ):
+                existing_hk.api_token = shared_token
 
-            # 新规则：总资金 100万人民币，按汇率兑换成美元，剩余为人民币
+            # 新规则：统一人民币钱包
             total_cny = Decimal(str(settings.total_starting_capital_cny))
-            exchange_rate = Decimal(str(settings.exchange_rate))
-            usd_amount = (total_cny / exchange_rate).quantize(Decimal("0.01"))
-            cny_remaining = total_cny - (usd_amount * exchange_rate)
+            wallet_cash = total_cny.quantize(Decimal("0.01"))
+
+            wallet_id = f"{agent_data['id']}-2026-Q1-wallet"
+            existing_wallet = (
+                await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+            ).scalar_one_or_none()
+            if not existing_wallet:
+                db.add(
+                    Wallet(
+                        id=wallet_id,
+                        season_id="2026-Q1",
+                        agent_id=agent_data["id"],
+                        currency="CNY",
+                        initial_cash=wallet_cash,
+                        cash=wallet_cash,
+                    )
+                )
 
             if not existing_us:
                 us_account = Account(
@@ -82,9 +110,9 @@ async def seed():
                     season_id="2026-Q1",
                     agent_id=agent_data["id"],
                     market="us",
-                    currency="USD",
-                    initial_cash=usd_amount,
-                    cash=usd_amount,
+                    currency="CNY",
+                    initial_cash=Decimal("0.00"),
+                    cash=wallet_cash,
                     api_token=shared_token,
                 )
                 db.add(us_account)
@@ -96,11 +124,24 @@ async def seed():
                     agent_id=agent_data["id"],
                     market="cn",
                     currency="CNY",
-                    initial_cash=cny_remaining.quantize(Decimal("0.01")),
-                    cash=cny_remaining.quantize(Decimal("0.01")),
+                    initial_cash=Decimal("0.00"),
+                    cash=wallet_cash,
                     api_token=shared_token,
                 )
                 db.add(cn_account)
+
+            if not existing_hk:
+                hk_account = Account(
+                    id=hk_id,
+                    season_id="2026-Q1",
+                    agent_id=agent_data["id"],
+                    market="hk",
+                    currency="CNY",
+                    initial_cash=Decimal("0.00"),
+                    cash=wallet_cash,
+                    api_token=shared_token,
+                )
+                db.add(hk_account)
 
         await db.commit()
         print("Season created successfully. No official agents were seeded.")

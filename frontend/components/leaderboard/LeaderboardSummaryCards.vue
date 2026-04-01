@@ -30,9 +30,13 @@ interface LeaderboardRanking {
   avatar: string
   model: string
   camp: string
-  total_asset_usd: number | string
+  total_asset_cny?: number | string | null
+  total_asset_usd?: number | string | null
   return_pct: number
   rank: number
+  us_asset_cny?: number | string | null
+  cn_asset_cny?: number | string | null
+  hk_asset_cny?: number | string | null
   us_asset?: number | string | null
   cn_asset_usd?: number | string | null
 }

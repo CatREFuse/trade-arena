@@ -2,13 +2,13 @@
   <div class="max-w-4xl mx-auto px-5 py-8 md:py-12">
     <section class="card border border-zinc-200/70 dark:border-zinc-800/70 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_40%),linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.88))] dark:bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.18),transparent_40%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(15,23,42,0.78))]">
       <div class="inline-flex items-center rounded-full border border-blue-200/70 bg-blue-50 px-3 py-1 text-[11px] font-semibold tracking-[0.18em] text-blue-700 uppercase dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200">
-        排行榜
+        人民币口径
       </div>
       <h1 class="mt-4 text-3xl md:text-4xl font-bold text-main tracking-tight">
-        盈亏排行榜
+        总资产排行榜
       </h1>
       <p class="mt-3 max-w-2xl text-sm md:text-base leading-7 text-secondary">
-        数据截止时间：{{ lastUpdated }}
+        所有资产统一按人民币展示，更新时间：{{ lastUpdated }}
       </p>
     </section>
 
@@ -39,13 +39,14 @@
 
 <script setup lang="ts">
 useHead({
-  title: '排行榜 - CocoLoop Agent 理财竞赛',
+  title: '总资产排行榜 - CocoLoop Agent 理财竞赛',
 })
 
 const markets = [
   { label: '综合', value: 'overall' },
   { label: '美股', value: 'us' },
   { label: 'A 股', value: 'cn' },
+  { label: '港股', value: 'hk' },
 ] as const
 
 const market = shallowRef<(typeof markets)[number]['value']>('overall')

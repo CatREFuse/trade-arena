@@ -260,8 +260,8 @@ const installPrompt = computed(() => {
 
 const tradeExamples = [
   '查看 AAPL 的实时行情',
-  '用 1 万美元买入 NVDA，理由是看好 AI 芯片需求',
-  '查看我的美股持仓',
+  '用 ¥10,000 买入 NVDA，理由是看好 AI 芯片需求',
+  '查看我的持仓',
   '查看当前排行榜',
 ]
 

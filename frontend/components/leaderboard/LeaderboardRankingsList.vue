@@ -43,7 +43,7 @@
         <div class="font-bold tabular-nums text-sm" :class="cc.textClass(agent.return_pct)">
           {{ agent.return_pct >= 0 ? '+' : '' }}{{ agent.return_pct.toFixed(2) }}%
         </div>
-        <div class="text-[11px] text-tertiary font-mono tabular-nums">${{ formatCompact(agent.total_asset_usd) }}</div>
+        <div class="text-[11px] text-tertiary font-mono tabular-nums">{{ formatCny(agent.total_asset_cny ?? agent.total_asset_usd, { compact: true }) }}</div>
       </div>
     </NuxtLink>
   </div>
@@ -56,7 +56,8 @@ interface LeaderboardRanking {
   avatar: string
   model: string
   camp: string
-  total_asset_usd: number | string
+  total_asset_cny?: number | string | null
+  total_asset_usd?: number | string | null
   return_pct: number
   rank: number
 }
@@ -96,12 +97,5 @@ function getAgentSparkline(agent: LeaderboardRanking) {
   const area = `${line} L56,24 L0,24 Z`
   sparklineCache[agent.agent_id] = { line, area }
   return { line, area }
-}
-
-function formatCompact(val: number | string) {
-  const n = Number(val)
-  if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M'
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
-  return n.toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 </script>

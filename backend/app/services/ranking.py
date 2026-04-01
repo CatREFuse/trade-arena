@@ -3,22 +3,29 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Optional
 
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from redis.asyncio import Redis
 
-from app.models import Agent, Account, Position
+from app.config import settings
+from app.models import Account, Agent, Position, Wallet
 from app.schemas import AgentRanking, LeaderboardOut
+from app.services.fx import FXService
 from app.services.market_data import MarketDataService
-
-CNY_TO_USD = Decimal("0.138889")  # 1 / 7.2
 
 
 class RankingService:
-    def __init__(self, db: AsyncSession, redis: Redis, market_svc: MarketDataService | None = None):
+    def __init__(
+        self,
+        db: AsyncSession,
+        redis: Redis,
+        market_svc: MarketDataService | None = None,
+        fx_service: FXService | None = None,
+    ):
         self.db = db
         self.redis = redis
         self.market_svc = market_svc or MarketDataService(redis)
+        self.fx_service = fx_service or FXService(redis)
 
     async def _calc_position_value(
         self,
@@ -36,6 +43,18 @@ class RankingService:
                 total += pos.shares * pos.avg_cost
         return total
 
+    async def _rate_to_cny(self, market: str) -> Decimal:
+        market_normalized = market.lower()
+        if market_normalized == "cn":
+            return Decimal("1")
+        if market_normalized == "us":
+            rate, _, _ = await self.fx_service.get_rate_to_cny("us")
+            return Decimal(str(rate))
+        if market_normalized == "hk":
+            rate, _, _ = await self.fx_service.get_rate_to_cny("hk")
+            return Decimal(str(rate))
+        return Decimal("1")
+
     async def get_leaderboard(self, market: str = "overall") -> LeaderboardOut:
         db = self.db
 
@@ -45,10 +64,11 @@ class RankingService:
         accounts_result = await db.execute(select(Account))
         accounts = accounts_result.scalars().all()
 
+        wallets_result = await db.execute(select(Wallet))
+        wallets = {wallet.agent_id: wallet for wallet in wallets_result.scalars().all()}
+
         positions_result = await db.execute(select(Position))
         all_positions = positions_result.scalars().all()
-
-        # 按 account_id 分组持仓
         pos_by_account: dict[str, list[Position]] = {}
         for pos in all_positions:
             pos_by_account.setdefault(pos.account_id, []).append(pos)
@@ -57,7 +77,13 @@ class RankingService:
             list({pos.ticker for pos in all_positions})
         )
 
-        # 按 agent_id 分组 accounts
+        rate_to_cny = {
+            "us": await self._rate_to_cny("us"),
+            "cn": Decimal("1"),
+            "hk": await self._rate_to_cny("hk"),
+        }
+        usd_to_cny = rate_to_cny["us"] if rate_to_cny["us"] else Decimal(str(settings.exchange_rate))
+
         agent_accounts: dict[str, list[Account]] = {}
         for acc in accounts:
             agent_accounts.setdefault(acc.agent_id, []).append(acc)
@@ -66,34 +92,48 @@ class RankingService:
 
         for agent_id, agent in agents.items():
             accs = agent_accounts.get(agent_id, [])
-            us_asset: Optional[Decimal] = None
-            cn_asset_usd: Optional[Decimal] = None
-            total_initial_usd = Decimal("0")
+            market_assets_cny: dict[str, Decimal] = {
+                "us": Decimal("0"),
+                "cn": Decimal("0"),
+                "hk": Decimal("0"),
+            }
+            market_cash_cny: dict[str, Decimal] = {
+                "us": Decimal("0"),
+                "cn": Decimal("0"),
+                "hk": Decimal("0"),
+            }
 
             for acc in accs:
                 positions = pos_by_account.get(acc.id, [])
-                pos_value = await self._calc_position_value(positions, quote_map)
-                asset = acc.cash + pos_value
+                pos_value_local = await self._calc_position_value(positions, quote_map)
+                fx = rate_to_cny.get(acc.market, Decimal("1"))
+                market_assets_cny[acc.market] = market_assets_cny.get(acc.market, Decimal("0")) + (pos_value_local * fx)
+                market_cash_cny[acc.market] = market_cash_cny.get(acc.market, Decimal("0")) + (acc.cash * fx)
 
-                if acc.market == "us":
-                    us_asset = asset
-                    total_initial_usd += acc.initial_cash
-                elif acc.market == "cn":
-                    cn_asset_usd = asset * CNY_TO_USD
-                    total_initial_usd += acc.initial_cash * CNY_TO_USD
+            wallet = wallets.get(agent_id)
+            if wallet is not None:
+                total_initial_cny = wallet.initial_cash
+                total_asset_cny = wallet.cash + sum(market_assets_cny.values())
+            else:
+                total_initial_cny = Decimal(str(settings.total_starting_capital_cny))
+                total_asset_cny = sum(market_assets_cny.values()) + sum(market_cash_cny.values())
 
-            total_asset_usd = (us_asset or Decimal("0")) + (cn_asset_usd or Decimal("0"))
             return_pct = (
-                float((total_asset_usd - total_initial_usd) / total_initial_usd * 100)
-                if total_initial_usd
+                float((total_asset_cny - total_initial_cny) / total_initial_cny * 100)
+                if total_initial_cny
                 else 0.0
             )
 
-            # 按 market 过滤
-            if market == "us" and us_asset is None:
+            if market != "overall" and market_assets_cny.get(market, Decimal("0")) <= Decimal("0"):
                 continue
-            if market == "cn" and cn_asset_usd is None:
-                continue
+
+            total_asset_usd: Optional[Decimal] = None
+            if usd_to_cny > Decimal("0"):
+                total_asset_usd = total_asset_cny / usd_to_cny
+
+            us_asset_cny = market_assets_cny.get("us", Decimal("0"))
+            cn_asset_cny = market_assets_cny.get("cn", Decimal("0"))
+            hk_asset_cny = market_assets_cny.get("hk", Decimal("0"))
 
             rankings.append(
                 AgentRanking(
@@ -102,16 +142,19 @@ class RankingService:
                     avatar=agent.avatar,
                     model=agent.model,
                     camp=agent.camp,
+                    total_asset_cny=total_asset_cny,
                     total_asset_usd=total_asset_usd,
                     return_pct=round(return_pct, 2),
                     rank=0,
-                    us_asset=us_asset,
-                    cn_asset_usd=cn_asset_usd,
+                    us_asset_cny=us_asset_cny,
+                    cn_asset_cny=cn_asset_cny,
+                    hk_asset_cny=hk_asset_cny,
+                    us_asset=(us_asset_cny / usd_to_cny) if usd_to_cny > Decimal("0") else None,
+                    cn_asset_usd=(cn_asset_cny / usd_to_cny) if usd_to_cny > Decimal("0") else None,
                 )
             )
 
-        # 排序并赋 rank
-        rankings.sort(key=lambda r: r.total_asset_usd, reverse=True)
+        rankings.sort(key=lambda r: r.total_asset_cny, reverse=True)
         for i, r in enumerate(rankings):
             r.rank = i + 1
 

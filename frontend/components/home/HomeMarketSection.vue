@@ -5,7 +5,7 @@
         <div class="text-[11px] uppercase tracking-[0.2em] text-tertiary">行情预览</div>
         <h2 class="mt-2 text-2xl font-bold text-main tracking-tight">市场总览</h2>
         <p class="mt-2 max-w-2xl text-sm leading-7 text-secondary">
-          两地主要指数与盘口快照。
+          美股、A 股、港股主要指数与盘口快照。
         </p>
         <div class="mt-2">
           <MarketDataTimestamp :timestamp="overviewData.updated_at" />
@@ -22,7 +22,7 @@
     <!-- Simple US/CN Markets List -->
     <div class="mt-6">
       <div v-if="overviewPending && !marketSections.length" class="space-y-2">
-        <div v-for="n in 2" :key="n" class="flex items-center gap-4 px-4 py-3 rounded-2xl bg-overlay-2 animate-pulse">
+        <div v-for="n in 3" :key="n" class="flex items-center gap-4 px-4 py-3 rounded-2xl bg-overlay-2 animate-pulse">
           <div class="h-4 w-16 rounded bg-zinc-200 dark:bg-zinc-700"></div>
           <div class="flex-1 h-4 rounded bg-zinc-200 dark:bg-zinc-700"></div>
           <div class="h-4 w-24 rounded bg-zinc-200 dark:bg-zinc-700"></div>
@@ -206,7 +206,7 @@
 import MarketTrendSparkline from '../market/MarketTrendSparkline.vue'
 import MarketDataTimestamp from '../market/MarketDataTimestamp.vue'
 
-type MarketKey = 'us' | 'cn'
+type MarketKey = 'us' | 'cn' | 'hk'
 type PanelMode = 'movers' | 'activity'
 type SortDirection = 'desc' | 'asc'
 
@@ -275,6 +275,7 @@ const cc = useColorConvention()
 const marketOptions = [
   { label: '美股', value: 'us' },
   { label: 'A 股', value: 'cn' },
+  { label: '港股', value: 'hk' },
 ] as const
 
 const panelOptions = [
@@ -285,6 +286,7 @@ const panelOptions = [
 const MARKET_META: Record<MarketKey, { badge: string; title: string; shortTitle: string }> = {
   us: { badge: 'UNITED STATES', title: '美股市场', shortTitle: '美股' },
   cn: { badge: 'CHINA MAINLAND', title: 'A 股市场', shortTitle: 'A 股' },
+  hk: { badge: 'HONG KONG', title: '港股市场', shortTitle: '港股' },
 }
 
 const INDEX_META: Record<string, { shortLabel: string }> = {
@@ -294,13 +296,15 @@ const INDEX_META: Record<string, { shortLabel: string }> = {
   SH: { shortLabel: '上证' },
   SZ: { shortLabel: '深成指' },
   CY: { shortLabel: '创业板' },
+  HSI: { shortLabel: '恒生指数' },
+  HSCEI: { shortLabel: '恒生国企' },
 }
 
 const { data: overviewData, pending: overviewPending } = useLazyFetch<MarketOverviewResponse>('/api/market/overview', {
   key: 'home-market-overview',
   default: () => ({
     indices: [],
-    boards: { us: [], cn: [] },
+    boards: { us: [], cn: [], hk: [] },
     markets: [],
     updated_at: '',
   }),
@@ -458,7 +462,7 @@ function formatPrice(
   market: MarketKey,
   options: Intl.NumberFormatOptions = { minimumFractionDigits: 2, maximumFractionDigits: 2 },
 ) {
-  const currency = market === 'us' ? '$' : '¥'
+  const currency = market === 'us' ? '$' : market === 'hk' ? 'HK$' : '¥'
   return `${currency}${Number(value).toLocaleString('en-US', options)}`
 }
 </script>

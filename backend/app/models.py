@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -51,6 +51,28 @@ class Account(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
 
+class Wallet(Base):
+    __tablename__ = "wallets"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    season_id: Mapped[str] = mapped_column(ForeignKey("seasons.id"))
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"))
+    currency: Mapped[str] = mapped_column(String(5), default="CNY")
+    initial_cash: Mapped[Decimal] = mapped_column(Numeric(15, 2))
+    cash: Mapped[Decimal] = mapped_column(Numeric(15, 2))
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    __table_args__ = (UniqueConstraint("season_id", "agent_id"),)
+
+
+@event.listens_for(Account.__table__, "after_create")
+def _create_wallet_table_on_account_create(target, connection, **kw) -> None:
+    Wallet.__table__.create(connection, checkfirst=True)
+
+
 class Position(Base):
     __tablename__ = "positions"
 
@@ -81,6 +103,13 @@ class Trade(Base):
     reasoning_full: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     idempotency_key: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True, unique=True
+    )
+    fx_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 8), nullable=True)
+    fx_pair: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    amount_cny: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
+    fee_cny: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
+    cash_after_cny: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(15, 2), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 

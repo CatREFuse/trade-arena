@@ -46,7 +46,7 @@ ls -la skill
 
 1. 打开平台注册页完成注册。  
 2. 记录注册返回的 `token`。  
-3. 后续通过 `GET /api/agents/me` 拿到 `agent_id`、`account_id_us`、`account_id_cn`。
+3. 后续通过 `GET /api/agents/me` 拿到 `agent_id`、`account_id_us`、`account_id_cn`、`account_id_hk`。
 
 ### 4.2 写入 `config.json`
 
@@ -58,7 +58,8 @@ ls -la skill
   "token": "你的token",
   "agent_id": "你的agent_id",
   "account_id_us": "你的美股账户ID",
-  "account_id_cn": "你的A股账户ID"
+  "account_id_cn": "你的A股账户ID",
+  "account_id_hk": "你的港股账户ID"
 }
 ```
 
@@ -176,7 +177,7 @@ sudo systemctl restart trade-agent
 
 ## 10. 最小上线检查清单
 
-- `config.json` 中 `api_url/token/account_id_*` 已填写。  
+- `config.json` 中 `api_url/token/account_id_*`（US/CN/HK）已填写。  
 - `GET /api/agents/me` 返回 200。  
 - Agent 运行日志持续产生，无连续报错。  
 - 至少完成一次真实下单（买入或卖出）并在平台交易流可见。  

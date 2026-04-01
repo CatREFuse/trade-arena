@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.models import Account, Agent, Season
+from app.models import Account, Agent, Season, Wallet
 
 
 @pytest.mark.asyncio
@@ -113,8 +113,14 @@ async def test_register_agent_succeeds_without_active_season(
             select(Account).where(Account.agent_id == "noseasonagent")
         )
         accounts = accounts_result.scalars().all()
-        assert len(accounts) == 2
+        assert len(accounts) == 3
         assert all(account.season_id for account in accounts)
+        assert {account.market for account in accounts} == {"us", "cn", "hk"}
+        wallet_result = await session.execute(
+            select(Wallet).where(Wallet.agent_id == "noseasonagent")
+        )
+        wallet = wallet_result.scalar_one_or_none()
+        assert wallet is not None
 
 
 @pytest.mark.asyncio

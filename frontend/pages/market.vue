@@ -5,9 +5,9 @@
       <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div class="text-[11px] uppercase tracking-[0.2em] text-tertiary">市场总览</div>
-          <h1 class="mt-2 text-3xl font-bold text-main tracking-tight">两地市场，一页看清</h1>
+          <h1 class="mt-2 text-3xl font-bold text-main tracking-tight">三地市场，一页看清</h1>
           <p class="mt-2 max-w-2xl text-sm leading-7 text-secondary">
-            两地主要指数与盘口快照。
+            美股、A 股、港股主要指数与盘口快照。
           </p>
           <div class="mt-2">
             <MarketDataTimestamp :timestamp="overviewData.updated_at" />
@@ -240,6 +240,112 @@
           </div>
         </div>
       </article>
+
+      <!-- HK Market Card -->
+      <article class="relative overflow-hidden rounded-3xl bg-white dark:bg-zinc-800 border border-zinc-200/70 dark:border-zinc-700/80">
+        <!-- SVG Trend Background -->
+        <div class="absolute inset-0 pointer-events-none opacity-30">
+          <svg class="w-full h-full" viewBox="0 0 400 200" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient :id="`hk-trend-gradient-${hkTrendId}`" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" :stop-color="hkTrendColor" stop-opacity="0.4"/>
+                <stop offset="100%" :stop-color="hkTrendColor" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path :d="hkTrendPath.area" :fill="`url(#hk-trend-gradient-${hkTrendId})`" />
+            <path :d="hkTrendPath.line" fill="none" :stroke="hkTrendColor" stroke-width="1.5" opacity="0.6"/>
+          </svg>
+        </div>
+
+        <div class="relative p-5 sm:p-6">
+          <!-- Card Header -->
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                <span class="text-lg font-bold text-emerald-500">HK</span>
+              </div>
+              <div>
+              <div>
+                <span class="inline-flex items-center rounded-full border border-white/45 bg-white/20 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.18em] text-zinc-700 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25 dark:text-zinc-200">
+                    HONG KONG
+                  </span>
+                </div>
+                <h2 class="text-xl font-bold text-main tracking-tight">港股市场</h2>
+                <div class="mt-2">
+                  <MarketDataTimestamp :timestamp="overviewData.updated_at" />
+                </div>
+              </div>
+            </div>
+            <NuxtLink
+              to="/market-detail/hk"
+              class="inline-flex items-center justify-center rounded-xl bg-overlay-2 px-4 py-2 text-sm font-medium text-main transition hover:-translate-y-0.5"
+            >
+              进入港股看盘 →
+            </NuxtLink>
+          </div>
+
+          <!-- Stats Row -->
+          <div class="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="text-center sm:text-left">
+              <div class="text-[10px] uppercase tracking-widest text-tertiary">股票数</div>
+              <div class="mt-1 text-lg font-bold text-main tabular-nums">{{ hkSummary?.stock_count || 0 }}</div>
+            </div>
+            <div class="text-center sm:text-left">
+              <div class="text-[10px] uppercase tracking-widest text-tertiary">上涨</div>
+              <div class="mt-1 text-lg font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{{ hkSummary?.up_count || 0 }}</div>
+            </div>
+            <div class="text-center sm:text-left">
+              <div class="text-[10px] uppercase tracking-widest text-tertiary">下跌</div>
+              <div class="mt-1 text-lg font-bold text-red-600 dark:text-red-400 tabular-nums">{{ hkSummary?.down_count || 0 }}</div>
+            </div>
+            <div class="text-center sm:text-left">
+              <div class="text-[10px] uppercase tracking-widest text-tertiary">平盘</div>
+              <div class="mt-1 text-lg font-bold text-main tabular-nums">{{ hkSummary?.flat_count || 0 }}</div>
+            </div>
+          </div>
+
+          <!-- Indices Row -->
+          <div class="mt-4 flex flex-wrap gap-2">
+            <div
+              v-for="index in hkIndices"
+              :key="index.symbol"
+              class="flex items-center gap-2 rounded-lg border border-white/45 bg-white/20 px-3 py-2 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25"
+            >
+              <span class="text-xs text-tertiary">{{ index.shortLabel }}</span>
+              <span class="text-sm font-bold text-main tabular-nums">{{ index.value }}</span>
+              <span class="text-xs font-bold tabular-nums" :class="cc.textClass(index.changePct)">
+                {{ formatPercent(index.changePct) }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Leader/Laggard -->
+          <div class="mt-4 grid grid-cols-2 gap-3">
+            <div class="flex items-center justify-between gap-2 rounded-xl bg-emerald-500/5 dark:bg-emerald-500/10 px-3 py-2 border border-emerald-500/10">
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400">领涨</span>
+                <span class="text-sm font-bold text-main">{{ hkSummary?.leader?.ticker || '--' }}</span>
+              </div>
+              <div class="text-right">
+                <div class="text-xs font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                  {{ hkSummary?.leader ? formatPercent(hkSummary.leader.change_pct) : '--' }}
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between gap-2 rounded-xl bg-red-500/5 dark:bg-red-500/10 px-3 py-2 border border-red-500/10">
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] uppercase tracking-wider text-red-600 dark:text-red-400">领跌</span>
+                <span class="text-sm font-bold text-main">{{ hkSummary?.laggard?.ticker || '--' }}</span>
+              </div>
+              <div class="text-right">
+                <div class="text-xs font-bold text-red-600 dark:text-red-400 tabular-nums">
+                  {{ hkSummary?.laggard ? formatPercent(hkSummary.laggard.change_pct) : '--' }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
     </section>
 
     <!-- Stock List Section -->
@@ -457,7 +563,7 @@ useHead({ title: '市场总览 - CocoLoop Agent 理财竞赛' })
 
 const cc = useColorConvention()
 
-type MarketKey = 'us' | 'cn'
+type MarketKey = 'us' | 'cn' | 'hk'
 type PanelMode = 'movers' | 'activity'
 type SortDirection = 'desc' | 'asc'
 
@@ -527,6 +633,7 @@ const FEED_LIMIT = 120
 const marketOptions = [
   { label: '美股', value: 'us' },
   { label: 'A 股', value: 'cn' },
+  { label: '港股', value: 'hk' },
 ] as const
 
 const panelOptions = [
@@ -541,6 +648,8 @@ const INDEX_META: Record<string, { shortLabel: string }> = {
   SH: { shortLabel: '上证' },
   SZ: { shortLabel: '深成指' },
   CY: { shortLabel: '创业板' },
+  HSI: { shortLabel: '恒生指数' },
+  HSCEI: { shortLabel: '恒生国企' },
 }
 
 // State
@@ -570,7 +679,7 @@ watch(selectedMarket, () => {
 // Data
 const overviewData = ref<MarketOverviewResponse>({
   indices: [],
-  boards: { us: [], cn: [] },
+  boards: { us: [], cn: [], hk: [] },
   markets: [],
   updated_at: '',
 })
@@ -659,6 +768,7 @@ watch(panelMode, (mode) => {
 // Computed data
 const usSummary = computed(() => overviewData.value.markets?.find(m => m.market === 'us'))
 const cnSummary = computed(() => overviewData.value.markets?.find(m => m.market === 'cn'))
+const hkSummary = computed(() => overviewData.value.markets?.find(m => m.market === 'hk'))
 
 const usIndices = computed(() => {
   return (overviewData.value.indices || [])
@@ -682,9 +792,21 @@ const cnIndices = computed(() => {
     }))
 })
 
+const hkIndices = computed(() => {
+  return (overviewData.value.indices || [])
+    .filter(item => item.market === 'hk')
+    .map(item => ({
+      symbol: item.symbol,
+      shortLabel: INDEX_META[item.symbol]?.shortLabel || item.name,
+      value: formatPrice(item.price, 'hk', { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+      changePct: item.change_pct,
+    }))
+})
+
 // Trend paths for SVG backgrounds
 const usTrendId = 'us-bg'
 const cnTrendId = 'cn-bg'
+const hkTrendId = 'hk-bg'
 
 const usTrendColor = computed(() => {
   const avgChange = usSummary.value?.avg_change_pct || 0
@@ -696,11 +818,21 @@ const cnTrendColor = computed(() => {
   return avgChange >= 0 ? '#ef4444' : '#10b981'
 })
 
+const hkTrendColor = computed(() => {
+  const avgChange = hkSummary.value?.avg_change_pct || 0
+  return avgChange >= 0 ? '#10b981' : '#ef4444'
+})
+
 function buildTrendPath(market: MarketKey) {
   const points = 20
   const width = 400
   const height = 200
-  const summary = market === 'us' ? usSummary.value : cnSummary.value
+  const summaryMap: Record<MarketKey, typeof usSummary.value> = {
+    us: usSummary.value,
+    cn: cnSummary.value,
+    hk: hkSummary.value,
+  }
+  const summary = summaryMap[market]
   const trend = (summary?.avg_change_pct || 0) >= 0 ? 1 : -1
 
   const values: number[] = []
@@ -722,6 +854,7 @@ function buildTrendPath(market: MarketKey) {
 
 const usTrendPath = computed(() => buildTrendPath('us'))
 const cnTrendPath = computed(() => buildTrendPath('cn'))
+const hkTrendPath = computed(() => buildTrendPath('hk'))
 
 // Board items
 const boardItems = computed(() => overviewData.value.boards?.[selectedMarket.value] || [])
@@ -884,7 +1017,7 @@ function formatPrice(
   market: MarketKey,
   options: Intl.NumberFormatOptions = { minimumFractionDigits: 2, maximumFractionDigits: 2 },
 ) {
-  const currency = market === 'us' ? '$' : '¥'
+  const currency = market === 'us' ? '$' : market === 'hk' ? 'HK$' : '¥'
   return `${currency}${Number(value || 0).toLocaleString('en-US', options)}`
 }
 </script>

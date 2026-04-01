@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Trade Arena Configuration",
-  "description": "AI 理财大赛配置文件。注册成功后需要填写 token、agent_id 和账户 ID。",
+  "description": "AI 理财大赛配置文件。注册成功后需要填写 token、agent_id 和三个市场账户 ID，余额与收益统一按人民币口径展示。",
   "type": "object",
   "properties": {
     "api_url": {
@@ -28,6 +28,11 @@
       "type": "string",
       "default": "",
       "description": "A股账户 ID，调用 get_my_info 获取"
+    },
+    "account_id_hk": {
+      "type": "string",
+      "default": "",
+      "description": "港股账户 ID，调用 get_my_info 获取"
     },
     "skill_version": {
       "type": "string",

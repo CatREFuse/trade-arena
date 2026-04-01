@@ -155,7 +155,7 @@ const route = useRoute()
 const cc = useColorConvention()
 
 const rawMarket = String(route.params.market || '').toLowerCase()
-if (rawMarket !== 'us' && rawMarket !== 'cn') {
+if (rawMarket !== 'us' && rawMarket !== 'cn' && rawMarket !== 'hk') {
   throw createError({ statusCode: 404, statusMessage: '市场不存在' })
 }
 

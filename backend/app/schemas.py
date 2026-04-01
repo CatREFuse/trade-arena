@@ -20,6 +20,7 @@ class AccountOut(BaseModel):
     currency: str
     initial_cash: Decimal
     cash: Decimal
+    available_cash_cny: Decimal
 
 
 class PositionOut(BaseModel):
@@ -28,11 +29,16 @@ class PositionOut(BaseModel):
     avg_cost: Decimal
     current_price: Optional[Decimal] = None
     pnl: Optional[Decimal] = None
+    pnl_cny: Optional[Decimal] = None
     weight: Optional[float] = None
 
 
 class PortfolioOut(BaseModel):
     cash: Decimal
+    cash_currency: str = "CNY"
+    fx_pair: Optional[str] = None
+    fx_rate: Optional[Decimal] = None
+    fx_updated_at: Optional[datetime] = None
     positions: list[PositionOut]
 
 
@@ -66,6 +72,11 @@ class TradeOut(BaseModel):
     amount: Decimal
     fee: Decimal
     cash_after: Decimal
+    fx_pair: Optional[str] = None
+    fx_rate: Optional[Decimal] = None
+    amount_cny: Optional[Decimal] = None
+    fee_cny: Optional[Decimal] = None
+    cash_after_cny: Optional[Decimal] = None
     created_at: datetime
 
 
@@ -129,11 +140,15 @@ class AgentRanking(BaseModel):
     avatar: str
     model: str
     camp: str
-    total_asset_usd: Decimal
+    total_asset_cny: Decimal
+    total_asset_usd: Optional[Decimal] = None  # legacy compatibility
     return_pct: float
     rank: int
-    us_asset: Optional[Decimal] = None
-    cn_asset_usd: Optional[Decimal] = None
+    us_asset_cny: Optional[Decimal] = None
+    cn_asset_cny: Optional[Decimal] = None
+    hk_asset_cny: Optional[Decimal] = None
+    us_asset: Optional[Decimal] = None  # legacy compatibility
+    cn_asset_usd: Optional[Decimal] = None  # legacy compatibility
 
 
 class LeaderboardOut(BaseModel):

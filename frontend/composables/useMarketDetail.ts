@@ -1,6 +1,6 @@
 import { computed, shallowRef, toValue, type MaybeRefOrGetter } from 'vue'
 
-export type MarketKey = 'us' | 'cn'
+export type MarketKey = 'us' | 'cn' | 'hk'
 export type SortDirection = 'desc' | 'asc'
 
 export interface MarketBoardItem {
@@ -57,12 +57,23 @@ const MARKET_META: Record<MarketKey, MarketDetailMeta> = {
     badge: 'CN MARKET',
     counterpart: 'us',
   },
+  hk: {
+    key: 'hk',
+    label: '港股市场',
+    shortLabel: '港股',
+    title: '香港市场',
+    subtitle: '围绕港股主板核心标的与指数成分的收益分布',
+    badge: 'HK MARKET',
+    counterpart: 'us',
+  },
 }
 
 export async function useMarketDetail(marketKey: MaybeRefOrGetter<MarketKey>) {
   const resolvedMarket = computed<MarketKey>(() => {
     const raw = toValue(marketKey)
-    return raw === 'cn' ? 'cn' : 'us'
+    if (raw === 'cn') return 'cn'
+    if (raw === 'hk') return 'hk'
+    return 'us'
   })
 
   const meta = computed(() => MARKET_META[resolvedMarket.value])
@@ -119,7 +130,7 @@ export async function useMarketDetail(marketKey: MaybeRefOrGetter<MarketKey>) {
   }
 
   function formatPrice(value: number, market: MarketKey = resolvedMarket.value) {
-    const symbol = market === 'us' ? '$' : '¥'
+    const symbol = market === 'us' ? '$' : market === 'hk' ? 'HK$' : '¥'
     return `${symbol}${Number(value).toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,

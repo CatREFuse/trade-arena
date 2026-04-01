@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import Account, Agent, Trade
+from app.models import Account, Agent, Position, Trade, Wallet
+from app.services.fx import FXService
 from app.services.market_data import MARKET_CACHE_VERSION, MarketDataService
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -47,7 +48,12 @@ async def _probe_source(name: str, fetcher):
         }
 
 
-async def _collect_users(db: AsyncSession, limit: int, offset: int) -> dict:
+async def _collect_users(
+    db: AsyncSession,
+    limit: int,
+    offset: int,
+    redis=None,
+) -> dict:
     total = (await db.execute(select(func.count()).select_from(Agent))).scalar() or 0
     agent_rows = await db.execute(
         select(Agent).order_by(Agent.created_at.desc()).limit(limit).offset(offset)
@@ -61,9 +67,13 @@ async def _collect_users(db: AsyncSession, limit: int, offset: int) -> dict:
         select(Account).where(Account.agent_id.in_(agent_ids))
     )
     accounts = account_rows.scalars().all()
+    account_by_id = {account.id: account for account in accounts}
     account_by_agent: dict[str, list[Account]] = {}
     for account in accounts:
         account_by_agent.setdefault(account.agent_id, []).append(account)
+
+    wallet_rows = await db.execute(select(Wallet).where(Wallet.agent_id.in_(agent_ids)))
+    wallet_by_agent = {wallet.agent_id: wallet for wallet in wallet_rows.scalars().all()}
 
     account_ids = [account.id for account in accounts]
     trade_by_account: dict[str, int] = {}
@@ -76,16 +86,53 @@ async def _collect_users(db: AsyncSession, limit: int, offset: int) -> dict:
         for account_id, count in trade_rows:
             trade_by_account[account_id] = int(count or 0)
 
+    position_rows = await db.execute(select(Position).where(Position.account_id.in_(account_ids)))
+    positions = position_rows.scalars().all()
+    positions_by_account: dict[str, list[Position]] = {}
+    for position in positions:
+        positions_by_account.setdefault(position.account_id, []).append(position)
+
+    quote_map: dict[str, object | None] = {}
+    if positions and redis is not None:
+        market_service = MarketDataService(redis)
+        quote_map = await market_service.get_quotes_batch(list({position.ticker for position in positions}))
+
+    usd_to_cny = Decimal(str(settings.exchange_rate))
+    hkd_to_cny = Decimal(str(getattr(settings, "exchange_rate_hkd_to_cny", 0.92)))
+    if redis is not None:
+        fx_service = FXService(redis)
+        usd_rate, _, _ = await fx_service.get_rate_to_cny("us")
+        hkd_rate, _, _ = await fx_service.get_rate_to_cny("hk")
+        usd_to_cny = Decimal(str(usd_rate))
+        hkd_to_cny = Decimal(str(hkd_rate))
+
+    market_rate = {
+        "cn": Decimal("1"),
+        "us": usd_to_cny,
+        "hk": hkd_to_cny,
+    }
+
     items: list[dict] = []
     for agent in agents:
         owned_accounts = account_by_agent.get(agent.id, [])
-        us_cash = sum(
-            _as_float(account.cash) for account in owned_accounts if account.market == "us"
-        )
-        cn_cash = sum(
-            _as_float(account.cash) for account in owned_accounts if account.market == "cn"
-        )
-        total_asset_usd = us_cash + cn_cash / float(settings.exchange_rate)
+        total_position_cny = Decimal("0")
+        for owned_account in owned_accounts:
+            position_list = positions_by_account.get(owned_account.id, [])
+            fx = market_rate.get(owned_account.market, Decimal("1"))
+            for position in position_list:
+                quote = quote_map.get(position.ticker)
+                local_value = position.shares * (quote.price if quote is not None else position.avg_cost)
+                total_position_cny += local_value * fx
+
+        wallet = wallet_by_agent.get(agent.id)
+        if wallet is not None:
+            wallet_cash = wallet.cash
+        else:
+            wallet_cash = sum(
+                owned_account.cash * market_rate.get(owned_account.market, Decimal("1"))
+                for owned_account in owned_accounts
+            )
+        total_asset_cny = wallet_cash + total_position_cny
         trade_count = sum(trade_by_account.get(account.id, 0) for account in owned_accounts)
         items.append(
             {
@@ -98,7 +145,7 @@ async def _collect_users(db: AsyncSession, limit: int, offset: int) -> dict:
                 "created_at": agent.created_at,
                 "account_count": len(owned_accounts),
                 "trade_count": trade_count,
-                "asset_usd": round(total_asset_usd, 2),
+                "asset_cny": round(float(total_asset_cny), 2),
             }
         )
 
@@ -235,7 +282,7 @@ def _empty_market_snapshot() -> dict:
         "updated_at": "",
         "indices": [],
         "market_summary": [],
-        "boards": {"us": [], "cn": []},
+        "boards": {"us": [], "cn": [], "hk": []},
     }
 
 
@@ -247,6 +294,7 @@ async def _collect_market_snapshot(request: Request, live: bool = False) -> dict
             return _empty_market_snapshot()
         us_board = await _load_cache_json(redis, f"market:board:{MARKET_CACHE_VERSION}:us")
         cn_board = await _load_cache_json(redis, f"market:board:{MARKET_CACHE_VERSION}:cn")
+        hk_board = await _load_cache_json(redis, f"market:board:{MARKET_CACHE_VERSION}:hk")
         return {
             "updated_at": overview.get("updated_at", ""),
             "indices": overview.get("indices", []),
@@ -254,6 +302,7 @@ async def _collect_market_snapshot(request: Request, live: bool = False) -> dict
             "boards": {
                 "us": (us_board or {}).get("items", [])[:10],
                 "cn": (cn_board or {}).get("items", [])[:10],
+                "hk": (hk_board or {}).get("items", [])[:10],
             },
         }
 
@@ -261,6 +310,7 @@ async def _collect_market_snapshot(request: Request, live: bool = False) -> dict
     overview = await service.get_market_overview(refresh=False)
     us_board = await service.get_market_board("us", refresh=False)
     cn_board = await service.get_market_board("cn", refresh=False)
+    hk_board = await service.get_market_board("hk", refresh=False)
     return {
         "updated_at": overview.updated_at,
         "indices": [item.model_dump(mode="json") for item in overview.indices],
@@ -268,6 +318,7 @@ async def _collect_market_snapshot(request: Request, live: bool = False) -> dict
         "boards": {
             "us": [item.model_dump(mode="json") for item in us_board.items[:10]],
             "cn": [item.model_dump(mode="json") for item in cn_board.items[:10]],
+            "hk": [item.model_dump(mode="json") for item in hk_board.items[:10]],
         },
     }
 
@@ -342,11 +393,12 @@ async def _collect_trade_stats(db: AsyncSession, days: int) -> dict:
 
 @router.get("/users")
 async def admin_users(
+    request: Request,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    return await _collect_users(db, limit=limit, offset=offset)
+    return await _collect_users(db, limit=limit, offset=offset, redis=request.app.state.redis)
 
 
 @router.get("/logs")
@@ -390,7 +442,7 @@ async def admin_dashboard(
     live_market: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
 ):
-    users = await _collect_users(db, limit=20, offset=0)
+    users = await _collect_users(db, limit=20, offset=0, redis=request.app.state.redis)
     logs = await _collect_logs(db, limit=20, offset=0)
     data_sources = await _collect_data_sources(request, db)
     market = await _collect_market_snapshot(request, live=live_market)

@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     trade_fee_rate: float = 0.001
     max_position_ratio: float = 0.30
-    exchange_rate: float = 7.2  # CNY to USD exchange rate
+    exchange_rate: float = 7.2  # USD to CNY fallback rate
     total_starting_capital_cny: float = 1000000  # Total capital in CNY
     smtp_host: str = ""
     smtp_port: int = 587
@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     market_enable_mock_fallback: bool = False
     market_provider_failure_threshold: int = 3
     market_provider_cooldown_seconds: int = 60
+    fx_provider_url: str = "https://open.er-api.com/v6/latest/USD"
+    fx_refresh_interval_seconds: int = 300
+    fx_cache_key_prefix: str = "fx:rates"
+    fx_cache_ttl_seconds: int = 600
+    fx_http_timeout_seconds: float = 6.0
+    fx_default_usd_cny: float = 7.2
+    fx_default_hkd_cny: float = 0.92
     hosted_files_dir: str = "hosted-files"
     hosted_skill_filename: str = "cocoloop-trade-arena.zip"
 

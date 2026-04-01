@@ -13,7 +13,7 @@ from app.auth import get_current_account
 from app.config import settings
 from app.database import get_db
 from app.main import app as fastapi_app
-from app.models import Account, Agent, Position, Season, Trade
+from app.models import Account, Agent, Position, Season, Trade, Wallet
 
 
 @dataclass(slots=True)
@@ -21,6 +21,7 @@ class SeededAccounts:
     agent_id: str
     us_account_id: str
     cn_account_id: str
+    hk_account_id: str
     token: str
 
 
@@ -59,6 +60,7 @@ def _create_test_tables(sync_connection) -> None:
         Season.__table__,
         Agent.__table__,
         Account.__table__,
+        Wallet.__table__,
         Position.__table__,
         Trade.__table__,
     ):
@@ -115,17 +117,25 @@ async def seeded_accounts(
 
         token = "shared-token-for-tests"
         total_cny = Decimal(str(settings.total_starting_capital_cny))
-        exchange_rate = Decimal(str(settings.exchange_rate))
-        usd_initial = (total_cny / exchange_rate).quantize(Decimal("0.01"))
-        cny_initial = total_cny - (usd_initial * exchange_rate)
+        wallet_cash = total_cny.quantize(Decimal("0.01"))
+        session.add(
+            Wallet(
+                id="alpha-2026-Q1-wallet",
+                season_id="2026-Q1",
+                agent_id="alpha",
+                currency="CNY",
+                initial_cash=wallet_cash,
+                cash=wallet_cash,
+            )
+        )
         us_account = Account(
             id="alpha-us",
             season_id="2026-Q1",
             agent_id="alpha",
             market="us",
-            currency="USD",
-            initial_cash=usd_initial,
-            cash=usd_initial,
+            currency="CNY",
+            initial_cash=Decimal("0.00"),
+            cash=wallet_cash,
             api_token=token,
         )
         cn_account = Account(
@@ -134,11 +144,21 @@ async def seeded_accounts(
             agent_id="alpha",
             market="cn",
             currency="CNY",
-            initial_cash=cny_initial.quantize(Decimal("0.01")),
-            cash=cny_initial.quantize(Decimal("0.01")),
+            initial_cash=Decimal("0.00"),
+            cash=wallet_cash,
             api_token=token,
         )
-        session.add_all([us_account, cn_account])
+        hk_account = Account(
+            id="alpha-hk",
+            season_id="2026-Q1",
+            agent_id="alpha",
+            market="hk",
+            currency="CNY",
+            initial_cash=Decimal("0.00"),
+            cash=wallet_cash,
+            api_token=token,
+        )
+        session.add_all([us_account, cn_account, hk_account])
         session.add_all(
             [
                 Position(
@@ -155,6 +175,11 @@ async def seeded_accounts(
                     price=Decimal("150.00"),
                     amount=Decimal("300.00"),
                     fee=Decimal("0.30"),
+                    fx_pair="USD/CNY",
+                    fx_rate=Decimal("7.20"),
+                    amount_cny=Decimal("2160.00"),
+                    fee_cny=Decimal("2.16"),
+                    cash_after_cny=Decimal("997837.84"),
                     reasoning="seed us trade",
                     idempotency_key="seed-us-trade",
                 ),
@@ -166,6 +191,11 @@ async def seeded_accounts(
                     price=Decimal("1600.00"),
                     amount=Decimal("4800.00"),
                     fee=Decimal("4.80"),
+                    fx_pair="CNY/CNY",
+                    fx_rate=Decimal("1"),
+                    amount_cny=Decimal("4800.00"),
+                    fee_cny=Decimal("4.80"),
+                    cash_after_cny=Decimal("993033.04"),
                     reasoning="seed cn trade",
                     idempotency_key="seed-cn-trade",
                 ),
@@ -178,6 +208,7 @@ async def seeded_accounts(
         agent_id="alpha",
         us_account_id="alpha-us",
         cn_account_id="alpha-cn",
+        hk_account_id="alpha-hk",
         token=token,
     )
 

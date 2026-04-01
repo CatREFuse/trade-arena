@@ -36,7 +36,7 @@
           <div class="w-8 text-center">排名</div>
           <div class="flex-1">选手 / 模型</div>
           <div class="w-20 text-right">收益率</div>
-          <div class="w-24 text-right">资产</div>
+          <div class="w-24 text-right">总资产</div>
         </div>
 
         <!-- Simple list rows -->
@@ -63,7 +63,7 @@
             </div>
           </div>
           <div class="w-24 text-right flex-shrink-0">
-            <div class="text-[11px] text-tertiary font-mono tabular-nums">${{ formatCompact(agent.total_asset_usd) }}</div>
+            <div class="text-[11px] text-tertiary font-mono tabular-nums">{{ formatCny(agent.total_asset_cny ?? agent.total_asset_usd, { compact: true }) }}</div>
           </div>
         </NuxtLink>
       </div>
@@ -78,7 +78,8 @@ interface LeaderboardRanking {
   avatar: string
   model: string
   camp: string
-  total_asset_usd: number | string
+  total_asset_cny?: number | string | null
+  total_asset_usd?: number | string | null
   return_pct: number
   rank: number
 }
@@ -97,11 +98,4 @@ const { data, pending, error } = useLazyFetch<LeaderboardResponse>('/api/leaderb
 
 const rankings = computed(() => data.value?.rankings || [])
 const previewRankings = computed(() => rankings.value.slice(0, 5))
-
-function formatCompact(val: number | string) {
-  const n = Number(val)
-  if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M'
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
-  return n.toLocaleString('en-US', { maximumFractionDigits: 0 })
-}
 </script>

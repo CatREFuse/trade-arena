@@ -23,6 +23,7 @@ from app.routers import (
 )
 from app.services.market_data import MarketDataService
 from app.services.market_providers import close_shared_http_clients
+from app.services.fx import FXService
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,13 @@ async def lifespan(app: FastAPI):
         settings.redis_url, decode_responses=False
     )
     app.state.market_data_service = MarketDataService(app.state.redis)
+    app.state.fx_service = FXService(app.state.redis)
+    await app.state.fx_service.start()
     app.state.market_cache_warm_task = asyncio.create_task(_warm_market_cache(app))
     yield
+    fx_service = getattr(app.state, "fx_service", None)
+    if fx_service:
+        await fx_service.stop()
     warm_task = getattr(app.state, "market_cache_warm_task", None)
     if warm_task:
         warm_task.cancel()

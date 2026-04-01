@@ -8,7 +8,8 @@ export interface AdminUserItem {
   created_at: string
   account_count: number
   trade_count: number
-  asset_usd: number
+  asset_cny?: number
+  asset_usd?: number
 }
 
 export interface AdminLogItem {

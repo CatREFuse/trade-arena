@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_current_account
 from app.config import settings
 from app.database import get_db
-from app.models import Agent, Account, Season, Snapshot
+from app.models import Agent, Account, Season, Snapshot, Wallet
 from app.schemas import (
     AgentEmailCodeRequest,
     AgentOut,
@@ -126,13 +126,18 @@ async def get_me(
         select(Account).where(Account.agent_id == account.agent_id)
     )
     accs = accounts_result.scalars().all()
+    wallet_result = await db.execute(
+        select(Wallet).where(Wallet.agent_id == account.agent_id, Wallet.season_id == account.season_id)
+    )
+    wallet = wallet_result.scalar_one_or_none()
+    wallet_cash = wallet.cash if wallet is not None else Decimal("0")
     return {
         "agent_id": agent.id,
         "name": agent.name,
         "avatar": agent.avatar,
         "model": agent.model,
         "accounts": {
-            a.market: {"id": a.id, "cash": str(a.cash), "currency": a.currency}
+            a.market: {"id": a.id, "cash": str(wallet_cash), "currency": "CNY"}
             for a in accs
         },
     }
@@ -342,7 +347,7 @@ async def register_agent(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """注册新 Agent，创建美股和 A 股两个账户"""
+    """注册新 Agent，创建 US/CN/HK 三市场账户与统一人民币钱包"""
     email = normalize_email(req.email)
     log_prefix = f"[{request.method} {request.url.path}]"
 
@@ -402,12 +407,9 @@ async def register_agent(
         db.add(agent)
         await db.flush()
 
-        # 6. 创建两个账户（共用一个 token）
-        # 新规则：总资金 100万人民币，按汇率兑换成美元，剩余为人民币
+        # 6. 创建账户与统一人民币钱包（共用一个 token）
         total_cny = Decimal(str(settings.total_starting_capital_cny))
-        exchange_rate = Decimal(str(settings.exchange_rate))
-        usd_amount = (total_cny / exchange_rate).quantize(Decimal("0.01"))
-        cny_remaining = total_cny - (usd_amount * exchange_rate)
+        initial_wallet_cash = total_cny.quantize(Decimal("0.01"))
 
         api_token = secrets.token_hex(32)
         us_account = Account(
@@ -415,9 +417,9 @@ async def register_agent(
             season_id=season.id,
             agent_id=agent_id,
             market="us",
-            currency="USD",
-            initial_cash=usd_amount,
-            cash=usd_amount,
+            currency="CNY",
+            initial_cash=Decimal("0.00"),
+            cash=initial_wallet_cash,
             api_token=api_token,
         )
         db.add(us_account)
@@ -428,11 +430,33 @@ async def register_agent(
             agent_id=agent_id,
             market="cn",
             currency="CNY",
-            initial_cash=cny_remaining.quantize(Decimal("0.01")),
-            cash=cny_remaining.quantize(Decimal("0.01")),
+            initial_cash=Decimal("0.00"),
+            cash=initial_wallet_cash,
             api_token=api_token,
         )
         db.add(cn_account)
+
+        hk_account = Account(
+            id=f"{agent_id}-hk",
+            season_id=season.id,
+            agent_id=agent_id,
+            market="hk",
+            currency="CNY",
+            initial_cash=Decimal("0.00"),
+            cash=initial_wallet_cash,
+            api_token=api_token,
+        )
+        db.add(hk_account)
+
+        wallet = Wallet(
+            id=f"{agent_id}-{season.id}-wallet",
+            season_id=season.id,
+            agent_id=agent_id,
+            currency="CNY",
+            initial_cash=initial_wallet_cash,
+            cash=initial_wallet_cash,
+        )
+        db.add(wallet)
 
         await db.commit()
         await db.refresh(agent)
@@ -526,7 +550,7 @@ async def get_agent_accounts(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """获取 Agent 的美股和A股账户 ID"""
+    """获取 Agent 的 US/CN/HK 账户 ID"""
     # 先确认 agent 存在
     agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
     if not agent_result.scalar_one_or_none():
@@ -540,16 +564,23 @@ async def get_agent_accounts(
     )
     accounts = accounts_result.scalars().all()
 
-    # 提取 us 和 cn 账户 ID
+    # 提取 us / cn / hk 账户 ID
     us_account_id = None
     cn_account_id = None
+    hk_account_id = None
     for acc in accounts:
         if acc.market == "us":
             us_account_id = acc.id
         elif acc.market == "cn":
             cn_account_id = acc.id
+        elif acc.market == "hk":
+            hk_account_id = acc.id
 
-    return {"us": us_account_id, "cn": cn_account_id}
+    return {
+        "us": {"id": us_account_id} if us_account_id else None,
+        "cn": {"id": cn_account_id} if cn_account_id else None,
+        "hk": {"id": hk_account_id} if hk_account_id else None,
+    }
 
 
 async def record_snapshot(

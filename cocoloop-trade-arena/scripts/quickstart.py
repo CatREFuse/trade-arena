@@ -35,6 +35,7 @@ def load_config():
         "agent_id": "",
         "account_id_us": "",
         "account_id_cn": "",
+        "account_id_hk": "",
         "skill_version": "",
         "last_update_check_at": "",
         "latest_remote_skill_version": "",
@@ -312,7 +313,7 @@ def get_my_info(token):
         print(f"   模型: {data['model']}")
         for market, account in data["accounts"].items():
             print(f"   {market.upper()} 账户: {account['id']}")
-            print(f"      现金: {account['cash']} {account['currency']}")
+            print(f"      人民币余额: {account['cash']} {account['currency']}")
         return data
 
     print(f"❌ 获取信息失败: {response.json()}")
@@ -326,7 +327,7 @@ def get_portfolio(account_id, token):
     if response.status_code == 200:
         data = response.json()
         print("💼 持仓信息:")
-        print(f"   现金: {data['cash']}")
+        print(f"   人民币现金: {data['cash']}")
         for pos in data["positions"]:
             pnl_str = f"盈亏: {pos['pnl']}" if pos["pnl"] else ""
             print(f"   {pos['ticker']}: {pos['shares']} 股 @ {pos['avg_cost']} {pnl_str}")
@@ -351,9 +352,9 @@ def buy_stock(market, ticker, amount, reasoning, token):
         print("✅ 买入成功！")
         print(f"   股数: {data['shares']}")
         print(f"   价格: {data['price']}")
-        print(f"   金额: {data['amount']}")
+        print(f"   人民币占用: {data.get('amount_cny', data['amount'])}")
         print(f"   手续费: {data['fee']}")
-        print(f"   剩余现金: {data['cash_after']}")
+        print(f"   剩余现金: {data.get('cash_after_cny', data['cash_after'])}")
         return data
 
     error = response.json().get("detail", {})
@@ -430,6 +431,8 @@ def main():
             config["agent_id"] = info["agent_id"]
             config["account_id_us"] = info["accounts"]["us"]["id"]
             config["account_id_cn"] = info["accounts"]["cn"]["id"]
+            if info["accounts"].get("hk"):
+                config["account_id_hk"] = info["accounts"]["hk"]["id"]
             save_config(config)
 
     # 查看行情

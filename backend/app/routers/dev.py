@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import Agent, Account, Trade, Position, Season, Snapshot
+from app.models import Agent, Account, Trade, Position, Season, Snapshot, Wallet
 
 router = APIRouter(prefix="/api/dev", tags=["dev"])
 logger = logging.getLogger(__name__)
@@ -91,6 +91,7 @@ MOCK_AGENTS = [
 
 US_TICKERS = ["AAPL", "NVDA", "TSLA", "MSFT", "GOOGL", "AMZN", "META", "AMD"]
 CN_TICKERS = ["600519.SH", "000858.SZ", "300750.SZ", "002594.SZ", "601318.SH"]
+HK_TICKERS = ["0700.HK", "9988.HK", "3690.HK", "1810.HK", "1211.HK"]
 REASONINGS = [
     "技术面突破关键阻力位，成交量放大确认趋势",
     "基本面强劲，最新财报超预期",
@@ -145,19 +146,39 @@ async def enable_mock(db: AsyncSession = Depends(get_db)):
         ret_lo, ret_hi = RETURN_RANGES[agent_data["id"]]
         us_ret = random.uniform(ret_lo, ret_hi)
         cn_ret = random.uniform(ret_lo * 0.8, ret_hi * 0.8)
+        hk_ret = random.uniform(ret_lo * 0.6, ret_hi * 0.9)
 
-        # 新规则：总资金 100万人民币，按汇率兑换成美元，剩余为人民币
+        # 新规则：总资金 100万人民币，统一钱包
         total_cny = Decimal(str(settings.total_starting_capital_cny))
-        exchange_rate = Decimal(str(settings.exchange_rate))
-        usd_initial = (total_cny / exchange_rate).quantize(Decimal("0.01"))
-        cny_initial = total_cny - (usd_initial * exchange_rate)
+        wallet_initial = total_cny.quantize(Decimal("0.01"))
+        blended_return = Decimal(str(round((us_ret + cn_ret + hk_ret) / 3, 2)))
+        wallet_cash = Decimal(
+            str(round(float(wallet_initial) * (1 + float(blended_return) / 100), 2))
+        )
+        wallet_id = f"{agent_data['id']}-2026-Q1-wallet"
+        wallet = (
+            await db.execute(select(Wallet).where(Wallet.id == wallet_id))
+        ).scalar_one_or_none()
+        if not wallet:
+            db.add(
+                Wallet(
+                    id=wallet_id,
+                    season_id="2026-Q1",
+                    agent_id=agent_data["id"],
+                    currency="CNY",
+                    initial_cash=wallet_initial,
+                    cash=wallet_cash,
+                )
+            )
+        else:
+            wallet.initial_cash = wallet_initial
+            wallet.cash = wallet_cash
 
         # US Account
         us_id = f"{agent_data['id']}-us"
         us_acc = (
             await db.execute(select(Account).where(Account.id == us_id))
         ).scalar_one_or_none()
-        us_cash = Decimal(str(round(float(usd_initial) * (1 + us_ret / 100), 2)))
         if not us_acc:
             db.add(
                 Account(
@@ -165,21 +186,20 @@ async def enable_mock(db: AsyncSession = Depends(get_db)):
                     season_id="2026-Q1",
                     agent_id=agent_data["id"],
                     market="us",
-                    currency="USD",
-                    initial_cash=usd_initial,
-                    cash=us_cash,
+                    currency="CNY",
+                    initial_cash=Decimal("0.00"),
+                    cash=wallet_cash,
                     api_token=secrets.token_hex(32),
                 )
             )
         else:
-            us_acc.cash = us_cash
+            us_acc.cash = wallet_cash
 
         # CN Account
         cn_id = f"{agent_data['id']}-cn"
         cn_acc = (
             await db.execute(select(Account).where(Account.id == cn_id))
         ).scalar_one_or_none()
-        cn_cash = Decimal(str(round(float(cny_initial) * (1 + cn_ret / 100), 2)))
         if not cn_acc:
             db.add(
                 Account(
@@ -188,18 +208,40 @@ async def enable_mock(db: AsyncSession = Depends(get_db)):
                     agent_id=agent_data["id"],
                     market="cn",
                     currency="CNY",
-                    initial_cash=cny_initial.quantize(Decimal("0.01")),
-                    cash=cn_cash,
+                    initial_cash=Decimal("0.00"),
+                    cash=wallet_cash,
                     api_token=secrets.token_hex(32),
                 )
             )
         else:
-            cn_acc.cash = cn_cash
+            cn_acc.cash = wallet_cash
+
+        # HK Account
+        hk_id = f"{agent_data['id']}-hk"
+        hk_acc = (
+            await db.execute(select(Account).where(Account.id == hk_id))
+        ).scalar_one_or_none()
+        if not hk_acc:
+            db.add(
+                Account(
+                    id=hk_id,
+                    season_id="2026-Q1",
+                    agent_id=agent_data["id"],
+                    market="hk",
+                    currency="CNY",
+                    initial_cash=Decimal("0.00"),
+                    cash=wallet_cash,
+                    api_token=secrets.token_hex(32),
+                )
+            )
+        else:
+            hk_acc.cash = wallet_cash
 
         # Trades
         for _ in range(random.randint(4, 10)):
-            is_us = random.random() < 0.6
-            ticker = random.choice(US_TICKERS if is_us else CN_TICKERS)
+            market = random.choices(["us", "cn", "hk"], weights=[0.45, 0.35, 0.20])[0]
+            ticker_pool = US_TICKERS if market == "us" else (CN_TICKERS if market == "cn" else HK_TICKERS)
+            ticker = random.choice(ticker_pool)
             action = random.choice(["buy", "sell"])
             price = Decimal(str(round(random.uniform(15, 800), 2)))
             shares = Decimal(str(round(random.uniform(10, 500), 1)))
@@ -207,13 +249,18 @@ async def enable_mock(db: AsyncSession = Depends(get_db)):
             fee = (amount * Decimal("0.001")).quantize(Decimal("0.01"))
             db.add(
                 Trade(
-                    account_id=f"{agent_data['id']}-{'us' if is_us else 'cn'}",
+                    account_id=f"{agent_data['id']}-{market}",
                     ticker=ticker,
                     action=action,
                     shares=shares,
                     price=price,
                     amount=amount,
                     fee=fee,
+                    fx_pair=("USD/CNY" if market == "us" else ("HKD/CNY" if market == "hk" else "CNY/CNY")),
+                    fx_rate=(Decimal("7.2") if market == "us" else (Decimal("0.92") if market == "hk" else Decimal("1"))),
+                    amount_cny=(amount * (Decimal("7.2") if market == "us" else (Decimal("0.92") if market == "hk" else Decimal("1")))).quantize(Decimal("0.01")),
+                    fee_cny=(fee * (Decimal("7.2") if market == "us" else (Decimal("0.92") if market == "hk" else Decimal("1")))).quantize(Decimal("0.01")),
+                    cash_after_cny=wallet_cash,
                     reasoning=random.choice(REASONINGS),
                     created_at=now
                     - timedelta(
@@ -237,13 +284,16 @@ async def _generate_mock_snapshots(db: AsyncSession):
 
     today = date.today()
 
-    # 获取所有账户
+    # 获取所有账户和钱包
     result = await db.execute(select(Account))
     accounts = result.scalars().all()
+    wallet_result = await db.execute(select(Wallet))
+    wallet_by_agent = {wallet.agent_id: wallet for wallet in wallet_result.scalars().all()}
 
     for acc in accounts:
-        initial = float(acc.initial_cash)
-        current = float(acc.cash)
+        wallet = wallet_by_agent.get(acc.agent_id)
+        initial = float(wallet.initial_cash if wallet else Decimal(str(settings.total_starting_capital_cny)))
+        current = float(wallet.cash if wallet else Decimal(str(settings.total_starting_capital_cny)))
 
         # 生成 30 天的数据，从初始资金渐变到当前资金
         for i in range(30, -1, -1):
@@ -288,6 +338,7 @@ async def reset_data(db: AsyncSession = Depends(get_db)):
     """清空所有数据"""
     await db.execute(delete(Trade))
     await db.execute(delete(Position))
+    await db.execute(delete(Wallet))
     await db.execute(delete(Account))
     await db.execute(delete(Agent))
     await db.commit()

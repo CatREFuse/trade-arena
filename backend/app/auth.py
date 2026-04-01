@@ -33,7 +33,7 @@ async def get_accessible_account(
 ) -> Account:
     """获取当前 token 所属 agent 可访问的账户。
 
-    同一 agent 的 US / CN 双账户共享 token，因此这里按 account_id 定位，
+    同一 agent 的 US / CN / HK 账户共享 token，因此这里按 account_id 定位，
     再校验它是否和当前 token 属于同一个 agent。
     """
     result = await db.execute(select(Account).where(Account.id == account_id))
