@@ -224,6 +224,7 @@ cd "$PROJECT_ROOT/backend"
 if [[ ! -x ".venv/bin/python" ]]; then
   python3 -m venv .venv >>"$LOG_FILE" 2>&1
 fi
+# shellcheck disable=SC1091
 source .venv/bin/activate
 python -m pip install --upgrade pip >>"$LOG_FILE" 2>&1
 python -m pip install -e . >>"$LOG_FILE" 2>&1 || \
