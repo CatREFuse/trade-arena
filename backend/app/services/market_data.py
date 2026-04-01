@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -207,6 +208,23 @@ SUPPORTED_TICKERS = {
 }
 
 
+def _pick_cn_ticker(code: str) -> str | None:
+    sh = f"{code}.SH"
+    sz = f"{code}.SZ"
+    if sh in SUPPORTED_TICKERS and sz in SUPPORTED_TICKERS:
+        # CN codes are typically partitioned by prefix; keep deterministic fallback.
+        if code.startswith(("0", "2", "3")):
+            return sz
+        if code.startswith(("6", "9")):
+            return sh
+        return sh
+    if sh in SUPPORTED_TICKERS:
+        return sh
+    if sz in SUPPORTED_TICKERS:
+        return sz
+    return None
+
+
 ProviderDataType = Literal["quote", "index"]
 ProviderMiddleware = Callable[["ProviderCallContext", Callable[[], Awaitable[object]]], Awaitable[object]]
 
@@ -375,18 +393,19 @@ class MarketDataService:
 
     async def get_quote(self, ticker: str) -> QuoteOut:
         """获取个股行情，带缓存"""
-        ticker = ticker.upper()
-        market = self._ticker_market(ticker)
-
-        if not self._is_supported_ticker(ticker):
+        original_ticker = ticker.upper()
+        ticker = self._normalize_supported_ticker(original_ticker)
+        if ticker is None:
             raise HTTPException(
                 status_code=404,
                 detail={
                     "error": "TICKER_NOT_FOUND",
-                    "message": f"未找到行情标的：{ticker}",
-                    "detail": {"ticker": ticker},
+                    "message": f"未找到行情标的：{original_ticker}",
+                    "detail": {"ticker": original_ticker},
                 },
             )
+
+        market = self._ticker_market(ticker)
 
         cache_key = f"quote:{ticker}"
         market_status = self._market_status(market)
@@ -927,6 +946,67 @@ class MarketDataService:
     @staticmethod
     def _is_supported_ticker(ticker: str) -> bool:
         return ticker in SUPPORTED_TICKERS
+
+    @classmethod
+    def _normalize_supported_ticker(cls, ticker: str) -> str | None:
+        normalized = ticker.strip().upper()
+        if not normalized:
+            return None
+
+        if normalized in SUPPORTED_TICKERS:
+            return normalized
+
+        # Allow BRK-B style aliases to map to BRK.B if present.
+        if "-" in normalized:
+            dotted = normalized.replace("-", ".")
+            if dotted in SUPPORTED_TICKERS:
+                return dotted
+
+        # sh600519 / sz300750
+        prefixed_cn = re.fullmatch(r"(SH|SZ)(\d{6})", normalized)
+        if prefixed_cn:
+            market, code = prefixed_cn.groups()
+            candidate = f"{code}.{market}"
+            if candidate in SUPPORTED_TICKERS:
+                return candidate
+            return None
+
+        # 600519sh / 300750sz
+        suffixed_cn = re.fullmatch(r"(\d{6})(SH|SZ)", normalized)
+        if suffixed_cn:
+            code, market = suffixed_cn.groups()
+            candidate = f"{code}.{market}"
+            if candidate in SUPPORTED_TICKERS:
+                return candidate
+            return None
+
+        # Pure CN code: 600519 / 000001 / 300750
+        pure_cn = re.fullmatch(r"\d{6}", normalized)
+        if pure_cn:
+            candidate = _pick_cn_ticker(normalized)
+            if candidate:
+                return candidate
+            return None
+
+        # hk0700 / hk700
+        prefixed_hk = re.fullmatch(r"HK(\d{3,5})", normalized)
+        if prefixed_hk:
+            code = prefixed_hk.group(1).zfill(4)
+            candidate = f"{code}.HK"
+            if candidate in SUPPORTED_TICKERS:
+                return candidate
+            return None
+
+        # 0700 / 700 (HK ticker style)
+        pure_hk = re.fullmatch(r"\d{3,5}", normalized)
+        if pure_hk:
+            code = normalized.zfill(4)
+            candidate = f"{code}.HK"
+            if candidate in SUPPORTED_TICKERS:
+                return candidate
+            return None
+
+        return None
 
     @staticmethod
     def _is_cn_ticker(ticker: str) -> bool:

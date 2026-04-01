@@ -19,6 +19,13 @@ async def get_quote(ticker: str, request: Request):
     return await svc.get_quote(ticker.upper())
 
 
+@router.get("/quote", response_model=QuoteOut)
+async def get_quote_compat(ticker: str, request: Request):
+    """兼容旧客户端：/api/market/quote?ticker=..."""
+    svc = _market_service(request)
+    return await svc.get_quote(ticker.upper())
+
+
 @router.get("/index/{symbol}", response_model=IndexQuoteOut)
 async def get_index(symbol: str, market: str = "us", request: Request = None):
     """获取大盘指数行情
