@@ -64,6 +64,12 @@ bash scripts/dev_self_check.sh
 MODE=dev START_DOCKER=0 BUILD_FRONTEND=0 bash scripts/service_ctl.sh start
 ```
 
+如果本机或受限环境里 `uvicorn --reload` 的文件监听报错，可临时关闭后端热重载：
+
+```bash
+MODE=dev START_DOCKER=0 BUILD_FRONTEND=0 BACKEND_RELOAD=0 bash scripts/service_ctl.sh start
+```
+
 ## 3. 日常开发后的最小验证
 
 推荐顺序：

@@ -27,6 +27,7 @@ START_WEBHOOK="${START_WEBHOOK:-0}"     # 1 | 0
 PREPARE_BACKEND="${PREPARE_BACKEND:-0}" # 1 | 0
 PREPARE_FRONTEND="${PREPARE_FRONTEND:-0}" # 1 | 0
 HEALTHCHECK="${HEALTHCHECK:-1}"         # 1 | 0
+BACKEND_RELOAD="${BACKEND_RELOAD:-1}"   # 1 | 0 (dev mode only)
 NO_PROXY_VALUE="${NO_PROXY_VALUE:-*}"
 
 BACKEND_HOST="${BACKEND_HOST:-0.0.0.0}"
@@ -69,6 +70,7 @@ Common env vars:
   PREPARE_FRONTEND=1|0          Default: 0
   BUILD_FRONTEND=1|0            Default: prod=1, dev=0
   HEALTHCHECK=1|0               Default: 1
+  BACKEND_RELOAD=1|0            Default: 1 (dev mode only)
 
 Ports/hosts:
   BACKEND_HOST/BACKEND_PORT     Default: 0.0.0.0:8000
@@ -306,8 +308,13 @@ start_backend() {
   (
     cd "$ROOT_DIR/backend"
     if [[ "$MODE" == "dev" ]]; then
-      nohup "$py" -m uvicorn app.main:app --reload --host "$BACKEND_HOST" --port "$BACKEND_PORT" \
-        >>"$BACKEND_LOG_FILE" 2>&1 &
+      if [[ "$BACKEND_RELOAD" == "1" ]]; then
+        nohup "$py" -m uvicorn app.main:app --reload --host "$BACKEND_HOST" --port "$BACKEND_PORT" \
+          >>"$BACKEND_LOG_FILE" 2>&1 &
+      else
+        nohup "$py" -m uvicorn app.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" \
+          >>"$BACKEND_LOG_FILE" 2>&1 &
+      fi
     else
       nohup "$py" -m uvicorn app.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" \
         >>"$BACKEND_LOG_FILE" 2>&1 &

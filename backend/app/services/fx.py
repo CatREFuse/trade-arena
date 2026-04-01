@@ -94,6 +94,7 @@ class FXService:
         return httpx.AsyncClient(
             timeout=settings.fx_http_timeout_seconds,
             follow_redirects=True,
+            trust_env=False,
         )
 
     def _default_rate(self, pair: str) -> float:
