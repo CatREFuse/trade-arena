@@ -88,8 +88,8 @@ load_env_file_if_exists() {
   if [[ ! -f "$env_file" ]]; then
     return
   fi
-  # shellcheck disable=SC1090
   set -a
+  # shellcheck disable=SC1090
   . "$env_file"
   set +a
 }
