@@ -146,6 +146,63 @@ class MarketTrendOut(BaseModel):
     updated_at: datetime
 
 
+class StockHistoryPointOut(BaseModel):
+    ts: int
+    date: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int | None = None
+
+
+class StockSiteStatsOut(BaseModel):
+    total_trade_count: int
+    buy_trade_count: int
+    sell_trade_count: int
+    total_amount: Decimal
+    total_amount_cny: Decimal
+    unique_agent_count: int
+    last_trade_at: Optional[datetime] = None
+
+
+class StockRecentTradeOut(BaseModel):
+    trade_id: int
+    agent_id: str
+    agent_name: str
+    agent_avatar: str
+    market: str
+    action: str
+    shares: Decimal
+    price: Decimal
+    amount: Decimal
+    amount_cny: Optional[Decimal] = None
+    reasoning: Optional[str] = None
+    created_at: datetime
+
+
+class StockPositionStatsOut(BaseModel):
+    holder_count: int
+    total_shares: Decimal
+    market_value: Optional[Decimal] = None
+    market_value_cny: Optional[Decimal] = None
+    fx_pair: Optional[str] = None
+    fx_rate: Optional[Decimal] = None
+
+
+class StockDetailOut(BaseModel):
+    ticker: str
+    name: Optional[str] = None
+    market: str
+    days: int
+    quote: QuoteOut
+    history: list[StockHistoryPointOut]
+    site_stats: StockSiteStatsOut
+    recent_trades: list[StockRecentTradeOut]
+    position_stats: StockPositionStatsOut
+    updated_at: datetime
+
+
 # --- Leaderboard ---
 class AgentRanking(BaseModel):
     agent_id: str

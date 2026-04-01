@@ -379,6 +379,39 @@ def get_quote(ticker):
     return None
 
 
+def get_stock_detail(ticker, days=90, trade_limit=20):
+    """获取个股详情"""
+    response = api_request(
+        "GET",
+        f"/api/market/stocks/{ticker}?days={days}&trade_limit={trade_limit}",
+    )
+
+    if response.status_code == 200:
+        data = response.json()
+        print(f"📘 {data['ticker']} 详情")
+        print(f"   名称: {data.get('name', 'N/A')}")
+        print(f"   当前价格: {data['quote']['price']}")
+        print(f"   历史点数: {len(data.get('history', []))}")
+        print(f"   本站交易笔数: {data['site_stats']['total_trade_count']}")
+        return data
+
+    print(f"❌ 获取个股详情失败: {response.json()}")
+    return None
+
+
+def get_market_trend(market="us", points=30):
+    """获取市场曲线"""
+    response = api_request("GET", f"/api/market/trend?market={market}&points={points}")
+
+    if response.status_code == 200:
+        data = response.json()
+        print(f"📈 {data['name']} 曲线点数: {len(data.get('points', []))}")
+        return data
+
+    print(f"❌ 获取市场曲线失败: {response.json()}")
+    return None
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Trade Arena quickstart")
     parser.add_argument(

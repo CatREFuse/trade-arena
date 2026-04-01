@@ -181,6 +181,34 @@
       }
     },
     {
+      "name": "get_stock_detail",
+      "description": "获取单只股票的完整详情，包括实时行情、历史日线、本站交易统计、最近相关交易和站内持仓概览。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "股票代码"
+          },
+          "days": {
+            "type": "integer",
+            "default": 90,
+            "minimum": 30,
+            "maximum": 365,
+            "description": "历史行情天数"
+          },
+          "trade_limit": {
+            "type": "integer",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 50,
+            "description": "返回最近相关交易条数"
+          }
+        },
+        "required": ["ticker"]
+      }
+    },
+    {
       "name": "get_index",
       "description": "获取大盘指数行情。",
       "parameters": {
@@ -219,7 +247,7 @@
     },
     {
       "name": "get_market_board",
-      "description": "获取市场涨跌榜。",
+      "description": "获取市场看盘榜单快照，返回榜单条目和更新时间。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -233,6 +261,28 @@
       }
     },
     {
+      "name": "get_market_trend",
+      "description": "获取市场代表指数的历史曲线，可用于市场背景走势或概览图。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "market": {
+            "type": "string",
+            "enum": ["us", "cn", "hk"],
+            "default": "us",
+            "description": "市场类型"
+          },
+          "points": {
+            "type": "integer",
+            "default": 30,
+            "minimum": 8,
+            "maximum": 120,
+            "description": "返回点数"
+          }
+        }
+      }
+    },
+    {
       "name": "get_leaderboard",
       "description": "获取排行榜。结果按人民币总资产排序，收益率也按人民币口径计算。",
       "parameters": {
@@ -240,7 +290,7 @@
         "properties": {
           "market": {
             "type": "string",
-            "enum": ["overall", "us", "cn"],
+            "enum": ["overall", "us", "cn", "hk"],
             "default": "overall",
             "description": "排行类型"
           }

@@ -6,7 +6,7 @@ import logging
 import re
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable, Literal
 
 from fastapi import HTTPException
@@ -23,6 +23,7 @@ from app.schemas import (
     MarketTrendOut,
     MarketTrendPointOut,
     QuoteOut,
+    StockHistoryPointOut,
 )
 from app.services.market_calendar import MarketCalendarService
 from app.services.market_providers import (
@@ -73,9 +74,11 @@ INDEX_CACHE_TTL = 300  # 大盘指数缓存5分钟
 BOARD_CACHE_TTL = 120  # 市场看盘榜单缓存2分钟，兼顾新鲜度和负载
 OVERVIEW_CACHE_TTL = 120  # 市场总览缓存2分钟，和看盘榜单保持一致
 TREND_CACHE_TTL = 300  # 市场代表指数曲线缓存5分钟
+STOCK_HISTORY_CACHE_TTL = 300  # 个股历史行情缓存5分钟
 BOARD_FETCH_CHUNK_SIZE = 24  # 大榜单分批抓取，避免单次 upstream 请求过大
 MARKET_CACHE_VERSION = "v3"
 TREND_CACHE_VERSION = "v2"
+STOCK_HISTORY_CACHE_VERSION = "v1"
 SHADOW_CACHE_TTL_SECONDS = 300
 
 REPRESENTATIVE_INDEX = {
@@ -645,6 +648,36 @@ class MarketDataService:
         await self._cache_model(cache_key, TREND_CACHE_TTL, trend)
         return trend
 
+    async def get_stock_history(
+        self,
+        ticker: str,
+        *,
+        days: int = 90,
+        refresh: bool = False,
+    ) -> list[StockHistoryPointOut]:
+        original_ticker = ticker.upper()
+        ticker = self._normalize_supported_ticker(original_ticker)
+        if ticker is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "TICKER_NOT_FOUND",
+                    "message": f"未找到行情标的：{original_ticker}",
+                    "detail": {"ticker": original_ticker},
+                },
+            )
+
+        days = max(30, min(days, 365))
+        cache_key = f"stock:history:{STOCK_HISTORY_CACHE_VERSION}:{MARKET_CACHE_VERSION}:{ticker}:{days}"
+        if not refresh:
+            cached_history = await self._load_cached_list(cache_key, StockHistoryPointOut)
+            if cached_history is not None:
+                return cached_history
+
+        history = await self._build_stock_history(ticker, days)
+        await self._cache_model_list(cache_key, STOCK_HISTORY_CACHE_TTL, history)
+        return history
+
     async def _build_market_trend(self, market: str, points: int) -> MarketTrendOut:
         representative = REPRESENTATIVE_INDEX[market]
         symbol = representative["symbol"]
@@ -713,6 +746,121 @@ class MarketDataService:
             )
         if len(parsed) > points:
             return parsed[-points:]
+        return parsed
+
+    async def _build_stock_history(self, ticker: str, days: int) -> list[StockHistoryPointOut]:
+        payload, response_symbol = await self._fetch_tencent_stock_history_payload(ticker, days)
+        if payload is None or response_symbol is None:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "HISTORY_DATA_UNAVAILABLE",
+                    "message": f"历史行情暂不可用：{ticker}",
+                    "detail": {"ticker": ticker},
+                },
+            )
+
+        series = self._parse_tencent_stock_history_series(payload, response_symbol, days)
+        if not series:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "HISTORY_DATA_UNAVAILABLE",
+                    "message": f"历史行情暂不可用：{ticker}",
+                    "detail": {"ticker": ticker},
+                },
+            )
+        return series
+
+    async def _fetch_tencent_stock_history_payload(
+        self,
+        ticker: str,
+        days: int,
+    ) -> tuple[dict | None, str | None]:
+        fetch_points = max(120, min(days * 2, 480))
+        for candidate in self._tencent_kline_candidates(ticker):
+            params = {"param": f"{candidate},day,,,{fetch_points}"}
+            try:
+                response = await _limited_get(
+                    "tencent",
+                    "https://web.ifzq.gtimg.cn/appstock/app/kline/kline",
+                    client_name="tencent-stock-history",
+                    timeout=FAST_HTTP_TIMEOUT,
+                    params=params,
+                    headers=TencentProvider.HEADERS,
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except Exception as exc:
+                logger.warning("Fetch stock history failed for %s via %s: %s", ticker, candidate, exc)
+                continue
+
+            raw_data = payload.get("data") or {}
+            if candidate not in raw_data:
+                continue
+            if raw_data.get(candidate, {}).get("day"):
+                return payload, candidate
+        return None, None
+
+    @classmethod
+    def _tencent_kline_candidates(cls, ticker: str) -> list[str]:
+        normalized = ticker.upper()
+        if cls._is_cn_ticker(normalized):
+            code, market = normalized.split(".")
+            return [f"{market.lower()}{code}"]
+        if cls._is_hk_ticker(normalized):
+            code = normalized.removesuffix(".HK")
+            return [f"hk{code.zfill(5)}", f"hk{code.zfill(4)}"]
+
+        us_base = normalized
+        return [
+            f"us{us_base}",
+            f"us{us_base.replace('.', '-')}",
+            f"us{us_base.replace('.', '')}",
+        ]
+
+    @classmethod
+    def _parse_tencent_stock_history_series(
+        cls,
+        payload: dict,
+        symbol: str,
+        days: int,
+    ) -> list[StockHistoryPointOut]:
+        raw_data = (payload.get("data") or {}).get(symbol) or {}
+        day_rows = raw_data.get("day") or []
+        if not day_rows:
+            return []
+
+        parsed: list[StockHistoryPointOut] = []
+        for row in day_rows:
+            if len(row) < 6:
+                continue
+            date_str = str(row[0]).strip()
+            ts = cls._parse_kline_ts(date_str)
+            if ts is None:
+                continue
+            try:
+                open_price = round(float(row[1]), 4)
+                close_price = round(float(row[2]), 4)
+                high_price = round(float(row[3]), 4)
+                low_price = round(float(row[4]), 4)
+                volume = int(float(row[5]))
+            except (TypeError, ValueError):
+                continue
+            parsed.append(
+                StockHistoryPointOut(
+                    ts=ts,
+                    date=date_str,
+                    open=open_price,
+                    high=high_price,
+                    low=low_price,
+                    close=close_price,
+                    volume=volume,
+                )
+            )
+
+        if len(parsed) > days:
+            return parsed[-days:]
         return parsed
 
     @staticmethod

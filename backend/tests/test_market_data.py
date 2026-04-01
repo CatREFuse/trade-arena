@@ -464,3 +464,54 @@ async def test_redis_safe_wrapper_handles_exceptions():
 
     result = await _redis_setex_safe(None, "test:key", 60, "value")
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_get_stock_history_fetches_and_caches_series(fake_redis, monkeypatch):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+
+    async def fake_fetch_payload(ticker: str, days: int):
+        assert ticker == "AAPL"
+        assert days == 90
+        return (
+            {
+                "data": {
+                    "usAAPL": {
+                        "day": [
+                            ["2026-03-28", "100", "101", "102", "99", "1000"],
+                            ["2026-03-31", "101", "103", "104", "100", "1500"],
+                        ]
+                    }
+                }
+            },
+            "usAAPL",
+        )
+
+    monkeypatch.setattr(service, "_fetch_tencent_stock_history_payload", fake_fetch_payload)
+
+    history = await service.get_stock_history("aapl", days=90)
+
+    assert len(history) == 2
+    assert history[0].date == "2026-03-28"
+    assert history[-1].close == 103.0
+    assert history[-1].volume == 1500
+    assert fake_redis.set_calls[-1][0] == "stock:history:v1:v3:AAPL:90"
+
+    async def fail_if_called(_ticker: str, _days: int):
+        raise AssertionError("history provider should not be called on cache hit")
+
+    monkeypatch.setattr(service, "_fetch_tencent_stock_history_payload", fail_if_called)
+    cached_history = await service.get_stock_history("AAPL", days=90)
+    assert len(cached_history) == 2
+    assert cached_history[-1].close == 103.0
+
+
+@pytest.mark.asyncio
+async def test_get_stock_history_rejects_unknown_ticker(fake_redis):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.get_stock_history("INVALID999", days=30)
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail["error"] == "TICKER_NOT_FOUND"
