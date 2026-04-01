@@ -205,6 +205,7 @@ git reset --hard "origin/$BRANCH"
 # Removing these paths can break PostgreSQL volume data or drop webhook credentials.
 git clean -fd \
   -e data/ \
+  -e backend/.venv/ \
   -e .runtime/ \
   -e .env.ops.local \
   -e .env.ops
@@ -212,10 +213,15 @@ POST_DEPLOY_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 
 log_line "Installing backend dependencies..."
 cd "$PROJECT_ROOT/backend"
-pip install -e . >>"$LOG_FILE" 2>&1 || pip install fastapi uvicorn sqlalchemy asyncpg alembic pydantic-settings redis sse-starlette yfinance httpx >>"$LOG_FILE" 2>&1
+if [[ ! -x ".venv/bin/python" ]]; then
+  python3 -m venv .venv >>"$LOG_FILE" 2>&1
+fi
+source .venv/bin/activate
+python -m pip install --upgrade pip >>"$LOG_FILE" 2>&1
+python -m pip install -e . >>"$LOG_FILE" 2>&1 || \
+  python -m pip install fastapi uvicorn sqlalchemy asyncpg alembic pydantic-settings redis sse-starlette yfinance httpx >>"$LOG_FILE" 2>&1
 
 log_line "Running database migrations..."
-source .venv/bin/activate
 alembic upgrade head >>"$LOG_FILE" 2>&1
 
 log_line "Installing frontend dependencies..."
