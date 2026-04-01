@@ -174,6 +174,7 @@ alembic upgrade head
 - Webhook 401：签名错误或 `WEBHOOK_SECRET` 不一致
 - Webhook 503：`WEBHOOK_SECRET` 或 `OPS_API_KEY` 未正确配置
 - 部署一直排队：锁文件未清理
+- `git` 同步报 `webhook/DEPLOY_LOG.md not uptodate`：旧部署遗留索引标记或本地日志改动
 - 前端启动异常：误用 `.nuxt` 产物，或构建产物损坏
 - API 500：迁移未完成或依赖安装失败
 

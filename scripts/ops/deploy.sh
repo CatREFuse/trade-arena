@@ -125,6 +125,13 @@ append_cicd_markdown_record() {
 EOF
 }
 
+prepare_repo_checkout() {
+  # webhook/DEPLOY_LOG.md is tracked and may be touched by previous deploy runs.
+  # Normalize index flags and restore it before pulling to avoid ff/reset conflicts.
+  git update-index --no-assume-unchanged webhook/DEPLOY_LOG.md >/dev/null 2>&1 || true
+  git checkout -- webhook/DEPLOY_LOG.md >/dev/null 2>&1 || true
+}
+
 wait_for_expected_status() {
   local url="$1"
   local expected_csv="$2"
@@ -195,9 +202,9 @@ PRE_DEPLOY_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 REPOSITORY_NAME="$(git config --get remote.origin.url | sed -E 's#^.*github.com[:/]([^/]+/[^/.]+)(\\.git)?$#\1#' || true)"
 log_line "Current branch: $CURRENT_BRANCH, target: $BRANCH"
 send_notify "stage=start branch=${BRANCH} current_branch=${CURRENT_BRANCH} current_commit=${PRE_DEPLOY_COMMIT} start=${DEPLOY_START_TIME}"
-append_cicd_markdown_record "start" "running" "-" "none"
 
 log_line "Switching to branch: $BRANCH"
+prepare_repo_checkout
 git fetch origin
 git checkout "$BRANCH"
 git reset --hard "origin/$BRANCH"
@@ -210,6 +217,7 @@ git clean -fd \
   -e .env.ops.local \
   -e .env.ops
 POST_DEPLOY_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+append_cicd_markdown_record "start" "running" "-" "none"
 
 log_line "Installing backend dependencies..."
 cd "$PROJECT_ROOT/backend"

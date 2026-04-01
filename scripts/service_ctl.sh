@@ -2,7 +2,7 @@
 
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   echo "[service_ctl] ERROR: do not source this script. Use: bash scripts/service_ctl.sh <start|stop|restart|status>" >&2
-  return 1 2>/dev/null || exit 1
+  return 1
 fi
 
 set -euo pipefail
