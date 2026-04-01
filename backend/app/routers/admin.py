@@ -324,7 +324,9 @@ async def _collect_market_snapshot(request: Request, live: bool = False) -> dict
 
 
 async def _collect_trade_stats(db: AsyncSession, days: int) -> dict:
-    now = datetime.now(timezone.utc)
+    # trades.created_at is stored as a naive timestamp in the current schema,
+    # so comparisons here must use naive UTC datetimes as well.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     window_start = now - timedelta(days=max(days - 1, 0))
     last_24h = now - timedelta(hours=24)
 

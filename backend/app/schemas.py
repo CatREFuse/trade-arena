@@ -133,6 +133,19 @@ class MarketOverviewOut(BaseModel):
     updated_at: datetime
 
 
+class MarketTrendPointOut(BaseModel):
+    ts: int
+    close: float
+
+
+class MarketTrendOut(BaseModel):
+    market: str
+    symbol: str
+    name: str
+    points: list[MarketTrendPointOut]
+    updated_at: datetime
+
+
 # --- Leaderboard ---
 class AgentRanking(BaseModel):
     agent_id: str

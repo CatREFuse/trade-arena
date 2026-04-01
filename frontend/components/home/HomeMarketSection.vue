@@ -33,43 +33,64 @@
         <div
           v-for="section in marketSections"
           :key="section.key"
-          class="flex items-center gap-4 px-4 py-3 rounded-2xl border border-zinc-200/70 dark:border-zinc-800/70 bg-white/50 dark:bg-zinc-950/30"
+          class="rounded-3xl border px-5 py-5"
+          :class="section.cardTone"
         >
-          <div class="w-20 flex-shrink-0">
+          <div class="flex items-start justify-between gap-4">
             <div>
-              <span class="inline-flex items-center rounded-full border border-white/40 bg-white/30 px-2 py-0.5 text-[10px] uppercase tracking-widest text-zinc-700 backdrop-blur-md dark:border-zinc-700/60 dark:bg-zinc-900/35 dark:text-zinc-200">
-                {{ section.badge }}
-              </span>
+              <div>
+                <span class="inline-flex items-center rounded-full border border-white/40 bg-white/30 px-2 py-0.5 text-[10px] uppercase tracking-widest text-zinc-700 backdrop-blur-md dark:border-zinc-700/60 dark:bg-zinc-900/35 dark:text-zinc-200">
+                  {{ section.badge }}
+                </span>
+              </div>
+              <div class="mt-2 text-base font-bold text-main">{{ section.title }}</div>
             </div>
-            <div class="font-bold text-main">{{ section.shortTitle }}</div>
+
+            <NuxtLink
+              :to="`/market-detail/${section.key}`"
+              class="flex-shrink-0 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              查看详情 →
+            </NuxtLink>
           </div>
 
-          <div class="flex-1 flex items-center gap-6 min-w-0">
-            <div class="flex items-center gap-4 text-sm">
-              <span class="text-tertiary">{{ section.stockCount }} 只</span>
-              <span class="text-emerald-600 dark:text-emerald-400">{{ section.upCount }} 涨</span>
-              <span class="text-rose-600 dark:text-rose-400">{{ section.downCount }} 跌</span>
+          <div class="mt-5 space-y-5">
+            <div class="grid grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-4">
+              <div>
+                <div class="text-[10px] uppercase tracking-[0.16em] text-tertiary">股票数</div>
+                <div class="numeric-mono mt-2 text-3xl leading-none text-main">{{ section.stockCount }}</div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase tracking-[0.16em] text-tertiary">上涨</div>
+                <div class="numeric-mono mt-2 text-3xl leading-none text-emerald-600 dark:text-emerald-400">{{ section.upCount }}</div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase tracking-[0.16em] text-tertiary">下跌</div>
+                <div class="numeric-mono mt-2 text-3xl leading-none text-rose-600 dark:text-rose-400">{{ section.downCount }}</div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase tracking-[0.16em] text-tertiary">平盘</div>
+                <div class="numeric-mono mt-2 text-3xl leading-none text-main">{{ section.flatCount }}</div>
+              </div>
             </div>
 
-            <div class="hidden md:flex items-center gap-3">
+            <div class="grid grid-cols-1 gap-x-12 gap-y-4 border-t border-zinc-200/60 pt-4 sm:grid-cols-3 dark:border-zinc-800/60">
               <div
                 v-for="index in section.indices.slice(0, 3)"
                 :key="index.symbol"
-                class="flex items-center gap-1.5 text-xs"
+                class="min-w-0"
               >
-                <span class="text-secondary">{{ index.shortLabel }}</span>
-                <span class="font-mono font-medium text-main">{{ index.value }}</span>
-                <span class="font-mono" :class="cc.textClass(index.changePct)">{{ formatPercent(index.changePct) }}</span>
+                <div class="text-[10px] uppercase tracking-[0.16em] text-tertiary">{{ index.shortLabel }}</div>
+                <div class="numeric-mono mt-2 text-[16px] leading-tight text-main">{{ index.value }}</div>
+                <div
+                  class="numeric-mono mt-1 text-xs leading-none"
+                  :class="index.changePct == null ? 'text-tertiary' : cc.textClass(index.changePct)"
+                >
+                  {{ index.changePct == null ? '--' : formatPercent(index.changePct) }}
+                </div>
               </div>
             </div>
           </div>
-
-          <NuxtLink
-            :to="`/market-detail/${section.key}`"
-            class="flex-shrink-0 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
-          >
-            查看详情 →
-          </NuxtLink>
         </div>
       </div>
     </div>
@@ -283,10 +304,25 @@ const panelOptions = [
   { label: 'Agent 热门操作', value: 'activity' },
 ] as const
 
-const MARKET_META: Record<MarketKey, { badge: string; title: string; shortTitle: string }> = {
-  us: { badge: 'UNITED STATES', title: '美股市场', shortTitle: '美股' },
-  cn: { badge: 'CHINA MAINLAND', title: 'A 股市场', shortTitle: 'A 股' },
-  hk: { badge: 'HONG KONG', title: '港股市场', shortTitle: '港股' },
+const MARKET_META: Record<MarketKey, { badge: string; title: string; shortTitle: string; cardTone: string }> = {
+  us: {
+    badge: 'UNITED STATES',
+    title: '美股市场',
+    shortTitle: '美股',
+    cardTone: 'border-blue-200/70 bg-blue-50/45 dark:border-blue-900/40 dark:bg-blue-950/20',
+  },
+  cn: {
+    badge: 'CHINA MAINLAND',
+    title: 'A 股市场',
+    shortTitle: 'A 股',
+    cardTone: 'border-rose-200/70 bg-rose-50/45 dark:border-rose-900/40 dark:bg-rose-950/20',
+  },
+  hk: {
+    badge: 'HONG KONG',
+    title: '港股市场',
+    shortTitle: '港股',
+    cardTone: 'border-emerald-200/70 bg-emerald-50/45 dark:border-emerald-900/40 dark:bg-emerald-950/20',
+  },
 }
 
 const INDEX_META: Record<string, { shortLabel: string }> = {
@@ -298,6 +334,12 @@ const INDEX_META: Record<string, { shortLabel: string }> = {
   CY: { shortLabel: '创业板' },
   HSI: { shortLabel: '恒生指数' },
   HSCEI: { shortLabel: '恒生国企' },
+}
+
+const MARKET_INDEX_ORDER: Record<MarketKey, string[]> = {
+  us: ['SPX', 'NDX', 'DJI'],
+  cn: ['SH', 'SZ', 'CY'],
+  hk: ['HSI', 'HSCEI'],
 }
 
 const { data: overviewData, pending: overviewPending } = useLazyFetch<MarketOverviewResponse>('/api/market/overview', {
@@ -335,14 +377,22 @@ const boardTickerSet = computed(() => new Set(boardItems.value.map(item => item.
 const marketSections = computed(() => {
   return (Object.keys(MARKET_META) as MarketKey[]).map((key) => {
     const summary = overviewData.value.markets?.find(item => item.market === key)
-    const indices = (overviewData.value.indices || [])
-      .filter(item => item.market === key)
-      .map(item => ({
-        symbol: item.symbol,
-        shortLabel: INDEX_META[item.symbol]?.shortLabel || item.name,
-        value: formatPrice(item.price, key, { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
-        changePct: item.change_pct,
-      }))
+    const marketIndexMap = new Map(
+      (overviewData.value.indices || [])
+        .filter(item => item.market === key)
+        .map(item => [item.symbol, item]),
+    )
+
+    const fallbackSymbols = MARKET_INDEX_ORDER[key] || []
+    const indices = fallbackSymbols.map((symbol) => {
+      const item = marketIndexMap.get(symbol)
+      return {
+        symbol,
+        shortLabel: INDEX_META[symbol]?.shortLabel || symbol,
+        value: item ? formatIndexValue(item.price) : '--',
+        changePct: item?.change_pct ?? null,
+      }
+    })
 
     return {
       key,
@@ -465,4 +515,21 @@ function formatPrice(
   const currency = market === 'us' ? '$' : market === 'hk' ? 'HK$' : '¥'
   return `${currency}${Number(value).toLocaleString('en-US', options)}`
 }
+
+function formatIndexValue(value: number) {
+  return Number(value).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
 </script>
+
+<style scoped>
+.numeric-mono {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: 0;
+  font-weight: 700;
+}
+</style>

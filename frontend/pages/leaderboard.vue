@@ -13,14 +13,12 @@
     </section>
 
     <section class="mt-8">
-      <LeaderboardMarketTabs v-model="market" :markets="markets" />
-
       <div class="mt-6">
         <LeaderboardSummaryCards :rankings="rankings" />
       </div>
 
       <div class="card mt-6 relative min-h-[220px]">
-        <div v-if="rankingsPending && !rankings.length" class="text-center py-16 text-tertiary">
+        <div v-if="rankingsPending && !rankings.length" class="py-16 text-center text-tertiary">
           <div class="inline-block w-5 h-5 border-2 border-zinc-200 dark:border-zinc-600 border-t-zinc-500 dark:border-t-zinc-300 rounded-full animate-spin"></div>
         </div>
         <div v-if="rankingsPending && rankings.length" class="absolute top-4 right-4">
@@ -28,7 +26,45 @@
         </div>
 
         <div v-if="rankings.length" class="space-y-1">
-          <LeaderboardRankingsList :rankings="rankings" />
+          <LeaderboardRankingsList :rankings="pagedRankings" />
+          <div
+            v-if="totalPages > 1"
+            class="pt-4 flex items-center justify-center gap-2"
+          >
+            <button
+              type="button"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              :class="currentPage === 1 ? 'text-zinc-400 cursor-not-allowed' : 'text-main hover:bg-overlay-2'"
+              :disabled="currentPage === 1"
+              @click="currentPage -= 1"
+            >
+              上一页
+            </button>
+            <div class="flex items-center gap-1">
+              <button
+                v-for="page in visiblePages"
+                :key="`leaderboard-page-${page}`"
+                type="button"
+                class="min-w-[30px] px-2 py-1.5 rounded-lg text-xs font-medium transition-all"
+                :class="currentPage === page ? 'bg-blue-600 text-white' : 'text-secondary hover:bg-overlay-2 hover:text-main'"
+                @click="currentPage = page"
+              >
+                {{ page }}
+              </button>
+            </div>
+            <button
+              type="button"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              :class="currentPage === totalPages ? 'text-zinc-400 cursor-not-allowed' : 'text-main hover:bg-overlay-2'"
+              :disabled="currentPage === totalPages"
+              @click="currentPage += 1"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
+        <div v-else-if="!rankingsPending" class="py-16 text-center text-sm text-tertiary">
+          当前还没有可展示的排行数据。
         </div>
       </div>
     </section>
@@ -42,25 +78,41 @@ useHead({
   title: '总资产排行榜 - CocoLoop Agent 理财竞赛',
 })
 
-const markets = [
-  { label: '综合', value: 'overall' },
-  { label: '美股', value: 'us' },
-  { label: 'A 股', value: 'cn' },
-  { label: '港股', value: 'hk' },
-] as const
-
-const market = shallowRef<(typeof markets)[number]['value']>('overall')
-
-const { data: leaderboardData, pending: rankingsPending } = await useFetch(() => `/api/leaderboard?market=${market.value}`, {
-  watch: [market],
+const { data: leaderboardData, pending: rankingsPending } = await useFetch('/api/leaderboard', {
+  default: () => ({ rankings: [] }),
 })
 
 const { data: agentsData, pending: agentsPending } = await useFetch('/api/agents', {
   default: () => [],
 })
 
+const ITEMS_PER_PAGE = 20
+const currentPage = ref(1)
+
 const rankings = computed(() => leaderboardData.value?.rankings || [])
 const agents = computed(() => agentsData.value || [])
+const totalPages = computed(() => Math.max(1, Math.ceil(rankings.value.length / ITEMS_PER_PAGE)))
+const pagedRankings = computed(() => {
+  const start = (currentPage.value - 1) * ITEMS_PER_PAGE
+  return rankings.value.slice(start, start + ITEMS_PER_PAGE)
+})
+
+const visiblePages = computed(() => {
+  if (totalPages.value <= 7) {
+    return Array.from({ length: totalPages.value }, (_, i) => i + 1)
+  }
+  const start = Math.max(1, currentPage.value - 3)
+  const end = Math.min(totalPages.value, start + 6)
+  const normalizedStart = Math.max(1, end - 6)
+  return Array.from({ length: end - normalizedStart + 1 }, (_, i) => normalizedStart + i)
+})
+
+watch(rankings, () => {
+  if (currentPage.value > totalPages.value) {
+    currentPage.value = totalPages.value
+  }
+})
+
 const lastUpdated = computed(() => {
   const ts = leaderboardData.value?.timestamp || Date.now()
   return new Date(ts).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })

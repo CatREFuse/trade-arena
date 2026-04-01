@@ -50,14 +50,9 @@
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                <span class="text-lg font-bold text-blue-500">US</span>
+                <span class="text-2xl leading-none">🇺🇸</span>
               </div>
               <div>
-              <div>
-                <span class="inline-flex items-center rounded-full border border-white/45 bg-white/20 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.18em] text-zinc-700 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25 dark:text-zinc-200">
-                    UNITED STATES
-                  </span>
-                </div>
                 <h2 class="text-xl font-bold text-main tracking-tight">美股市场</h2>
                 <div class="mt-2">
                   <MarketDataTimestamp :timestamp="overviewData.updated_at" />
@@ -93,14 +88,14 @@
           </div>
 
           <!-- Indices Row -->
-          <div class="mt-4 flex flex-wrap gap-2">
+          <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
             <div
               v-for="index in usIndices"
               :key="index.symbol"
-              class="flex items-center gap-2 rounded-lg border border-white/45 bg-white/20 px-3 py-2 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25"
+              class="min-w-0 flex items-center justify-between gap-2 rounded-lg border border-white/45 bg-white/20 px-3 py-2 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25"
             >
-              <span class="text-xs text-tertiary">{{ index.shortLabel }}</span>
-              <span class="text-sm font-bold text-main tabular-nums">{{ index.value }}</span>
+              <span class="truncate text-xs text-tertiary">{{ index.shortLabel }}</span>
+              <span class="text-sm font-bold text-main tabular-nums whitespace-nowrap">{{ index.value }}</span>
               <span class="text-xs font-bold tabular-nums" :class="cc.textClass(index.changePct)">
                 {{ formatPercent(index.changePct) }}
               </span>
@@ -156,14 +151,9 @@
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center">
-                <span class="text-lg font-bold text-red-500">CN</span>
+                <span class="text-2xl leading-none">🇨🇳</span>
               </div>
               <div>
-              <div>
-                <span class="inline-flex items-center rounded-full border border-white/45 bg-white/20 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.18em] text-zinc-700 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25 dark:text-zinc-200">
-                    CHINA MAINLAND
-                  </span>
-                </div>
                 <h2 class="text-xl font-bold text-main tracking-tight">A 股市场</h2>
                 <div class="mt-2">
                   <MarketDataTimestamp :timestamp="overviewData.updated_at" />
@@ -199,14 +189,14 @@
           </div>
 
           <!-- Indices Row -->
-          <div class="mt-4 flex flex-wrap gap-2">
+          <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
             <div
               v-for="index in cnIndices"
               :key="index.symbol"
-              class="flex items-center gap-2 rounded-lg border border-white/45 bg-white/20 px-3 py-2 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25"
+              class="min-w-0 flex items-center justify-between gap-2 rounded-lg border border-white/45 bg-white/20 px-3 py-2 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25"
             >
-              <span class="text-xs text-tertiary">{{ index.shortLabel }}</span>
-              <span class="text-sm font-bold text-main tabular-nums">{{ index.value }}</span>
+              <span class="truncate text-xs text-tertiary">{{ index.shortLabel }}</span>
+              <span class="text-sm font-bold text-main tabular-nums whitespace-nowrap">{{ index.value }}</span>
               <span class="text-xs font-bold tabular-nums" :class="cc.textClass(index.changePct)">
                 {{ formatPercent(index.changePct) }}
               </span>
@@ -262,14 +252,9 @@
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                <span class="text-lg font-bold text-emerald-500">HK</span>
+                <span class="text-2xl leading-none">🇭🇰</span>
               </div>
               <div>
-              <div>
-                <span class="inline-flex items-center rounded-full border border-white/45 bg-white/20 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.18em] text-zinc-700 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25 dark:text-zinc-200">
-                    HONG KONG
-                  </span>
-                </div>
                 <h2 class="text-xl font-bold text-main tracking-tight">港股市场</h2>
                 <div class="mt-2">
                   <MarketDataTimestamp :timestamp="overviewData.updated_at" />
@@ -305,14 +290,14 @@
           </div>
 
           <!-- Indices Row -->
-          <div class="mt-4 flex flex-wrap gap-2">
+          <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
             <div
               v-for="index in hkIndices"
               :key="index.symbol"
-              class="flex items-center gap-2 rounded-lg border border-white/45 bg-white/20 px-3 py-2 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25"
+              class="min-w-0 flex items-center justify-between gap-2 rounded-lg border border-white/45 bg-white/20 px-3 py-2 shadow-sm backdrop-blur-xl dark:border-zinc-600/55 dark:bg-zinc-900/25"
             >
-              <span class="text-xs text-tertiary">{{ index.shortLabel }}</span>
-              <span class="text-sm font-bold text-main tabular-nums">{{ index.value }}</span>
+              <span class="truncate text-xs text-tertiary">{{ index.shortLabel }}</span>
+              <span class="text-sm font-bold text-main tabular-nums whitespace-nowrap">{{ index.value }}</span>
               <span class="text-xs font-bold tabular-nums" :class="cc.textClass(index.changePct)">
                 {{ formatPercent(index.changePct) }}
               </span>
@@ -428,7 +413,7 @@
       <!-- Stock List -->
       <div
         v-else
-        class="mt-5 max-h-[860px] overflow-y-auto pr-1 divide-y divide-zinc-200 dark:divide-zinc-700"
+        class="mt-5 pr-1 divide-y divide-zinc-200 dark:divide-zinc-700"
       >
         <template v-if="panelMode === 'movers'">
           <div v-for="(item, index) in paginatedBoardItems" :key="`${selectedMarket}-${item.ticker}`" class="flex items-center gap-4 py-3">
@@ -604,6 +589,19 @@ interface MarketOverviewResponse {
   updated_at?: string
 }
 
+interface MarketTrendPoint {
+  ts: number
+  close: number
+}
+
+interface MarketTrendResponse {
+  market: MarketKey
+  symbol: string
+  name: string
+  points: MarketTrendPoint[]
+  updated_at?: string
+}
+
 interface FeedItem {
   id: number
   agent_id: string
@@ -683,6 +681,11 @@ const overviewData = ref<MarketOverviewResponse>({
   markets: [],
   updated_at: '',
 })
+const trendSeries = ref<Record<MarketKey, MarketTrendPoint[]>>({
+  us: [],
+  cn: [],
+  hk: [],
+})
 const feedItems = ref<FeedItem[]>([])
 
 // Client-side data fetching
@@ -695,6 +698,25 @@ async function fetchOverview() {
   } catch (error) {
     console.error('Error fetching overview:', error)
   }
+}
+
+async function fetchTrend(market: MarketKey) {
+  try {
+    const response = await fetch(`/api/market/trend?market=${market}&points=40`)
+    if (!response.ok) throw new Error(`Failed to fetch trend for ${market}`)
+    const data = await response.json() as MarketTrendResponse
+    trendSeries.value[market] = Array.isArray(data.points) ? data.points : []
+  } catch (error) {
+    console.error(`Error fetching trend for ${market}:`, error)
+  }
+}
+
+async function fetchAllTrends() {
+  await Promise.all([
+    fetchTrend('us'),
+    fetchTrend('cn'),
+    fetchTrend('hk'),
+  ])
 }
 
 async function fetchFeed() {
@@ -712,7 +734,7 @@ async function fetchFeed() {
 
 async function fetchAll() {
   isLoading.value = true
-  const tasks = [fetchOverview()]
+  const tasks = [fetchOverview(), fetchAllTrends()]
   if (panelMode.value === 'activity') {
     tasks.push(fetchFeed())
   }
@@ -729,6 +751,7 @@ onMounted(() => {
     isPageVisible.value = !document.hidden
     if (!isPageVisible.value) return
     void fetchOverview()
+    void fetchAllTrends()
     if (panelMode.value === 'activity') {
       void fetchFeed()
     }
@@ -737,6 +760,7 @@ onMounted(() => {
   removeVisibilityListener = () => document.removeEventListener('visibilitychange', handleVisibilityChange)
 
   void fetchOverview()
+  void fetchAllTrends()
   if (panelMode.value === 'activity') {
     void fetchFeed()
   }
@@ -744,6 +768,7 @@ onMounted(() => {
   refreshTimer = window.setInterval(() => {
     if (!isPageVisible.value) return
     void fetchOverview()
+    void fetchAllTrends()
     if (panelMode.value === 'activity') {
       void fetchFeed()
     }
@@ -809,35 +834,66 @@ const cnTrendId = 'cn-bg'
 const hkTrendId = 'hk-bg'
 
 const usTrendColor = computed(() => {
-  const avgChange = usSummary.value?.avg_change_pct || 0
-  return avgChange >= 0 ? '#10b981' : '#ef4444'
+  const trend = getTrendDirection('us')
+  return trend >= 0 ? '#10b981' : '#ef4444'
 })
 
 const cnTrendColor = computed(() => {
-  const avgChange = cnSummary.value?.avg_change_pct || 0
-  return avgChange >= 0 ? '#ef4444' : '#10b981'
+  const trend = getTrendDirection('cn')
+  return trend >= 0 ? '#ef4444' : '#10b981'
 })
 
 const hkTrendColor = computed(() => {
-  const avgChange = hkSummary.value?.avg_change_pct || 0
-  return avgChange >= 0 ? '#10b981' : '#ef4444'
+  const trend = getTrendDirection('hk')
+  return trend >= 0 ? '#10b981' : '#ef4444'
 })
 
-function buildTrendPath(market: MarketKey) {
-  const points = 20
-  const width = 400
-  const height = 200
+function getTrendDirection(market: MarketKey) {
+  const points = trendSeries.value[market] || []
+  if (points.length >= 2) {
+    return (points[points.length - 1]?.close || 0) - (points[0]?.close || 0)
+  }
   const summaryMap: Record<MarketKey, typeof usSummary.value> = {
     us: usSummary.value,
     cn: cnSummary.value,
     hk: hkSummary.value,
   }
-  const summary = summaryMap[market]
-  const trend = (summary?.avg_change_pct || 0) >= 0 ? 1 : -1
+  return summaryMap[market]?.avg_change_pct || 0
+}
+
+function buildTrendPathFromSeries(market: MarketKey) {
+  const rawSeries = (trendSeries.value[market] || []).map(point => Number(point.close)).filter(v => Number.isFinite(v))
+  if (rawSeries.length < 2) {
+    return buildTrendPathFallback(market)
+  }
+
+  const width = 400
+  const height = 200
+  const paddingY = 28
+  const minValue = Math.min(...rawSeries)
+  const maxValue = Math.max(...rawSeries)
+  const range = Math.max(maxValue - minValue, 1e-6)
+
+  const values = rawSeries.map((close) => {
+    const normalized = (close - minValue) / range
+    return height - (paddingY + normalized * (height - paddingY * 2))
+  })
+
+  const step = width / (values.length - 1)
+  const linePoints = values.map((y, index) => `${(index * step).toFixed(1)},${y.toFixed(1)}`)
+  const line = `M${linePoints.join(' L')}`
+  const area = `${line} L${width},${height} L0,${height} Z`
+  return { line, area }
+}
+
+function buildTrendPathFallback(market: MarketKey) {
+  const points = 20
+  const width = 400
+  const height = 200
+  const trend = getTrendDirection(market) >= 0 ? 1 : -1
 
   const values: number[] = []
   let value = height / 2
-
   for (let i = 0; i < points; i++) {
     const wave = Math.sin(i * 0.5) * 15
     const drift = trend * (i / points) * 40
@@ -852,9 +908,9 @@ function buildTrendPath(market: MarketKey) {
   return { line, area }
 }
 
-const usTrendPath = computed(() => buildTrendPath('us'))
-const cnTrendPath = computed(() => buildTrendPath('cn'))
-const hkTrendPath = computed(() => buildTrendPath('hk'))
+const usTrendPath = computed(() => buildTrendPathFromSeries('us'))
+const cnTrendPath = computed(() => buildTrendPathFromSeries('cn'))
+const hkTrendPath = computed(() => buildTrendPathFromSeries('hk'))
 
 // Board items
 const boardItems = computed(() => overviewData.value.boards?.[selectedMarket.value] || [])

@@ -92,6 +92,7 @@ class RankingService:
 
         for agent_id, agent in agents.items():
             accs = agent_accounts.get(agent_id, [])
+            markets_for_agent = {acc.market for acc in accs}
             market_assets_cny: dict[str, Decimal] = {
                 "us": Decimal("0"),
                 "cn": Decimal("0"),
@@ -124,7 +125,7 @@ class RankingService:
                 else 0.0
             )
 
-            if market != "overall" and market_assets_cny.get(market, Decimal("0")) <= Decimal("0"):
+            if market != "overall" and market not in markets_for_agent:
                 continue
 
             total_asset_usd: Optional[Decimal] = None
@@ -154,7 +155,34 @@ class RankingService:
                 )
             )
 
-        rankings.sort(key=lambda r: r.total_asset_cny, reverse=True)
+        if market == "overall":
+            rankings.sort(key=lambda r: r.total_asset_cny, reverse=True)
+        elif market == "us":
+            rankings.sort(
+                key=lambda r: (
+                    r.us_asset_cny or Decimal("0"),
+                    r.total_asset_cny,
+                ),
+                reverse=True,
+            )
+        elif market == "cn":
+            rankings.sort(
+                key=lambda r: (
+                    r.cn_asset_cny or Decimal("0"),
+                    r.total_asset_cny,
+                ),
+                reverse=True,
+            )
+        elif market == "hk":
+            rankings.sort(
+                key=lambda r: (
+                    r.hk_asset_cny or Decimal("0"),
+                    r.total_asset_cny,
+                ),
+                reverse=True,
+            )
+        else:
+            rankings.sort(key=lambda r: r.total_asset_cny, reverse=True)
         for i, r in enumerate(rankings):
             r.rank = i + 1
 

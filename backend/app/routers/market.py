@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
-from app.schemas import IndexQuoteOut, MarketBoardSnapshotOut, MarketOverviewOut, QuoteOut
+from app.schemas import (
+    IndexQuoteOut,
+    MarketBoardSnapshotOut,
+    MarketOverviewOut,
+    MarketTrendOut,
+    QuoteOut,
+)
 from app.services.market_data import MarketDataService
 
 router = APIRouter(prefix="/api/market", tags=["market"])
@@ -56,3 +62,15 @@ async def get_market_board(market: str = "us", request: Request = None, refresh:
     """获取市场看盘榜单"""
     svc = _market_service(request)
     return await svc.get_market_board(market.lower(), refresh=refresh)
+
+
+@router.get("/trend", response_model=MarketTrendOut)
+async def get_market_trend(
+    market: str = "us",
+    points: int = 30,
+    request: Request = None,
+    refresh: bool = False,
+):
+    """获取各市场代表指数的历史曲线数据（用于底图）"""
+    svc = _market_service(request)
+    return await svc.get_market_trend(market.lower(), points=points, refresh=refresh)

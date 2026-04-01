@@ -29,6 +29,8 @@ NUXT_ADMIN_SESSION_SALT=replace-with-random-salt
 NUXT_ADMIN_COOKIE_SECURE=false
 ```
 
+Admin console login session does not set `maxAge`; it remains valid until logout, credential/salt change, or browser policy cleanup.
+
 ## Development Server
 
 Start the development server on `http://localhost:3000`:

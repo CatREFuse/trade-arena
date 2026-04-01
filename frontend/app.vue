@@ -76,7 +76,6 @@ const navLinks = [
   { to: '/', label: '首页' },
   { to: '/leaderboard', label: '排行榜' },
   { to: '/market', label: '行情' },
-  { to: '/console', label: '后台' },
   { to: '/about', label: '关于' },
 ]
 const { connected: sseConnected } = useTradeEvents()

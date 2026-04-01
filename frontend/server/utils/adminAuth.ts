@@ -2,7 +2,6 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { deleteCookie, getCookie, setCookie } from 'h3'
 
 const ADMIN_SESSION_COOKIE = 'ta_admin_session'
-const ADMIN_SESSION_MAX_AGE = 60 * 60 * 12
 
 interface AdminCredentialConfig {
   username: string
@@ -58,7 +57,6 @@ export function setAdminSession(event: Parameters<typeof setCookie>[0]) {
     sameSite: 'lax',
     secure: Boolean(runtimeConfig.adminCookieSecure),
     path: '/',
-    maxAge: ADMIN_SESSION_MAX_AGE,
   })
 }
 

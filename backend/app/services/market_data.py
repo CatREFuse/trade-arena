@@ -20,10 +20,20 @@ from app.schemas import (
     MarketBoardSnapshotOut,
     MarketOverviewOut,
     MarketSummaryOut,
+    MarketTrendOut,
+    MarketTrendPointOut,
     QuoteOut,
 )
 from app.services.market_calendar import MarketCalendarService
-from app.services.market_providers import AkshareProvider, MockProvider, SinaProvider, TencentProvider, YahooProvider
+from app.services.market_providers import (
+    FAST_HTTP_TIMEOUT,
+    AkshareProvider,
+    MockProvider,
+    SinaProvider,
+    TencentProvider,
+    YahooProvider,
+    _limited_get,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +72,32 @@ CACHE_TTL = 60  # 个股行情缓存60秒
 INDEX_CACHE_TTL = 300  # 大盘指数缓存5分钟
 BOARD_CACHE_TTL = 120  # 市场看盘榜单缓存2分钟，兼顾新鲜度和负载
 OVERVIEW_CACHE_TTL = 120  # 市场总览缓存2分钟，和看盘榜单保持一致
+TREND_CACHE_TTL = 300  # 市场代表指数曲线缓存5分钟
 BOARD_FETCH_CHUNK_SIZE = 24  # 大榜单分批抓取，避免单次 upstream 请求过大
 MARKET_CACHE_VERSION = "v3"
+TREND_CACHE_VERSION = "v2"
 SHADOW_CACHE_TTL_SECONDS = 300
+
+REPRESENTATIVE_INDEX = {
+    "us": {
+        "symbol": "us.INX",
+        "name": "标普500",
+        "kline_symbol": "usINX",
+        "kline_response_symbol": "us.INX",
+    },
+    "cn": {
+        "symbol": "sh000001",
+        "name": "上证指数",
+        "kline_symbol": "sh000001",
+        "kline_response_symbol": "sh000001",
+    },
+    "hk": {
+        "symbol": "hkHSI",
+        "name": "恒生指数",
+        "kline_symbol": "hkHSI",
+        "kline_response_symbol": "hkHSI",
+    },
+}
 
 MARKET_BOARD = {
     "us": [
@@ -592,6 +625,116 @@ class MarketDataService:
             cache_key,
             lambda: self._build_and_store_market_overview(cache_key, refresh=refresh),
         )
+
+    async def get_market_trend(self, market: str, points: int = 30, refresh: bool = False) -> MarketTrendOut:
+        market = market.lower()
+        if market not in REPRESENTATIVE_INDEX:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "INVALID_MARKET", "message": "market 仅支持 us/cn/hk"},
+            )
+
+        points = max(8, min(points, 120))
+        cache_key = f"market:trend:{TREND_CACHE_VERSION}:{MARKET_CACHE_VERSION}:{market}:{points}"
+        if not refresh:
+            cached_trend = await self._load_cached_model_safe(cache_key, MarketTrendOut)
+            if cached_trend is not None:
+                return cached_trend
+
+        trend = await self._build_market_trend(market, points)
+        await self._cache_model(cache_key, TREND_CACHE_TTL, trend)
+        return trend
+
+    async def _build_market_trend(self, market: str, points: int) -> MarketTrendOut:
+        representative = REPRESENTATIVE_INDEX[market]
+        symbol = representative["symbol"]
+        kline_symbol = representative["kline_symbol"]
+        response_symbol = representative["kline_response_symbol"]
+        params = {
+            "param": f"{kline_symbol},day,,,240",
+        }
+
+        response = await _limited_get(
+            "tencent",
+            "https://web.ifzq.gtimg.cn/appstock/app/kline/kline",
+            client_name="tencent-trend",
+            timeout=FAST_HTTP_TIMEOUT,
+            params=params,
+            headers=TencentProvider.HEADERS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+        series = self._parse_tencent_kline_series(payload, response_symbol, points)
+        if not series:
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "TREND_DATA_UNAVAILABLE", "message": "代表指数曲线暂不可用"},
+            )
+
+        return MarketTrendOut(
+            market=market,
+            symbol=symbol,
+            name=representative["name"],
+            points=series,
+            updated_at=datetime.now(timezone.utc),
+        )
+
+    @staticmethod
+    def _parse_tencent_kline_series(
+        payload: dict, symbol: str, points: int
+    ) -> list[MarketTrendPointOut]:
+        raw_data = (payload.get("data") or {}).get(symbol) or {}
+        day_rows = raw_data.get("day") or []
+        if not day_rows:
+            return []
+        parsed: list[MarketTrendPointOut] = []
+        for row in day_rows:
+            if len(row) < 3:
+                continue
+            date_str = str(row[0]).strip()
+            close = row[2]
+            if close in (None, ""):
+                continue
+            ts = MarketDataService._parse_kline_ts(date_str)
+            if ts is None:
+                continue
+            parsed.append(
+                MarketTrendPointOut(
+                    ts=ts,
+                    close=round(float(close), 4),
+                )
+            )
+        latest_price = MarketDataService._extract_tencent_latest_price(raw_data, symbol)
+        if parsed and latest_price is not None:
+            parsed[-1] = MarketTrendPointOut(
+                ts=int(datetime.now(timezone.utc).timestamp() * 1000),
+                close=round(latest_price, 4),
+            )
+        if len(parsed) > points:
+            return parsed[-points:]
+        return parsed
+
+    @staticmethod
+    def _parse_kline_ts(date_str: str) -> int | None:
+        for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+            try:
+                dt = datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
+                return int(dt.timestamp() * 1000)
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _extract_tencent_latest_price(raw_data: dict, symbol: str) -> float | None:
+        qt_block = raw_data.get("qt") or {}
+        quote = qt_block.get(symbol) or []
+        if not isinstance(quote, list) or len(quote) < 4:
+            return None
+        try:
+            return float(quote[3])
+        except (TypeError, ValueError):
+            return None
 
     def _get_provider(self, ticker: str):
         providers = self._quote_providers(ticker)
@@ -1234,6 +1377,14 @@ class MarketDataService:
     async def _cache_model_list(self, cache_key: str, ttl: int, models: list) -> None:
         payload = [model.model_dump(mode="json") for model in models]
         await _redis_setex_safe(self.redis, cache_key, ttl, json.dumps(payload))
+
+    async def _cache_model(self, cache_key: str, ttl: int, model) -> None:
+        await _redis_setex_safe(
+            self.redis,
+            cache_key,
+            ttl,
+            json.dumps(model.model_dump(mode="json")),
+        )
 
     def _build_market_summary(
         self,
