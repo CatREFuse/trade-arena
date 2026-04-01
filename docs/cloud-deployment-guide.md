@@ -180,6 +180,18 @@ server {
     listen 80;
     server_name your-domain.com;
 
+    # 后台登录鉴权必须走 Nuxt，才能下发管理端 session / 设备指纹 cookie
+    location /api/admin/auth/ {
+        proxy_pass http://127.0.0.1:3000/api/admin/auth/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
@@ -191,9 +203,19 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
-    # SSE 长连接（Nuxt 会再转发到后端）
-    location /api/sse/events {
-        proxy_pass http://127.0.0.1:3000;
+    # 后端 API
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # SSE 长连接
+    location /api/sse/ {
+        proxy_pass http://127.0.0.1:8000/api/sse/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -296,5 +318,6 @@ curl -sI https://your-domain.com
 ## 12. 当前项目部署注意事项
 
 - 前端 `frontend/server/api/[...path].ts` 当前将 API 代理到 `http://127.0.0.1:8000`，因此默认要求前后端部署在同一台服务器。
+- 公网 Nginx 需保留 `/api/admin/auth/` 直达 Nuxt 3000 的例外规则，否则 `/console/login` 无法建立后台 session。
 - `/api/agents/skill/hosted` 返回 ZIP 下载文件名（`cocoloop-trade-arena.zip`）。
 - 生产环境建议配置 SMTP，并将 `EMAIL_VERIFICATION_DEV_MODE` 设为 `false`。

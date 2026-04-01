@@ -142,6 +142,12 @@ curl --noproxy '*' -H "Authorization: Bearer <OPS_API_KEY>" http://127.0.0.1:900
 .runtime/admin-login-guard/state.json
 ```
 
+公网入口要求：
+
+- Nginx 必须将 `/api/admin/auth/` 代理到 `127.0.0.1:3000`
+- 其余 `/api/` 仍可按现有规则代理到 `127.0.0.1:8000`
+- 若漏掉这条例外，`/console/login` 页面对外会返回 `404`
+
 运维排查与解除统一走 SSH CLI：
 
 ```bash
