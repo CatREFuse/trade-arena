@@ -46,6 +46,7 @@
 ## 3. 核心脚本入口
 
 - `scripts/opsctl.sh`：统一运维入口（deploy/migrate/restart/status/logs/smoke/doctor）。
+- `scripts/admin_login_guard.py`：后台登录设备封禁记录查看与解除工具（供 `opsctl admin-login-guard` 调用）。
 - `scripts/ops_http.sh`：远程 HTTP 运维入口（调用 `/ops/*`，支持 `--wait` 等待 job 完成）。
 - `scripts/service_ctl.sh`：统一启停脚本（`start|stop|restart|status`）。
 - `scripts/dev_up.sh`：开发环境一键启动。

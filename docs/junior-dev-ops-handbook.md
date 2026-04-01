@@ -92,6 +92,7 @@ bash scripts/dev_self_check.sh
 ```bash
 bash scripts/opsctl.sh doctor
 bash scripts/opsctl.sh status
+bash scripts/opsctl.sh admin-login-guard list --active-only
 ```
 
 ## 4. 统一启停约束
@@ -114,6 +115,7 @@ bash scripts/opsctl.sh status
 - `bash scripts/opsctl.sh status`
 - `bash scripts/opsctl.sh logs --scope deploy --tail 200`
 - `bash scripts/opsctl.sh doctor`
+- `bash scripts/opsctl.sh admin-login-guard list --active-only`
 
 ## 5. 代理环境的常见坑
 
@@ -245,7 +247,23 @@ bash scripts/opsctl.sh status
 bash scripts/opsctl.sh logs --scope deploy --tail 200
 ```
 
-## 11. 相关文档
+如果是后台口令连续输错后被拦截，再补一条：
+
+```bash
+bash scripts/opsctl.sh admin-login-guard list --active-only
+```
+
+## 11. 本地敏感运维补充
+
+本地机器需要单独记录服务器地址、账号、口令等敏感信息时，统一写到：
+
+```bash
+docs/junior-dev-ops-handbook.local.md
+```
+
+该文件已加入 `.gitignore`，不要把敏感信息写进受版本控制的文档。
+
+## 12. 相关文档
 
 需要更完整的开发流程时继续看：
 

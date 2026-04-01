@@ -127,6 +127,41 @@ Webhook 事件日志读取需要鉴权：
 curl --noproxy '*' -H "Authorization: Bearer <OPS_API_KEY>" http://127.0.0.1:9000/webhook/logs
 ```
 
+### 3.3 后台口令登录防护与 CLI 解封
+
+`/console` 的口令登录启用了设备级请求防护：
+
+- 服务端会为设备下发 `ta_console_device` 指纹 cookie。
+- 同一设备连续输错 3 次口令后，登录请求会被暂停。
+- 暂停时长按指数退避递增：首次 6 小时，之后 12 小时、24 小时、48 小时递增。
+- 设备一旦成功登录，会清空该设备的连续失败次数和退避等级。
+
+登录防护状态文件默认写入：
+
+```bash
+.runtime/admin-login-guard/state.json
+```
+
+运维排查与解除统一走 SSH CLI：
+
+```bash
+bash scripts/opsctl.sh admin-login-guard list --active-only
+bash scripts/opsctl.sh admin-login-guard unblock --device-key <device_key>
+```
+
+如需按完整设备指纹解除，也可执行：
+
+```bash
+bash scripts/opsctl.sh admin-login-guard unblock --fingerprint <fingerprint>
+```
+
+处理顺序建议：
+
+1. 先执行 `list --active-only` 找到仍在封禁中的 `device_key`
+2. 与用户核对设备和时间窗口，避免误解封
+3. 再执行 `unblock`
+4. 如为重复触发，继续检查是否存在暴力尝试来源
+
 ## 4. 数据库迁移 SOP（强制）
 
 ### 4.1 开发阶段
@@ -177,6 +212,7 @@ alembic upgrade head
 - `git` 同步报 `webhook/DEPLOY_LOG.md not uptodate`：旧部署遗留索引标记或本地日志改动
 - 前端启动异常：误用 `.nuxt` 产物，或构建产物损坏
 - API 500：迁移未完成或依赖安装失败
+- `/console/login` 返回 429：设备指纹已进入登录冷却期，可用 `opsctl admin-login-guard` 排查与解除
 
 ### 6.2 快速处理顺序
 

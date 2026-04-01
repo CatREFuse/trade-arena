@@ -59,6 +59,15 @@ const { data: authStatus } = await useFetch<{ authenticated: boolean }>('/api/ad
 if (authStatus.value?.authenticated)
   await navigateTo(nextPath.value, { replace: true })
 
+function formatRetryAfter(seconds: number) {
+  const totalMinutes = Math.max(1, Math.ceil(seconds / 60))
+  if (totalMinutes < 60)
+    return `${totalMinutes} 分钟`
+
+  const hours = Math.ceil(totalMinutes / 60)
+  return `${hours} 小时`
+}
+
 async function submitLogin() {
   if (pending.value)
     return
@@ -79,6 +88,8 @@ async function submitLogin() {
     const detail = error?.data?.detail
     if (detail === 'INVALID_ADMIN_CREDENTIALS')
       errorMessage.value = '账号或口令错误'
+    else if (detail === 'ADMIN_LOGIN_DEVICE_BANNED')
+      errorMessage.value = `当前设备已暂停登录，请在 ${formatRetryAfter(Number(error?.data?.retry_after_seconds || 0))} 后再试`
     else if (detail === 'MISSING_ADMIN_CREDENTIALS')
       errorMessage.value = '请填写账号和口令'
     else

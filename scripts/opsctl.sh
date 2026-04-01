@@ -32,6 +32,8 @@ Usage:
 Commands:
   deploy --branch <name>
   migrate
+  admin-login-guard list [--active-only]
+  admin-login-guard unblock (--device-key <key> | --fingerprint <value>)
   restart --target <all|backend|frontend>
   status
   logs --scope <deploy|backend|frontend|webhook|gateway> [--tail <n>]
@@ -84,6 +86,82 @@ cmd_migrate() {
     cd "$ROOT_DIR/backend"
     "$py" -m alembic upgrade head
   )
+}
+
+resolve_python() {
+  if [[ -x "$ROOT_DIR/backend/.venv/bin/python" ]]; then
+    printf '%s\n' "$ROOT_DIR/backend/.venv/bin/python"
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s\n' "python3"
+    return
+  fi
+  if command -v python >/dev/null 2>&1; then
+    printf '%s\n' "python"
+    return
+  fi
+  fail "No python interpreter found"
+}
+
+cmd_admin_login_guard() {
+  local subcommand="${1:-}"
+  shift || true
+
+  case "$subcommand" in
+    list)
+      local active_only="0"
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --active-only)
+            active_only="1"
+            ;;
+          *)
+            fail "Unknown admin-login-guard list option: $1"
+            ;;
+        esac
+        shift
+      done
+      local py
+      py="$(resolve_python)"
+      if [[ "$active_only" == "1" ]]; then
+        exec "$py" "$ROOT_DIR/scripts/admin_login_guard.py" list --active-only
+      fi
+      exec "$py" "$ROOT_DIR/scripts/admin_login_guard.py" list
+      ;;
+    unblock)
+      local device_key=""
+      local fingerprint=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --device-key)
+            shift
+            device_key="$(parse_required_value --device-key "${1:-}")"
+            ;;
+          --fingerprint)
+            shift
+            fingerprint="$(parse_required_value --fingerprint "${1:-}")"
+            ;;
+          *)
+            fail "Unknown admin-login-guard unblock option: $1"
+            ;;
+        esac
+        shift
+      done
+      if [[ -z "$device_key" && -z "$fingerprint" ]]; then
+        fail "admin-login-guard unblock requires --device-key or --fingerprint"
+      fi
+      local py
+      py="$(resolve_python)"
+      if [[ -n "$device_key" ]]; then
+        exec "$py" "$ROOT_DIR/scripts/admin_login_guard.py" unblock --device-key "$device_key"
+      fi
+      exec "$py" "$ROOT_DIR/scripts/admin_login_guard.py" unblock --fingerprint "$fingerprint"
+      ;;
+    *)
+      fail "Unknown admin-login-guard subcommand: $subcommand"
+      ;;
+  esac
 }
 
 cmd_restart() {
@@ -282,15 +360,7 @@ cmd_gateway_reload() {
 
 cmd_run_next_job() {
   local py=""
-  if [[ -x "$ROOT_DIR/backend/.venv/bin/python" ]]; then
-    py="$ROOT_DIR/backend/.venv/bin/python"
-  elif command -v python3 >/dev/null 2>&1; then
-    py="python3"
-  elif command -v python >/dev/null 2>&1; then
-    py="python"
-  else
-    fail "No python interpreter found for job runner"
-  fi
+  py="$(resolve_python)"
   exec "$py" "$ROOT_DIR/webhook/job_runner.py"
 }
 
@@ -304,6 +374,7 @@ shift
 case "$COMMAND" in
   deploy) cmd_deploy "$@" ;;
   migrate) cmd_migrate "$@" ;;
+  admin-login-guard) cmd_admin_login_guard "$@" ;;
   restart) cmd_restart "$@" ;;
   status) cmd_status "$@" ;;
   logs) cmd_logs "$@" ;;
