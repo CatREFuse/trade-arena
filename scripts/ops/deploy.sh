@@ -219,7 +219,7 @@ fi
 source .venv/bin/activate
 python -m pip install --upgrade pip >>"$LOG_FILE" 2>&1
 python -m pip install -e . >>"$LOG_FILE" 2>&1 || \
-  python -m pip install fastapi uvicorn sqlalchemy asyncpg alembic pydantic-settings redis sse-starlette yfinance httpx >>"$LOG_FILE" 2>&1
+  python -m pip install fastapi uvicorn sqlalchemy asyncpg alembic pydantic-settings redis sse-starlette yfinance httpx greenlet >>"$LOG_FILE" 2>&1
 
 log_line "Running database migrations..."
 alembic upgrade head >>"$LOG_FILE" 2>&1
