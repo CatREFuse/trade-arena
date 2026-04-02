@@ -171,6 +171,26 @@ class MarketTrendOut(BaseModel):
     updated_at: datetime
 
 
+class FXHistoryPointOut(BaseModel):
+    ts: int
+    rate: float
+
+
+class FXPairSnapshotOut(BaseModel):
+    pair: str
+    base: str
+    quote: str
+    rate: float
+    change_pct_24h: float
+    points: list[FXHistoryPointOut]
+    updated_at: Optional[datetime] = None
+
+
+class MarketFXOverviewOut(BaseModel):
+    pairs: list[FXPairSnapshotOut]
+    updated_at: datetime
+
+
 class StockHistoryPointOut(BaseModel):
     ts: int
     date: str

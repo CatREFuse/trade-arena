@@ -27,6 +27,41 @@
       </div>
     </section>
 
+    <section class="mt-6">
+      <div class="rounded-3xl border border-zinc-200/70 bg-white p-5 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800 sm:p-6">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold tracking-tight text-main">汇率看板</h2>
+            <p class="mt-1 text-xs text-secondary">实时汇率与 24 小时变化</p>
+          </div>
+          <MarketDataTimestamp :timestamp="fxOverview.updated_at" />
+        </div>
+
+        <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <article
+            v-for="pair in fxOverview.pairs"
+            :key="pair.pair"
+            class="relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-zinc-50/70 p-4 dark:border-zinc-600/70 dark:bg-zinc-900/30"
+          >
+            <div class="absolute inset-0 pointer-events-none opacity-30">
+              <svg class="h-full w-full" viewBox="0 0 320 120" preserveAspectRatio="none" aria-hidden="true">
+                <path :d="buildFxLinePath(pair.points)" fill="none" :stroke="pair.change_pct_24h >= 0 ? '#10b981' : '#ef4444'" stroke-width="1.5" />
+              </svg>
+            </div>
+            <div class="relative">
+              <div class="text-[11px] uppercase tracking-widest text-tertiary">{{ pair.pair }}</div>
+              <div class="mt-2 flex items-end justify-between gap-4">
+                <div class="text-2xl font-bold tabular-nums text-main">{{ formatFxRate(pair.rate) }}</div>
+                <div class="text-sm font-semibold tabular-nums" :class="cc.textClass(pair.change_pct_24h)">
+                  {{ formatPercent(pair.change_pct_24h) }}
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
     <!-- Market Cards - Flat Structure with SVG Backgrounds -->
     <section class="mt-6 space-y-4">
       <!-- US Market Card -->
@@ -602,6 +637,26 @@ interface MarketTrendResponse {
   updated_at?: string
 }
 
+interface FXHistoryPoint {
+  ts: number
+  rate: number
+}
+
+interface FXPairSnapshot {
+  pair: string
+  base: string
+  quote: string
+  rate: number
+  change_pct_24h: number
+  points: FXHistoryPoint[]
+  updated_at?: string
+}
+
+interface MarketFXOverviewResponse {
+  pairs: FXPairSnapshot[]
+  updated_at?: string
+}
+
 interface FeedItem {
   id: number
   agent_id: string
@@ -686,6 +741,10 @@ const trendSeries = ref<Record<MarketKey, MarketTrendPoint[]>>({
   cn: [],
   hk: [],
 })
+const fxOverview = ref<MarketFXOverviewResponse>({
+  pairs: [],
+  updated_at: '',
+})
 const feedItems = ref<FeedItem[]>([])
 
 // Client-side data fetching
@@ -708,6 +767,20 @@ async function fetchTrend(market: MarketKey) {
     trendSeries.value[market] = Array.isArray(data.points) ? data.points : []
   } catch (error) {
     console.error(`Error fetching trend for ${market}:`, error)
+  }
+}
+
+async function fetchFX() {
+  try {
+    const response = await fetch('/api/market/fx?hours=24&points=120')
+    if (!response.ok) throw new Error('Failed to fetch fx overview')
+    const data = await response.json() as MarketFXOverviewResponse
+    fxOverview.value = {
+      pairs: Array.isArray(data.pairs) ? data.pairs : [],
+      updated_at: data.updated_at || '',
+    }
+  } catch (error) {
+    console.error('Error fetching fx overview:', error)
   }
 }
 
@@ -734,7 +807,7 @@ async function fetchFeed() {
 
 async function fetchAll() {
   isLoading.value = true
-  const tasks = [fetchOverview(), fetchAllTrends()]
+  const tasks = [fetchOverview(), fetchAllTrends(), fetchFX()]
   if (panelMode.value === 'activity') {
     tasks.push(fetchFeed())
   }
@@ -752,6 +825,7 @@ onMounted(() => {
     if (!isPageVisible.value) return
     void fetchOverview()
     void fetchAllTrends()
+    void fetchFX()
     if (panelMode.value === 'activity') {
       void fetchFeed()
     }
@@ -761,6 +835,7 @@ onMounted(() => {
 
   void fetchOverview()
   void fetchAllTrends()
+  void fetchFX()
   if (panelMode.value === 'activity') {
     void fetchFeed()
   }
@@ -769,6 +844,7 @@ onMounted(() => {
     if (!isPageVisible.value) return
     void fetchOverview()
     void fetchAllTrends()
+    void fetchFX()
     if (panelMode.value === 'activity') {
       void fetchFeed()
     }
@@ -1066,6 +1142,30 @@ function toggleSort() {
 function formatPercent(value: number) {
   const numeric = Number(value || 0)
   return `${numeric >= 0 ? '+' : ''}${numeric.toFixed(2)}%`
+}
+
+function formatFxRate(value: number) {
+  return Number(value || 0).toFixed(4)
+}
+
+function buildFxLinePath(points: FXHistoryPoint[]) {
+  const values = points.map(item => Number(item.rate)).filter(v => Number.isFinite(v))
+  if (values.length < 2) return ''
+
+  const width = 320
+  const height = 120
+  const paddingY = 12
+  const minValue = Math.min(...values)
+  const maxValue = Math.max(...values)
+  const range = Math.max(maxValue - minValue, 1e-6)
+  const step = width / (values.length - 1)
+
+  const coords = values.map((v, index) => {
+    const normalized = (v - minValue) / range
+    const y = height - (paddingY + normalized * (height - paddingY * 2))
+    return `${(index * step).toFixed(1)},${y.toFixed(1)}`
+  })
+  return `M${coords.join(' L')}`
 }
 
 function formatPrice(

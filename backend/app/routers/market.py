@@ -10,7 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import Account, Agent, Position, Trade
 from app.schemas import (
+    FXHistoryPointOut,
+    FXPairSnapshotOut,
     IndexQuoteOut,
+    MarketFXOverviewOut,
     MarketBoardSnapshotOut,
     MarketOverviewOut,
     MarketTrendOut,
@@ -98,6 +101,62 @@ async def get_market_trend(
     """获取各市场代表指数的历史曲线数据（用于底图）"""
     svc = _market_service(request)
     return await svc.get_market_trend(market.lower(), points=points, refresh=refresh)
+
+
+@router.get("/fx", response_model=MarketFXOverviewOut)
+async def get_market_fx(
+    request: Request,
+    hours: int = 24,
+    points: int = 120,
+):
+    redis = request.app.state.redis
+    fx_service = getattr(request.app.state, "fx_service", None) or FXService(redis)
+    now = datetime.now(timezone.utc)
+    snapshots: list[FXPairSnapshotOut] = []
+    latest_updated_at: datetime | None = None
+
+    pair_config = (
+        ("us", "USD", "CNY"),
+        ("hk", "HKD", "CNY"),
+    )
+
+    for market, base, quote in pair_config:
+        rate, pair, fetched_at = await fx_service.get_rate_to_cny(market)
+        history_rows = await fx_service.get_rate_history(pair, hours=hours, max_points=points)
+        history_points = [
+            FXHistoryPointOut(
+                ts=int(row["fetched_at"].timestamp() * 1000),
+                rate=float(row["rate"]),
+            )
+            for row in history_rows
+        ]
+        base_rate = history_points[0].rate if history_points else float(rate)
+        if base_rate == 0:
+            change_pct = 0.0
+        else:
+            change_pct = round(((float(rate) - base_rate) / base_rate) * 100, 4)
+        snapshot_updated_at = fetched_at
+        if snapshot_updated_at is None and history_rows:
+            snapshot_updated_at = history_rows[-1]["fetched_at"]
+        if snapshot_updated_at is not None:
+            if latest_updated_at is None or snapshot_updated_at > latest_updated_at:
+                latest_updated_at = snapshot_updated_at
+        snapshots.append(
+            FXPairSnapshotOut(
+                pair=pair,
+                base=base,
+                quote=quote,
+                rate=float(rate),
+                change_pct_24h=change_pct,
+                points=history_points,
+                updated_at=snapshot_updated_at,
+            )
+        )
+
+    return MarketFXOverviewOut(
+        pairs=snapshots,
+        updated_at=latest_updated_at or now,
+    )
 
 
 @router.get("/stocks/{ticker}", response_model=StockDetailOut)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -81,3 +82,53 @@ async def test_stock_detail_route_returns_404_for_unknown_ticker(client):
     assert response.status_code == 404
     payload = response.json()
     assert payload["detail"]["error"] == "TICKER_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_market_fx_route_returns_realtime_and_history(
+    client,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+
+    async def fake_get_rate_to_cny(self, market: str):
+        if market == "us":
+            return 7.25, "USD/CNY", now
+        if market == "hk":
+            return 0.93, "HKD/CNY", now - timedelta(minutes=1)
+        raise AssertionError(market)
+
+    async def fake_get_rate_history(self, pair: str, *, hours: int = 24, max_points: int = 120):
+        assert hours == 24
+        assert max_points == 120
+        if pair == "USD/CNY":
+            return [
+                {"pair": pair, "rate": 7.10, "fetched_at": now - timedelta(hours=24)},
+                {"pair": pair, "rate": 7.25, "fetched_at": now},
+            ]
+        if pair == "HKD/CNY":
+            return [
+                {"pair": pair, "rate": 0.92, "fetched_at": now - timedelta(hours=24)},
+                {"pair": pair, "rate": 0.93, "fetched_at": now - timedelta(minutes=1)},
+            ]
+        return []
+
+    monkeypatch.setattr(fx_module.FXService, "get_rate_to_cny", fake_get_rate_to_cny)
+    monkeypatch.setattr(fx_module.FXService, "get_rate_history", fake_get_rate_history)
+
+    response = await client.get("/api/market/fx")
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert len(payload["pairs"]) == 2
+
+    usd = next(item for item in payload["pairs"] if item["pair"] == "USD/CNY")
+    assert usd["rate"] == 7.25
+    assert usd["change_pct_24h"] > 2.0
+    assert len(usd["points"]) == 2
+    assert usd["points"][0]["rate"] == 7.1
+
+    hkd = next(item for item in payload["pairs"] if item["pair"] == "HKD/CNY")
+    assert hkd["rate"] == 0.93
+    assert hkd["change_pct_24h"] > 1.0
+    assert len(hkd["points"]) == 2
