@@ -6,7 +6,7 @@ import logging
 import re
 import secrets
 import zipfile
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -19,15 +19,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_current_account
 from app.config import settings
 from app.database import get_db
-from app.models import Agent, Account, Season, Snapshot, Wallet
+from app.models import Agent, Account, Position, Season, Snapshot, Wallet
 from app.schemas import (
+    AgentMarketPortfolioOut,
+    AgentPortfolioSummaryOut,
     AgentEmailCodeRequest,
     AgentOut,
     AgentRegisterRequest,
     AgentRegisterResponse,
     ChartPointOut,
+    PublicPositionOut,
     SkillVersionOut,
 )
+from app.services.fx import FXService
+from app.services.market_data import MarketDataService
 from app.services.email_verification import (
     normalize_email,
 )
@@ -581,6 +586,113 @@ async def get_agent_accounts(
         "cn": {"id": cn_account_id} if cn_account_id else None,
         "hk": {"id": hk_account_id} if hk_account_id else None,
     }
+
+
+@router.get("/{agent_id}/portfolio-summary", response_model=AgentPortfolioSummaryOut)
+async def get_agent_portfolio_summary(
+    agent_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """公开返回 Agent 分市场持仓汇总（人民币口径）。"""
+    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = agent_result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(
+            404,
+            detail={"error": "AGENT_NOT_FOUND", "message": "Agent 不存在"},
+        )
+
+    accounts_result = await db.execute(select(Account).where(Account.agent_id == agent_id))
+    accounts = accounts_result.scalars().all()
+    account_by_market = {account.market: account for account in accounts}
+
+    season_ids = {account.season_id for account in accounts}
+    wallet = None
+    if season_ids:
+        season_id = sorted(season_ids)[-1]
+        wallet_result = await db.execute(
+            select(Wallet).where(Wallet.agent_id == agent_id, Wallet.season_id == season_id)
+        )
+        wallet = wallet_result.scalar_one_or_none()
+    wallet_cash_cny = wallet.cash if wallet is not None else Decimal("0")
+
+    account_ids = [account.id for account in accounts]
+    positions: list[Position] = []
+    if account_ids:
+        positions_result = await db.execute(select(Position).where(Position.account_id.in_(account_ids)))
+        positions = positions_result.scalars().all()
+
+    redis = request.app.state.redis
+    fx_service = getattr(request.app.state, "fx_service", None) or FXService(redis)
+    market_svc = getattr(request.app.state, "market_data_service", None) or MarketDataService(redis)
+
+    quote_map = await market_svc.get_quotes_batch([pos.ticker for pos in positions]) if positions else {}
+    usd_cny, _, _ = await fx_service.get_rate_to_cny("us")
+    hkd_cny, _, _ = await fx_service.get_rate_to_cny("hk")
+    rate_map = {
+        "cn": Decimal("1"),
+        "us": Decimal(str(usd_cny)),
+        "hk": Decimal(str(hkd_cny)),
+    }
+
+    market_positions: dict[str, list[PublicPositionOut]] = {"us": [], "cn": [], "hk": []}
+    market_position_values: dict[str, Decimal] = {"us": Decimal("0"), "cn": Decimal("0"), "hk": Decimal("0")}
+    account_by_id = {account.id: account for account in accounts}
+
+    for position in positions:
+        account = account_by_id.get(position.account_id)
+        if account is None:
+            continue
+        market = account.market
+        fx = rate_map.get(market, Decimal("1"))
+        quote = quote_map.get(position.ticker)
+        current_price_local = quote.price if quote is not None else position.avg_cost
+        current_price_cny = current_price_local * fx
+        avg_cost_cny = position.avg_cost * fx
+        pnl_cny = (current_price_local - position.avg_cost) * position.shares * fx
+        market_value_cny = current_price_cny * position.shares
+
+        market_positions[market].append(
+            PublicPositionOut(
+                ticker=position.ticker,
+                shares=position.shares,
+                avg_cost_cny=avg_cost_cny,
+                current_price_cny=current_price_cny,
+                pnl_cny=pnl_cny,
+                market_value_cny=market_value_cny,
+            )
+        )
+        market_position_values[market] = market_position_values[market] + market_value_cny
+
+    for market in market_positions:
+        market_positions[market].sort(
+            key=lambda item: item.market_value_cny,
+            reverse=True,
+        )
+
+    markets: list[AgentMarketPortfolioOut] = []
+    for market in ("us", "cn", "hk"):
+        account = account_by_market.get(market)
+        positions_out = market_positions[market]
+        markets.append(
+            AgentMarketPortfolioOut(
+                market=market,
+                account_id=(account.id if account is not None else None),
+                holdings_count=len(positions_out),
+                position_value_cny=market_position_values[market],
+                positions=positions_out,
+            )
+        )
+
+    total_asset_cny = wallet_cash_cny + sum(market_position_values.values())
+    return AgentPortfolioSummaryOut(
+        agent_id=agent_id,
+        wallet_cash_cny=wallet_cash_cny,
+        total_asset_cny=total_asset_cny,
+        markets=markets,
+        updated_at=datetime.now(timezone.utc),
+    )
 
 
 async def record_snapshot(

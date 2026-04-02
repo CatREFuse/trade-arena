@@ -42,6 +42,31 @@ class PortfolioOut(BaseModel):
     positions: list[PositionOut]
 
 
+class PublicPositionOut(BaseModel):
+    ticker: str
+    shares: Decimal
+    avg_cost_cny: Decimal
+    current_price_cny: Optional[Decimal] = None
+    pnl_cny: Optional[Decimal] = None
+    market_value_cny: Decimal
+
+
+class AgentMarketPortfolioOut(BaseModel):
+    market: str
+    account_id: Optional[str] = None
+    holdings_count: int
+    position_value_cny: Decimal
+    positions: list[PublicPositionOut]
+
+
+class AgentPortfolioSummaryOut(BaseModel):
+    agent_id: str
+    wallet_cash_cny: Decimal
+    total_asset_cny: Decimal
+    markets: list[AgentMarketPortfolioOut]
+    updated_at: datetime
+
+
 # --- Trade ---
 class BuyRequest(BaseModel):
     account_id: Optional[str] = None

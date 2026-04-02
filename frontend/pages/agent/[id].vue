@@ -73,7 +73,7 @@
             {{ section.icon }} {{ section.label }}
           </div>
           <div v-if="section.hasAccount" class="text-2xl font-bold text-main tabular-nums">
-            {{ formatCny(section.totalAssetCny) }}
+            {{ formatCny(section.positionValueCny) }}
           </div>
           <div v-else class="text-2xl font-bold text-main tabular-nums">
             未开通
@@ -87,7 +87,7 @@
           </div>
           <div class="text-[10px] text-tertiary mt-1">
             <span v-if="section.hasAccount">
-              占总资产 {{ section.sharePct.toFixed(1) }}% · 按实时汇率折算
+              持仓占总资产 {{ section.sharePct.toFixed(1) }}% · 按实时汇率折算
             </span>
             <span v-else>
               暂无账户
@@ -99,7 +99,10 @@
       <div class="card mt-4">
         <div class="flex items-center justify-between gap-3 mb-4">
           <h3 class="text-base font-bold text-main">持仓与现金</h3>
-          <div class="text-[11px] text-tertiary">所有金额按实时汇率折算为人民币</div>
+          <div class="text-right">
+            <div class="text-[11px] text-tertiary">共享现金池</div>
+            <div class="text-sm font-bold text-main font-mono">{{ formatCny(walletCashCny) }}</div>
+          </div>
         </div>
         <div v-if="!portfolioSections.length" class="text-center py-12 text-tertiary">
           <div class="text-2xl mb-2">📊</div>
@@ -109,20 +112,15 @@
           <div v-for="section in portfolioSections" :key="section.key">
             <div class="flex items-center justify-between mb-3">
               <div class="text-sm font-medium text-secondary">{{ section.icon }} {{ section.label }}持仓</div>
-              <div v-if="section.portfolio" class="text-xs text-tertiary">
-                现金: <span class="text-main font-mono">{{ formatCny(section.portfolio.cash) }}</span>
-              </div>
+              <div class="text-xs text-tertiary">持仓市值: <span class="text-main font-mono">{{ formatCny(section.positionValueCny) }}</span></div>
             </div>
-            <div v-if="!section.portfolio" class="text-xs text-tertiary py-2">
+            <div v-if="section.positions.length === 0" class="text-xs text-tertiary py-2">
               暂无持仓
             </div>
             <template v-else>
-              <div v-if="section.portfolio.positions.length === 0" class="text-xs text-tertiary py-2">
-                暂无持仓
-              </div>
-              <div v-else class="space-y-2">
+              <div class="space-y-2">
                 <div
-                  v-for="pos in section.portfolio.positions"
+                  v-for="pos in section.positions"
                   :key="pos.ticker"
                   class="flex items-center gap-3 py-2 border-b border-zinc-100 dark:border-zinc-700 last:border-0"
                 >
@@ -132,14 +130,14 @@
                       <span class="text-[11px] text-tertiary">{{ Number(pos.shares).toFixed(2) }} 股</span>
                     </div>
                     <div class="text-[11px] text-tertiary mt-0.5">
-                      成本 {{ formatCny(pos.avg_cost) }} · 现价 {{ formatCny(pos.current_price ?? pos.avg_cost) }}
+                      成本 {{ formatCny(pos.avg_cost_cny) }} · 现价 {{ formatCny(pos.current_price_cny ?? pos.avg_cost_cny) }}
                     </div>
                   </div>
                   <div class="text-right flex-shrink-0">
-                    <div class="text-sm font-bold tabular-nums" :class="cc.textClass(Number(pos.pnl_cny ?? pos.pnl ?? 0))">
-                      {{ (Number(pos.pnl_cny ?? pos.pnl ?? 0) >= 0 ? '+' : '') + formatCny(Math.abs(Number(pos.pnl_cny ?? pos.pnl ?? 0))) }}
+                    <div class="text-sm font-bold tabular-nums" :class="cc.textClass(Number(pos.pnl_cny ?? 0))">
+                      {{ (Number(pos.pnl_cny ?? 0) >= 0 ? '+' : '') + formatCny(Math.abs(Number(pos.pnl_cny ?? 0))) }}
                     </div>
-                    <div class="text-[10px] text-tertiary">{{ (pos.weight ?? 0).toFixed(1) }}%</div>
+                    <div class="text-[10px] text-tertiary">{{ formatCny(pos.market_value_cny) }}</div>
                   </div>
                 </div>
               </div>
@@ -206,34 +204,28 @@ interface AgentRanking {
 }
 
 interface AgentAccountItem {
-  id: string
-  cash: number | string
-  currency: string
-}
-
-interface AgentAccountsResponse {
-  us?: AgentAccountItem | null
-  cn?: AgentAccountItem | null
-  hk?: AgentAccountItem | null
-}
-
-interface PortfolioPosition {
   ticker: string
   shares: number | string
-  avg_cost: number | string
-  current_price?: number | string | null
-  pnl?: number | string | null
+  avg_cost_cny: number | string
+  current_price_cny?: number | string | null
   pnl_cny?: number | string | null
-  weight?: number | null
+  market_value_cny: number | string
 }
 
-interface PortfolioResponse {
-  cash: number | string
-  cash_currency?: string | null
-  fx_pair?: string | null
-  fx_rate?: number | string | null
-  fx_updated_at?: string | null
-  positions: PortfolioPosition[]
+interface MarketPortfolioSummary {
+  market: 'us' | 'cn' | 'hk'
+  account_id?: string | null
+  holdings_count: number
+  position_value_cny: number | string
+  positions: AgentAccountItem[]
+}
+
+interface AgentPortfolioSummaryResponse {
+  agent_id: string
+  wallet_cash_cny: number | string
+  total_asset_cny: number | string
+  markets: MarketPortfolioSummary[]
+  updated_at: string
 }
 
 interface TradeItem {
@@ -262,7 +254,18 @@ const agent = computed(() => {
   return rankings.find(r => r.agent_id === agentId) || null
 })
 
-const overallAssetCny = computed(() => Number(agent.value?.total_asset_cny ?? agent.value?.total_asset_usd ?? 0))
+const { data: portfolioSummaryData } = await useFetch<AgentPortfolioSummaryResponse | null>(() => `/api/agents/${agentId}/portfolio-summary`, {
+  default: () => null,
+  transform: data => data || null,
+})
+
+const walletCashCny = computed(() => Number(portfolioSummaryData.value?.wallet_cash_cny ?? 0))
+const overallAssetCny = computed(() => Number(
+  portfolioSummaryData.value?.total_asset_cny
+  ?? agent.value?.total_asset_cny
+  ?? agent.value?.total_asset_usd
+  ?? 0
+))
 
 const { data: allFeed } = await useFetch<TradeItem[]>('/api/feed?limit=100', { default: () => [] })
 const agentTrades = computed(() => (allFeed.value || []).filter(t => t.agent_id === agentId))
@@ -272,82 +275,50 @@ const { data: chartData } = await useFetch<{ date: string; value: number }[]>(()
   transform: data => data || [],
 })
 
-const { data: accountsData } = await useFetch<AgentAccountsResponse | null>(() => `/api/agents/${agentId}/accounts`, {
-  default: () => null,
-  transform: data => data || null,
-})
-
-const { data: usPortfolioData } = await useFetch<PortfolioResponse | null>(() => {
-  const accountId = accountsData.value?.us?.id
-  return accountId ? `/api/accounts/${accountId}/portfolio` : null
-}, {
-  default: () => null,
-  transform: data => data || null,
-})
-
-const { data: cnPortfolioData } = await useFetch<PortfolioResponse | null>(() => {
-  const accountId = accountsData.value?.cn?.id
-  return accountId ? `/api/accounts/${accountId}/portfolio` : null
-}, {
-  default: () => null,
-  transform: data => data || null,
-})
-
-const { data: hkPortfolioData } = await useFetch<PortfolioResponse | null>(() => {
-  const accountId = accountsData.value?.hk?.id
-  return accountId ? `/api/accounts/${accountId}/portfolio` : null
-}, {
-  default: () => null,
-  transform: data => data || null,
-})
-
-const usPortfolio = computed(() => usPortfolioData.value)
-const cnPortfolio = computed(() => cnPortfolioData.value)
-const hkPortfolio = computed(() => hkPortfolioData.value)
-
 const marketSections = computed(() => {
+  const marketSummaryMap = new Map(
+    (portfolioSummaryData.value?.markets || []).map(item => [item.market, item])
+  )
   const sections = [
     {
       key: 'us',
       label: '美股',
       icon: '🇺🇸',
       barClass: 'bg-blue-500',
-      account: accountsData.value?.us ?? null,
-      portfolio: usPortfolio.value,
+      summary: marketSummaryMap.get('us'),
     },
     {
       key: 'cn',
       label: 'A 股',
       icon: '🇨🇳',
       barClass: 'bg-red-500',
-      account: accountsData.value?.cn ?? null,
-      portfolio: cnPortfolio.value,
+      summary: marketSummaryMap.get('cn'),
     },
     {
       key: 'hk',
       label: '港股',
       icon: '🇭🇰',
       barClass: 'bg-emerald-500',
-      account: accountsData.value?.hk ?? null,
-      portfolio: hkPortfolio.value,
+      summary: marketSummaryMap.get('hk'),
     },
   ] as const
 
   const sectionTotals = sections.map((section) => {
-    const totalAssetCny = getPortfolioTotal(section.portfolio)
-
     return {
       ...section,
-      totalAssetCny,
-      hasAccount: Boolean(section.account),
+      hasAccount: Boolean(section.summary?.account_id),
+      accountId: section.summary?.account_id ?? null,
+      holdingsCount: Number(section.summary?.holdings_count ?? 0),
+      positionValueCny: Number(section.summary?.position_value_cny ?? 0),
+      positions: section.summary?.positions ?? [],
     }
   })
 
-  const referenceTotal = overallAssetCny.value || sectionTotals.reduce((sum, section) => sum + section.totalAssetCny, 0)
+  const referenceTotal = overallAssetCny.value || sectionTotals.reduce((sum, section) => sum + section.positionValueCny, 0)
 
   return sectionTotals.map(section => ({
     ...section,
-    sharePct: referenceTotal ? (section.totalAssetCny / referenceTotal) * 100 : 0,
+    sharePct: referenceTotal ? (section.positionValueCny / referenceTotal) * 100 : 0,
   }))
 })
 
@@ -400,18 +371,6 @@ const areaPath = computed(() => {
   const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
   return `${line} L100,100 L0,100 Z`
 })
-
-function getPortfolioTotal(portfolio?: PortfolioResponse | null) {
-  if (!portfolio) return 0
-
-  const positionValue = (portfolio.positions || []).reduce((sum, pos) => {
-    const price = Number(pos.current_price ?? pos.avg_cost ?? 0)
-    const shares = Number(pos.shares ?? 0)
-    return sum + (price * shares)
-  }, 0)
-
-  return Number(portfolio.cash ?? 0) + positionValue
-}
 
 function formatDate(dateStr?: string) {
   if (!dateStr) return ''

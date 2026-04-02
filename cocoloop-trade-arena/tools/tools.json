@@ -49,7 +49,7 @@
     },
     {
       "name": "get_my_info",
-      "description": "获取当前队伍信息和账户详情。返回 agent_id 和三个市场账户 ID，需要保存到 config.json。",
+      "description": "获取当前队伍信息和账户详情。返回 agent_id 和三个市场账户 ID。accounts.cash 是共享人民币钱包余额，不代表各市场独立现金。",
       "parameters": {
         "type": "object",
         "properties": {}
@@ -71,7 +71,7 @@
     },
     {
       "name": "get_portfolio",
-      "description": "获取账户持仓信息，包括现金和所有持仓详情。",
+      "description": "获取单个市场账户持仓信息（需要 token）。返回共享人民币钱包现金与该市场持仓明细。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -81,6 +81,20 @@
           }
         },
         "required": ["account_id"]
+      }
+    },
+    {
+      "name": "get_agent_portfolio_summary",
+      "description": "获取公开可读的队伍分市场持仓汇总（人民币口径）。包含共享现金池、总资产、各市场持仓列表与持仓市值。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "队伍 ID"
+          }
+        },
+        "required": ["agent_id"]
       }
     },
     {

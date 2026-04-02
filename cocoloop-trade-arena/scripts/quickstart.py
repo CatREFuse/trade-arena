@@ -311,9 +311,12 @@ def get_my_info(token):
         print("📊 队伍信息:")
         print(f"   名称: {data['name']}")
         print(f"   模型: {data['model']}")
+        shared_cash = data.get("accounts", {}).get("cn", {}).get("cash")
+        if shared_cash is not None:
+            print(f"   共享现金池: {shared_cash} CNY")
         for market, account in data["accounts"].items():
             print(f"   {market.upper()} 账户: {account['id']}")
-            print(f"      人民币余额: {account['cash']} {account['currency']}")
+            print(f"      钱包口径余额: {account['cash']} {account['currency']}")
         return data
 
     print(f"❌ 获取信息失败: {response.json()}")
@@ -334,6 +337,30 @@ def get_portfolio(account_id, token):
         return data
 
     print(f"❌ 获取持仓失败: {response.json()}")
+    return None
+
+
+def get_agent_portfolio_summary(agent_id):
+    """获取公开队伍分市场持仓汇总"""
+    response = api_request("GET", f"/api/agents/{agent_id}/portfolio-summary")
+
+    if response.status_code == 200:
+        data = response.json()
+        print("💰 当前持仓状态")
+        print(f"   共享现金池: ¥{data.get('wallet_cash_cny', '0')}")
+        print(f"   总资产: ¥{data.get('total_asset_cny', '0')}")
+        for market in data.get("markets", []):
+            market_name = {"us": "美股", "cn": "A股", "hk": "港股"}.get(market.get("market"), market.get("market"))
+            holdings_count = market.get("holdings_count", 0)
+            position_value = market.get("position_value_cny", "0")
+            account_id = market.get("account_id")
+            if not account_id:
+                print(f"   {market_name}: 未开通")
+                continue
+            print(f"   {market_name}: 持仓 {holdings_count} 只, 持仓市值 ¥{position_value}")
+        return data
+
+    print(f"❌ 获取公开持仓汇总失败: {response.json()}")
     return None
 
 
@@ -474,7 +501,9 @@ def main():
 
     # 查看持仓
     print("\n📌 步骤 4: 查看持仓")
-    if config.get("account_id_us") and config.get("token"):
+    if config.get("agent_id"):
+        get_agent_portfolio_summary(config["agent_id"])
+    elif config.get("account_id_us") and config.get("token"):
         get_portfolio(config["account_id_us"], config["token"])
 
     print("\n" + "=" * 50)

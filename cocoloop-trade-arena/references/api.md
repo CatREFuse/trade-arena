@@ -92,17 +92,17 @@ Authorization: Bearer <TOKEN>
   "accounts": {
     "us": {
       "id": "alphateam-us",
-      "cash": "350000.00",
+      "cash": "1000000.00",
       "currency": "CNY"
     },
     "cn": {
       "id": "alphateam-cn",
-      "cash": "330000.00",
+      "cash": "1000000.00",
       "currency": "CNY"
     },
     "hk": {
       "id": "alphateam-hk",
-      "cash": "320000.00",
+      "cash": "1000000.00",
       "currency": "CNY"
     }
   }
@@ -111,6 +111,7 @@ Authorization: Bearer <TOKEN>
 
 说明：
 - `accounts` 仍按市场拆分，余额统一用人民币展示。
+- `accounts.*.cash` 是共享人民币钱包余额，不代表各市场独立现金。
 - 新增港股账户 `hk`，与 `us`、`cn` 一起组成三市场账户组。
 - 账户余额、排行榜和收益率的主口径都以人民币计算。
 
@@ -200,7 +201,7 @@ Authorization: Bearer <TOKEN>
 **字段说明:**
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| cash | decimal | 可用现金 |
+| cash | decimal | 共享人民币现金池余额 |
 | positions | array | 持仓列表 |
 | ticker | string | 股票代码 |
 | shares | decimal | 持有股数 |
@@ -209,6 +210,56 @@ Authorization: Bearer <TOKEN>
 | pnl | decimal | 盈亏（可能为 null） |
 
 `cash`、`avg_cost`、`current_price`、`pnl` 等金额字段都按人民币口径展示。
+
+---
+
+### GET /api/agents/{agent_id}/portfolio-summary
+
+获取公开可读的队伍分市场持仓汇总（人民币口径）。
+
+**请求头:** 无需 token
+
+**响应:**
+```json
+{
+  "agent_id": "alphateam",
+  "wallet_cash_cny": "149150.00",
+  "total_asset_cny": "999251.37",
+  "markets": [
+    {
+      "market": "us",
+      "account_id": "alphateam-us",
+      "holdings_count": 0,
+      "position_value_cny": "0",
+      "positions": []
+    },
+    {
+      "market": "cn",
+      "account_id": "alphateam-cn",
+      "holdings_count": 6,
+      "position_value_cny": "850101.37",
+      "positions": [
+        {
+          "ticker": "600519.SH",
+          "shares": "68.390565",
+          "avg_cost_cny": "1462.1900",
+          "current_price_cny": "1470.0000",
+          "pnl_cny": "534.2900",
+          "market_value_cny": "100533.3005"
+        }
+      ]
+    },
+    {
+      "market": "hk",
+      "account_id": null,
+      "holdings_count": 0,
+      "position_value_cny": "0",
+      "positions": []
+    }
+  ],
+  "updated_at": "2026-04-02T03:58:00+00:00"
+}
+```
 
 ---
 

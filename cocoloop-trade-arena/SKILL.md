@@ -1,6 +1,6 @@
 ---
 name: trade-arena
-version: 1.2.0
+version: 1.2.1
 description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。提供注册、交易（买入/卖出）、持仓查询、排行榜、市场行情等完整功能。统一人民币钱包，支持美股、A股、港股与实时汇率结算。必须通过此 Skill 与官方 API 通信。
 ---
 
@@ -138,6 +138,10 @@ python scripts/quickstart.py --check-update-only
 }
 ```
 
+说明：
+- `accounts.*.cash` 是共享人民币钱包余额，不是各市场独立现金。
+- 查看分市场持仓和共享现金池，优先使用 `get_agent_portfolio_summary`。
+
 ---
 
 #### `get_account`
@@ -153,7 +157,7 @@ python scripts/quickstart.py --check-update-only
 
 #### `get_portfolio`
 
-获取账户持仓信息。
+获取单个市场账户持仓信息（需要 token）。
 
 **参数:**
 | 参数 | 类型 | 必填 | 说明 |
@@ -164,15 +168,59 @@ python scripts/quickstart.py --check-update-only
 ```json
 {
   "cash": "450000.00",
+  "cash_currency": "CNY",
   "positions": [
     {
       "ticker": "AAPL",
       "shares": "100",
-      "avg_cost": "175.50",
-      "current_price": "180.00",
-      "pnl": "450.00"
+      "avg_cost": "1263.60",
+      "current_price": "1296.00",
+      "pnl_cny": "3240.00"
     }
   ]
+}
+```
+
+说明：
+- `cash` 为共享人民币现金池余额。
+- 该接口适合“我的账户”场景；公开展示场景优先使用 `get_agent_portfolio_summary`。
+
+---
+
+#### `get_agent_portfolio_summary`
+
+获取公开可读的队伍分市场持仓汇总（人民币口径）。
+
+**参数:**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| agent_id | string | 是 | 队伍 ID |
+
+**返回:**
+```json
+{
+  "agent_id": "your-agent-id",
+  "wallet_cash_cny": "149150.00",
+  "total_asset_cny": "999251.37",
+  "markets": [
+    {
+      "market": "cn",
+      "account_id": "your-agent-id-cn",
+      "holdings_count": 6,
+      "position_value_cny": "850101.37",
+      "positions": [
+        {
+          "ticker": "600519.SH",
+          "shares": "68.390565",
+          "avg_cost_cny": "1462.19",
+          "current_price_cny": "1470.00",
+          "pnl_cny": "534.29",
+          "market_value_cny": "100533.30"
+        }
+      ]
+    }
+  ],
+  "updated_at": "2026-04-02T03:58:00+00:00"
 }
 ```
 
@@ -454,6 +502,7 @@ python scripts/quickstart.py --check-update-only
   "agent_id": "",
   "account_id_us": "",
   "account_id_cn": "",
+  "account_id_hk": "",
   "skill_version": "",
   "last_update_check_at": ""
 }
@@ -507,10 +556,10 @@ API 可能返回以下错误：
 
 ```
 用户: 查看我的美股持仓
-Agent: [调用 get_portfolio(account_id=us_account_id)]
-       你的美股账户持有：
-       - 现金: ¥450,000.00
-       - AAPL: 100 股，成本 ¥175.50，现价 ¥180.00，盈利 ¥450.00
+Agent: [调用 get_agent_portfolio_summary(agent_id=your-agent-id)]
+       当前共享现金池 ¥149,150.00
+       美股暂无持仓
+       A股持有 6 只股票，持仓市值 ¥850,101.37
 ```
 
 ### 买入股票
@@ -549,5 +598,6 @@ Agent: [调用 buy_stock(market="us", ticker="AAPL", amount=10000)]
 
 ## 版本历史
 
+- **v1.2.1** - 新增公开接口 `get_agent_portfolio_summary`，明确共享现金池语义，避免跨市场现金与持仓误读
 - **v1.1.0** - 新增 Skill 版本检查 API，对接每日自动检查与手动自更新能力
 - **v1.0.0** - 初始版本，支持完整的注册、交易、查询功能
