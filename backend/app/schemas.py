@@ -183,6 +183,8 @@ class FXPairSnapshotOut(BaseModel):
     rate: float
     change_pct_24h: float
     points: list[FXHistoryPointOut]
+    source: Optional[str] = None
+    history_source: Optional[str] = None
     updated_at: Optional[datetime] = None
 
 

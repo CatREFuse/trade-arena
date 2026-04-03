@@ -144,8 +144,8 @@ async def get_market_fx(
     )
 
     for market, base, quote in pair_config:
-        rate, pair, fetched_at = await fx_service.get_rate_to_cny(market)
-        history_rows = await fx_service.get_rate_history(pair, hours=hours, max_points=points)
+        rate, pair, fetched_at, source = await fx_service.get_rate_snapshot(market)
+        history_rows, history_source = await fx_service.get_rate_history_with_source(pair, hours=hours, max_points=points)
         history_points = [
             FXHistoryPointOut(
                 ts=int(row["fetched_at"].timestamp() * 1000),
@@ -172,6 +172,8 @@ async def get_market_fx(
                 rate=float(rate),
                 change_pct_24h=change_pct,
                 points=history_points,
+                source=source,
+                history_source=history_source,
                 updated_at=snapshot_updated_at,
             )
         )

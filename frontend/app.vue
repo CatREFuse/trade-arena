@@ -84,10 +84,8 @@ const { connected: sseConnected } = useTradeEvents()
 const { isDark, toggle } = useAppearance()
 const { isCN, toggle: toggleColor } = useColorConvention()
 const { toasts } = useToastState()
-const { triggerParticipationEntry } = useParticipationCommand()
 
 async function handleJoinNow() {
-  await triggerParticipationEntry()
   if (route.path !== '/') {
     await navigateTo('/')
   }

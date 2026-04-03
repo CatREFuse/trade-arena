@@ -50,6 +50,9 @@
             </div>
             <div class="relative">
               <div class="text-[11px] uppercase tracking-widest text-tertiary">{{ pair.pair }}</div>
+              <div v-if="pair.history_source || pair.source" class="mt-1 text-[10px] text-tertiary">
+                数据源：{{ formatFxSource(pair.history_source || pair.source) }}
+              </div>
               <div class="mt-2 flex items-end justify-between gap-4">
                 <div class="text-2xl font-bold tabular-nums text-main">{{ formatFxRate(pair.rate) }}</div>
                 <div class="text-sm font-semibold tabular-nums" :class="cc.textClass(pair.change_pct_24h)">
@@ -701,6 +704,8 @@ interface FXPairSnapshot {
   rate: number
   change_pct_24h: number
   points: FXHistoryPoint[]
+  source?: string
+  history_source?: string
   updated_at?: string
 }
 
@@ -1198,6 +1203,16 @@ function formatPercent(value: number) {
 
 function formatFxRate(value: number) {
   return Number(value || 0).toFixed(4)
+}
+
+function formatFxSource(source?: string) {
+  if (!source) return '--'
+  const normalized = source.trim().toLowerCase()
+  if (normalized === 'stooq_svg') return 'Stooq 日内图'
+  if (normalized === 'frankfurter') return 'Frankfurter 日级'
+  if (normalized === 'open_er_api') return 'Open ER API'
+  if (normalized === 'redis_history') return '本地快照'
+  return source
 }
 
 function buildFxLinePath(points: FXHistoryPoint[]) {

@@ -108,30 +108,30 @@ async def test_market_fx_route_returns_realtime_and_history(
 ):
     now = datetime.now(timezone.utc).replace(microsecond=0)
 
-    async def fake_get_rate_to_cny(self, market: str):
+    async def fake_get_rate_snapshot(self, market: str):
         if market == "us":
-            return 7.25, "USD/CNY", now
+            return 7.25, "USD/CNY", now, "stooq_svg"
         if market == "hk":
-            return 0.93, "HKD/CNY", now - timedelta(minutes=1)
+            return 0.93, "HKD/CNY", now - timedelta(minutes=1), "frankfurter"
         raise AssertionError(market)
 
-    async def fake_get_rate_history(self, pair: str, *, hours: int = 24, max_points: int = 120):
+    async def fake_get_rate_history_with_source(self, pair: str, *, hours: int = 24, max_points: int = 120):
         assert hours == 24
         assert max_points == 120
         if pair == "USD/CNY":
             return [
                 {"pair": pair, "rate": 7.10, "fetched_at": now - timedelta(hours=24)},
                 {"pair": pair, "rate": 7.25, "fetched_at": now},
-            ]
+            ], "stooq_svg"
         if pair == "HKD/CNY":
             return [
                 {"pair": pair, "rate": 0.92, "fetched_at": now - timedelta(hours=24)},
                 {"pair": pair, "rate": 0.93, "fetched_at": now - timedelta(minutes=1)},
-            ]
-        return []
+            ], "frankfurter"
+        return [], "redis_history"
 
-    monkeypatch.setattr(fx_module.FXService, "get_rate_to_cny", fake_get_rate_to_cny)
-    monkeypatch.setattr(fx_module.FXService, "get_rate_history", fake_get_rate_history)
+    monkeypatch.setattr(fx_module.FXService, "get_rate_snapshot", fake_get_rate_snapshot)
+    monkeypatch.setattr(fx_module.FXService, "get_rate_history_with_source", fake_get_rate_history_with_source)
 
     response = await client.get("/api/market/fx")
     assert response.status_code == 200
@@ -142,12 +142,16 @@ async def test_market_fx_route_returns_realtime_and_history(
     usd = next(item for item in payload["pairs"] if item["pair"] == "USD/CNY")
     assert usd["rate"] == 7.25
     assert usd["change_pct_24h"] > 2.0
+    assert usd["source"] == "stooq_svg"
+    assert usd["history_source"] == "stooq_svg"
     assert len(usd["points"]) == 2
     assert usd["points"][0]["rate"] == 7.1
 
     hkd = next(item for item in payload["pairs"] if item["pair"] == "HKD/CNY")
     assert hkd["rate"] == 0.93
     assert hkd["change_pct_24h"] > 1.0
+    assert hkd["source"] == "frankfurter"
+    assert hkd["history_source"] == "frankfurter"
     assert len(hkd["points"]) == 2
 
 
