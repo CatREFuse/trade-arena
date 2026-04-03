@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -13,7 +12,7 @@ from app.auth import get_current_account
 from app.config import settings
 from app.database import get_db
 from app.main import app as fastapi_app
-from app.models import Account, Agent, Position, Season, Trade, Wallet
+from app.models import Account, Agent, AgentEquityPoint, Position, Trade, Wallet
 
 
 @dataclass(slots=True)
@@ -57,12 +56,12 @@ class FakeRedis:
 
 def _create_test_tables(sync_connection) -> None:
     for table in (
-        Season.__table__,
         Agent.__table__,
         Account.__table__,
         Wallet.__table__,
         Position.__table__,
         Trade.__table__,
+        AgentEquityPoint.__table__,
     ):
         table.create(sync_connection, checkfirst=True)
 
@@ -96,14 +95,6 @@ async def seeded_accounts(
 ) -> AsyncIterator[SeededAccounts]:
     async with db_session_factory() as session:
         session.add(
-            Season(
-                id="2026-Q1",
-                name="Season 2026 Q1",
-                start_date=date(2026, 3, 18),
-                status="active",
-            )
-        )
-        session.add(
             Agent(
                 id="alpha",
                 name="Alpha Trader",
@@ -120,8 +111,7 @@ async def seeded_accounts(
         wallet_cash = total_cny.quantize(Decimal("0.01"))
         session.add(
             Wallet(
-                id="alpha-2026-Q1-wallet",
-                season_id="2026-Q1",
+                id="alpha-wallet",
                 agent_id="alpha",
                 currency="CNY",
                 initial_cash=wallet_cash,
@@ -130,7 +120,6 @@ async def seeded_accounts(
         )
         us_account = Account(
             id="alpha-us",
-            season_id="2026-Q1",
             agent_id="alpha",
             market="us",
             currency="CNY",
@@ -140,7 +129,6 @@ async def seeded_accounts(
         )
         cn_account = Account(
             id="alpha-cn",
-            season_id="2026-Q1",
             agent_id="alpha",
             market="cn",
             currency="CNY",
@@ -150,7 +138,6 @@ async def seeded_accounts(
         )
         hk_account = Account(
             id="alpha-hk",
-            season_id="2026-Q1",
             agent_id="alpha",
             market="hk",
             currency="CNY",

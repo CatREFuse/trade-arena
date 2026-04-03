@@ -44,7 +44,9 @@ class TradingService:
         db = self.db
         wallet_result = await db.execute(
             select(Wallet)
-            .where(Wallet.agent_id == account.agent_id, Wallet.season_id == account.season_id)
+            .where(Wallet.agent_id == account.agent_id)
+            .order_by(Wallet.updated_at.desc(), Wallet.created_at.desc())
+            .limit(1)
             .with_for_update()
         )
         wallet = wallet_result.scalar_one_or_none()
@@ -53,8 +55,7 @@ class TradingService:
 
         initial_cash = _money(Decimal(str(settings.total_starting_capital_cny)))
         wallet = Wallet(
-            id=f"{account.agent_id}-{account.season_id}-wallet",
-            season_id=account.season_id,
+            id=f"{account.agent_id}-wallet",
             agent_id=account.agent_id,
             currency="CNY",
             initial_cash=initial_cash,
@@ -81,7 +82,55 @@ class TradingService:
 
         return Decimal("1"), "CNY/CNY", None
 
-    async def buy(self, req: BuyRequest, price: Decimal) -> TradeOut:
+    @staticmethod
+    def _canonical_trade_ticker(request_ticker: str, normalized_ticker: str | None = None) -> str:
+        if normalized_ticker:
+            normalized = normalized_ticker.strip().upper()
+            if normalized:
+                return normalized
+        return request_ticker.strip().upper()
+
+    async def _load_position_for_trade(
+        self,
+        *,
+        account_id: str,
+        request_ticker: str,
+        canonical_ticker: str,
+        for_update: bool = False,
+    ) -> Position | None:
+        candidates = {canonical_ticker}
+        raw_ticker = request_ticker.strip().upper()
+        if raw_ticker:
+            candidates.add(raw_ticker)
+
+        stmt = select(Position).where(
+            Position.account_id == account_id,
+            Position.ticker.in_(sorted(candidates)),
+        )
+        if for_update:
+            stmt = stmt.with_for_update()
+        rows = (await self.db.execute(stmt)).scalars().all()
+        if not rows:
+            return None
+
+        canonical_row = next((row for row in rows if row.ticker == canonical_ticker), rows[0])
+        if len(rows) > 1:
+            total_shares = sum((row.shares for row in rows), Decimal("0"))
+            total_cost = sum((row.shares * row.avg_cost for row in rows), Decimal("0"))
+            canonical_row.shares = total_shares
+            canonical_row.avg_cost = (total_cost / total_shares) if total_shares > 0 else Decimal("0")
+            canonical_row.updated_at = datetime.utcnow()
+            for row in rows:
+                if row is canonical_row:
+                    continue
+                await self.db.delete(row)
+
+        if canonical_row.ticker != canonical_ticker:
+            canonical_row.ticker = canonical_ticker
+            canonical_row.updated_at = datetime.utcnow()
+        return canonical_row
+
+    async def buy(self, req: BuyRequest, price: Decimal, normalized_ticker: str | None = None) -> TradeOut:
         db = self.db
 
         if req.amount <= 0:
@@ -118,20 +167,18 @@ class TradingService:
         fee = _money(req.amount * Decimal(str(settings.trade_fee_rate)))
         total_cost = req.amount + fee
         total_cost_cny = _money(total_cost * fx_rate)
+        canonical_ticker = self._canonical_trade_ticker(req.ticker, normalized_ticker)
 
         if wallet.cash < total_cost_cny:
             raise InsufficientFunds(float(wallet.cash), float(total_cost_cny))
 
         shares_to_buy = (req.amount / price).quantize(SHARES_QUANT)
 
-        # 查询已有持仓
-        pos_result = await db.execute(
-            select(Position).where(
-                Position.account_id == req.account_id,
-                Position.ticker == req.ticker,
-            )
+        position = await self._load_position_for_trade(
+            account_id=req.account_id,
+            request_ticker=req.ticker,
+            canonical_ticker=canonical_ticker,
         )
-        position = pos_result.scalar_one_or_none()
 
         existing_value = Decimal("0")
         if position:
@@ -153,7 +200,7 @@ class TradingService:
         else:
             position = Position(
                 account_id=req.account_id,
-                ticker=req.ticker,
+                ticker=canonical_ticker,
                 shares=shares_to_buy,
                 avg_cost=price,
             )
@@ -166,7 +213,7 @@ class TradingService:
 
         trade = Trade(
             account_id=req.account_id,
-            ticker=req.ticker,
+            ticker=canonical_ticker,
             action="buy",
             shares=shares_to_buy,
             price=price,
@@ -187,7 +234,7 @@ class TradingService:
 
         return TradeOut(
             trade_id=trade.id,
-            ticker=req.ticker,
+            ticker=canonical_ticker,
             action="buy",
             shares=shares_to_buy,
             price=price,
@@ -202,7 +249,7 @@ class TradingService:
             created_at=trade.created_at,
         )
 
-    async def sell(self, req: SellRequest, price: Decimal) -> TradeOut:
+    async def sell(self, req: SellRequest, price: Decimal, normalized_ticker: str | None = None) -> TradeOut:
         db = self.db
 
         if req.shares <= 0:
@@ -235,17 +282,14 @@ class TradingService:
                 next_open_at=self.market_calendar.next_open_local_iso(account.market, now_utc=now_utc),
             )
         fx_rate, fx_pair, _fx_updated_at = await self._resolve_rate(account.market)
+        canonical_ticker = self._canonical_trade_ticker(req.ticker, normalized_ticker)
 
-        # --- 查询持仓 ---
-        pos_result = await db.execute(
-            select(Position)
-            .where(
-                Position.account_id == req.account_id,
-                Position.ticker == req.ticker,
-            )
-            .with_for_update()
+        position = await self._load_position_for_trade(
+            account_id=req.account_id,
+            request_ticker=req.ticker,
+            canonical_ticker=canonical_ticker,
+            for_update=True,
         )
-        position = pos_result.scalar_one_or_none()
 
         # --- 持仓数量检查（禁止卖空）---
         if position is None or position.shares < req.shares:
@@ -269,7 +313,7 @@ class TradingService:
 
         trade = Trade(
             account_id=req.account_id,
-            ticker=req.ticker,
+            ticker=canonical_ticker,
             action="sell",
             shares=req.shares,
             price=price,
@@ -290,7 +334,7 @@ class TradingService:
 
         return TradeOut(
             trade_id=trade.id,
-            ticker=req.ticker,
+            ticker=canonical_ticker,
             action="sell",
             shares=req.shares,
             price=price,

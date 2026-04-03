@@ -8,6 +8,8 @@ redis>=5.0
 sse-starlette>=2.0
 yfinance>=0.2
 httpx>=0.27
+akshare>=1.18
+exchange-calendars>=4.6
 
 [dev]
 pytest>=8.0

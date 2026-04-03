@@ -46,7 +46,10 @@ async def _record_account_snapshot(
         return
 
     wallet_row = await db.execute(
-        select(Wallet).where(Wallet.agent_id == account.agent_id, Wallet.season_id == account.season_id)
+        select(Wallet)
+        .where(Wallet.agent_id == account.agent_id)
+        .order_by(Wallet.updated_at.desc(), Wallet.created_at.desc())
+        .limit(1)
     )
     wallet = wallet_row.scalar_one_or_none()
     wallet_cash = wallet.cash if wallet is not None else Decimal("0")
@@ -151,12 +154,12 @@ async def buy(
     redis = request.app.state.redis
     fx_service = getattr(request.app.state, "fx_service", None) or FXService(redis)
     market_svc = getattr(request.app.state, "market_data_service", None) or MarketDataService(redis)
-    quote = await market_svc.get_quote(req.ticker.upper())
-
-    req.ticker = req.ticker.upper()
+    raw_ticker = req.ticker.upper()
+    quote = await market_svc.get_quote(raw_ticker)
+    req.ticker = raw_ticker
 
     trading_svc = TradingService(db, fx_service=fx_service)
-    result = await trading_svc.buy(req, quote.price)
+    result = await trading_svc.buy(req, quote.price, normalized_ticker=quote.ticker)
     await db.commit()
 
     # 记录资产快照
@@ -169,7 +172,7 @@ async def buy(
             "type": "trade",
             "agent_id": account.agent_id,
             "action": "buy",
-            "ticker": req.ticker,
+            "ticker": result.ticker,
             "shares": str(result.shares),
             "price": str(result.price),
             "amount": str(result.amount),
@@ -193,12 +196,12 @@ async def sell(
     redis = request.app.state.redis
     fx_service = getattr(request.app.state, "fx_service", None) or FXService(redis)
     market_svc = getattr(request.app.state, "market_data_service", None) or MarketDataService(redis)
-    quote = await market_svc.get_quote(req.ticker.upper())
-
-    req.ticker = req.ticker.upper()
+    raw_ticker = req.ticker.upper()
+    quote = await market_svc.get_quote(raw_ticker)
+    req.ticker = raw_ticker
 
     trading_svc = TradingService(db, fx_service=fx_service)
-    result = await trading_svc.sell(req, quote.price)
+    result = await trading_svc.sell(req, quote.price, normalized_ticker=quote.ticker)
     await db.commit()
 
     # 记录资产快照
@@ -211,7 +214,7 @@ async def sell(
             "type": "trade",
             "agent_id": account.agent_id,
             "action": "sell",
-            "ticker": req.ticker,
+            "ticker": result.ticker,
             "shares": str(result.shares),
             "price": str(result.price),
             "amount": str(result.amount),

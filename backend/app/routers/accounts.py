@@ -24,7 +24,10 @@ async def get_account(
     db: AsyncSession = Depends(get_db),
 ):
     wallet_result = await db.execute(
-        select(Wallet).where(Wallet.agent_id == account.agent_id, Wallet.season_id == account.season_id)
+        select(Wallet)
+        .where(Wallet.agent_id == account.agent_id)
+        .order_by(Wallet.updated_at.desc(), Wallet.created_at.desc())
+        .limit(1)
     )
     wallet = wallet_result.scalar_one_or_none()
     available_cash_cny = wallet.cash if wallet is not None else Decimal("0")
@@ -57,7 +60,10 @@ async def get_portfolio(
     market_svc = getattr(request.app.state, "market_data_service", None) or MarketDataService(redis)
     quote_map = await market_svc.get_quotes_batch([pos.ticker for pos in positions])
     wallet_result = await db.execute(
-        select(Wallet).where(Wallet.agent_id == account.agent_id, Wallet.season_id == account.season_id)
+        select(Wallet)
+        .where(Wallet.agent_id == account.agent_id)
+        .order_by(Wallet.updated_at.desc(), Wallet.created_at.desc())
+        .limit(1)
     )
     wallet = wallet_result.scalar_one_or_none()
 

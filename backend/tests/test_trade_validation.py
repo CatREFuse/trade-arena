@@ -4,10 +4,29 @@ from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import select
 
-from app.schemas import BuyRequest, SellRequest
+import app.routers.trade as trade_router
+from app.models import Position
+from app.schemas import BuyRequest, QuoteOut, SellRequest
 from app.services.market_calendar import MarketCalendarService
+from app.services import market_data as md
 from app.services.trading import TradingService
+
+
+async def _noop_async(*_args, **_kwargs):
+    return None
+
+
+async def _fake_quote_for_tests(self, ticker: str):
+    return QuoteOut(
+        ticker=ticker.upper(),
+        price=Decimal("100"),
+        change_pct=0,
+        name=ticker.upper(),
+        volume=1000,
+        market_status="open",
+    )
 
 
 @pytest.mark.parametrize("amount", [0, -1])
@@ -104,6 +123,112 @@ async def test_trade_buy_invalid_ticker_returns_404(client, seeded_accounts):
 
 
 @pytest.mark.asyncio
+async def test_trade_buy_alias_ticker_is_normalized_and_persisted(
+    client, seeded_accounts, db_session_factory, monkeypatch
+):
+    monkeypatch.setattr(MarketCalendarService, "is_trade_open", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(trade_router, "_record_account_snapshot", _noop_async)
+
+    async def fake_get_quote(self, ticker: str):
+        assert ticker == "BRK-B"
+        return QuoteOut(
+            ticker="BRK.B",
+            price=Decimal("100"),
+            change_pct=0,
+            name="Berkshire Hathaway",
+            volume=1000,
+            market_status="open",
+        )
+
+    monkeypatch.setattr(md.MarketDataService, "get_quote", fake_get_quote)
+
+    response = await client.post(
+        "/api/trade/buy",
+        headers={"Authorization": f"Bearer {seeded_accounts.token}"},
+        json={
+            "market": "us",
+            "ticker": "brk-b",
+            "amount": 100,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ticker"] == "BRK.B"
+
+    async with db_session_factory() as session:
+        rows = (
+            await session.execute(
+                select(Position).where(
+                    Position.account_id == seeded_accounts.us_account_id,
+                    Position.ticker.in_(("BRK-B", "BRK.B")),
+                )
+            )
+        ).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].ticker == "BRK.B"
+
+
+@pytest.mark.asyncio
+async def test_trade_sell_alias_ticker_supports_legacy_position_symbol(
+    client, seeded_accounts, db_session_factory, monkeypatch
+):
+    async with db_session_factory() as session:
+        session.add(
+            Position(
+                account_id=seeded_accounts.us_account_id,
+                ticker="BRK-B",
+                shares=Decimal("2"),
+                avg_cost=Decimal("100"),
+            )
+        )
+        await session.commit()
+
+    monkeypatch.setattr(MarketCalendarService, "is_trade_open", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(trade_router, "_record_account_snapshot", _noop_async)
+
+    async def fake_get_quote(self, ticker: str):
+        assert ticker == "BRK-B"
+        return QuoteOut(
+            ticker="BRK.B",
+            price=Decimal("100"),
+            change_pct=0,
+            name="Berkshire Hathaway",
+            volume=1000,
+            market_status="open",
+        )
+
+    monkeypatch.setattr(md.MarketDataService, "get_quote", fake_get_quote)
+
+    response = await client.post(
+        "/api/trade/sell",
+        headers={"Authorization": f"Bearer {seeded_accounts.token}"},
+        json={
+            "market": "us",
+            "ticker": "brk-b",
+            "shares": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ticker"] == "BRK.B"
+
+    async with db_session_factory() as session:
+        rows = (
+            await session.execute(
+                select(Position).where(
+                    Position.account_id == seeded_accounts.us_account_id,
+                    Position.ticker.in_(("BRK-B", "BRK.B")),
+                )
+            )
+        ).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].ticker == "BRK.B"
+        assert rows[0].shares == Decimal("1.000000")
+
+
+@pytest.mark.asyncio
 async def test_trade_missing_authorization_header_returns_invalid_token(client):
     response = await client.post(
         "/api/trade/buy",
@@ -132,6 +257,7 @@ async def test_trade_buy_rejects_when_market_closed(client, seeded_accounts, mon
         "next_open_local_iso",
         lambda *_args, **_kwargs: "2026-03-31T09:30:00+08:00",
     )
+    monkeypatch.setattr(md.MarketDataService, "get_quote", _fake_quote_for_tests)
 
     response = await client.post(
         "/api/trade/buy",
@@ -163,6 +289,7 @@ async def test_trade_sell_rejects_when_market_closed(client, seeded_accounts, mo
         "next_open_local_iso",
         lambda *_args, **_kwargs: "2026-03-31T09:30:00-04:00",
     )
+    monkeypatch.setattr(md.MarketDataService, "get_quote", _fake_quote_for_tests)
 
     response = await client.post(
         "/api/trade/sell",

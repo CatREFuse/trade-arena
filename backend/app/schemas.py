@@ -248,6 +248,23 @@ class StockDetailOut(BaseModel):
     updated_at: datetime
 
 
+class SparklinePointOut(BaseModel):
+    time: str
+    value: float
+
+
+class ChartPointOut(BaseModel):
+    """资产曲线数据点"""
+    date: str
+    value: float
+
+
+class AgentEquityCurveOut(BaseModel):
+    span: str
+    interval: str
+    points: list[ChartPointOut]
+
+
 # --- Leaderboard ---
 class AgentRanking(BaseModel):
     agent_id: str
@@ -264,11 +281,13 @@ class AgentRanking(BaseModel):
     hk_asset_cny: Optional[Decimal] = None
     us_asset: Optional[Decimal] = None  # legacy compatibility
     cn_asset_usd: Optional[Decimal] = None  # legacy compatibility
+    sparkline_3d: list[SparklinePointOut] = Field(default_factory=list)
 
 
 class LeaderboardOut(BaseModel):
     market: str
     rankings: list[AgentRanking]
+    timestamp: datetime
 
 
 # --- Feed ---
@@ -293,12 +312,6 @@ class SnapshotOut(BaseModel):
     total_asset: Decimal
     cash: Decimal
     position_value: Decimal
-
-
-class ChartPointOut(BaseModel):
-    """资产曲线数据点"""
-    date: str
-    value: float
 
 
 class SkillVersionOut(BaseModel):

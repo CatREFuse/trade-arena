@@ -1,20 +1,27 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, TypeVar
 
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import Account, Agent, Position, Wallet
-from app.schemas import AgentRanking, LeaderboardOut
+from app.models import Account, Agent, AgentEquityPoint, Position, Wallet
+from app.schemas import AgentRanking, LeaderboardOut, SparklinePointOut
 from app.services.fx import FXService
 from app.services.market_data import MarketDataService
 
+T = TypeVar("T")
+
 
 class RankingService:
+    MINI_SPARKLINE_SPAN_DAYS = 3
+    MINI_SPARKLINE_POINTS = 72
+    SERIES_STEP_MINUTES = 5
+
     def __init__(
         self,
         db: AsyncSession,
@@ -55,6 +62,89 @@ class RankingService:
             return Decimal(str(rate))
         return Decimal("1")
 
+    @staticmethod
+    def _floor_to_five_minutes(ts: datetime) -> datetime:
+        return ts.replace(minute=(ts.minute // 5) * 5, second=0, microsecond=0)
+
+    @staticmethod
+    def _downsample(values: list[T], target: int) -> list[T]:
+        if not values:
+            return []
+        if target <= 1:
+            return [values[-1]]
+        if len(values) <= target:
+            return values
+        sampled: list[Decimal] = []
+        last_index = len(values) - 1
+        for i in range(target):
+            idx = round(i * last_index / (target - 1))
+            sampled.append(values[idx])
+        return sampled
+
+    async def _attach_sparklines(
+        self,
+        rankings: list[AgentRanking],
+        initial_by_agent: dict[str, Decimal],
+    ) -> None:
+        if not rankings:
+            return
+
+        end_time = self._floor_to_five_minutes(datetime.utcnow())
+        start_time = end_time - timedelta(days=self.MINI_SPARKLINE_SPAN_DAYS)
+        step_seconds = self.SERIES_STEP_MINUTES * 60
+        total_steps = int((end_time - start_time).total_seconds() // step_seconds) + 1
+        total_steps = max(total_steps, 2)
+
+        agent_ids = [item.agent_id for item in rankings]
+        points_result = await self.db.execute(
+            select(
+                AgentEquityPoint.agent_id,
+                AgentEquityPoint.point_time,
+                AgentEquityPoint.equity_cny,
+            )
+            .where(
+                AgentEquityPoint.agent_id.in_(agent_ids),
+                AgentEquityPoint.point_time >= start_time,
+                AgentEquityPoint.point_time <= end_time,
+            )
+            .order_by(AgentEquityPoint.agent_id, AgentEquityPoint.point_time)
+        )
+
+        points_by_agent: dict[str, dict[int, Decimal]] = {}
+        for agent_id, point_time, equity_cny in points_result.all():
+            idx = int((point_time - start_time).total_seconds() // step_seconds)
+            if 0 <= idx < total_steps:
+                points_by_agent.setdefault(agent_id, {})[idx] = Decimal(equity_cny)
+
+        for ranking in rankings:
+            baseline = initial_by_agent.get(
+                ranking.agent_id,
+                Decimal(str(settings.total_starting_capital_cny)),
+            )
+            indexed_points = points_by_agent.get(ranking.agent_id, {})
+            dense: list[Decimal] = []
+            prev = baseline
+            for i in range(total_steps):
+                value = indexed_points.get(i)
+                if value is None:
+                    value = prev
+                else:
+                    prev = value
+                dense.append(value)
+
+            sampled = self._downsample(dense, self.MINI_SPARKLINE_POINTS)
+            sampled_times = self._downsample(
+                [start_time + timedelta(seconds=step_seconds * i) for i in range(total_steps)],
+                self.MINI_SPARKLINE_POINTS,
+            )
+            ranking.sparkline_3d = [
+                SparklinePointOut(
+                    time=sampled_times[idx].isoformat(),
+                    value=float(sampled[idx]),
+                )
+                for idx in range(min(len(sampled), len(sampled_times)))
+            ]
+
     async def get_leaderboard(self, market: str = "overall") -> LeaderboardOut:
         db = self.db
 
@@ -89,6 +179,7 @@ class RankingService:
             agent_accounts.setdefault(acc.agent_id, []).append(acc)
 
         rankings: list[AgentRanking] = []
+        initial_by_agent: dict[str, Decimal] = {}
 
         for agent_id, agent in agents.items():
             accs = agent_accounts.get(agent_id, [])
@@ -118,6 +209,7 @@ class RankingService:
             else:
                 total_initial_cny = Decimal(str(settings.total_starting_capital_cny))
                 total_asset_cny = sum(market_assets_cny.values()) + sum(market_cash_cny.values())
+            initial_by_agent[agent_id] = total_initial_cny
 
             return_pct = (
                 float((total_asset_cny - total_initial_cny) / total_initial_cny * 100)
@@ -186,4 +278,9 @@ class RankingService:
         for i, r in enumerate(rankings):
             r.rank = i + 1
 
-        return LeaderboardOut(market=market, rankings=rankings)
+        await self._attach_sparklines(rankings, initial_by_agent)
+        return LeaderboardOut(
+            market=market,
+            rankings=rankings,
+            timestamp=datetime.utcnow(),
+        )

@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import engine, async_session, Base
-from app.models import Agent, Season, Account, Wallet
+from app.models import Agent, Account, Wallet
 
 
 AGENTS: list[dict] = []
@@ -21,16 +19,6 @@ async def seed():
         await conn.run_sync(Base.metadata.create_all)
 
     async with async_session() as db:
-        # --- Season ---
-        existing_season = await db.execute(select(Season).where(Season.id == "2026-Q1"))
-        if not existing_season.scalar_one_or_none():
-            season = Season(
-                id="2026-Q1",
-                name="第一赛季",
-                start_date=date(2026, 3, 18),
-            )
-            db.add(season)
-
         # --- Agents & Accounts ---
         for agent_data in AGENTS:
             existing_agent = await db.execute(
@@ -88,7 +76,7 @@ async def seed():
             total_cny = Decimal(str(settings.total_starting_capital_cny))
             wallet_cash = total_cny.quantize(Decimal("0.01"))
 
-            wallet_id = f"{agent_data['id']}-2026-Q1-wallet"
+            wallet_id = f"{agent_data['id']}-wallet"
             existing_wallet = (
                 await db.execute(select(Wallet).where(Wallet.id == wallet_id))
             ).scalar_one_or_none()
@@ -96,7 +84,6 @@ async def seed():
                 db.add(
                     Wallet(
                         id=wallet_id,
-                        season_id="2026-Q1",
                         agent_id=agent_data["id"],
                         currency="CNY",
                         initial_cash=wallet_cash,
@@ -107,7 +94,6 @@ async def seed():
             if not existing_us:
                 us_account = Account(
                     id=us_id,
-                    season_id="2026-Q1",
                     agent_id=agent_data["id"],
                     market="us",
                     currency="CNY",
@@ -120,7 +106,6 @@ async def seed():
             if not existing_cn:
                 cn_account = Account(
                     id=cn_id,
-                    season_id="2026-Q1",
                     agent_id=agent_data["id"],
                     market="cn",
                     currency="CNY",
@@ -133,7 +118,6 @@ async def seed():
             if not existing_hk:
                 hk_account = Account(
                     id=hk_id,
-                    season_id="2026-Q1",
                     agent_id=agent_data["id"],
                     market="hk",
                     currency="CNY",
@@ -144,7 +128,7 @@ async def seed():
                 db.add(hk_account)
 
         await db.commit()
-        print("Season created successfully. No official agents were seeded.")
+        print("Wallet/Account base records ensured. No official agents were seeded.")
 
         # 打印每个 agent 的共享 token，方便 skill/手工调用
         result = await db.execute(

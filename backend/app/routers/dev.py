@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import Agent, Account, Trade, Position, Season, Snapshot, Wallet
+from app.models import Agent, Account, Trade, Position, Snapshot, Wallet
 
 router = APIRouter(prefix="/api/dev", tags=["dev"])
 logger = logging.getLogger(__name__)
@@ -116,22 +116,6 @@ RETURN_RANGES = {
 @router.post("/mock")
 async def enable_mock(db: AsyncSession = Depends(get_db)):
     """生成 mock 数据用于 UI 预览"""
-    # 确保赛季存在
-    from datetime import date
-
-    season = (
-        await db.execute(select(Season).where(Season.id == "2026-Q1"))
-    ).scalar_one_or_none()
-    if not season:
-        db.add(
-            Season(
-                id="2026-Q1",
-                name="第一赛季",
-                start_date=date(2026, 3, 18),
-                status="active",
-            )
-        )
-
     now = datetime.utcnow()
 
     for agent_data in MOCK_AGENTS:
@@ -155,7 +139,7 @@ async def enable_mock(db: AsyncSession = Depends(get_db)):
         wallet_cash = Decimal(
             str(round(float(wallet_initial) * (1 + float(blended_return) / 100), 2))
         )
-        wallet_id = f"{agent_data['id']}-2026-Q1-wallet"
+        wallet_id = f"{agent_data['id']}-wallet"
         wallet = (
             await db.execute(select(Wallet).where(Wallet.id == wallet_id))
         ).scalar_one_or_none()
@@ -163,7 +147,6 @@ async def enable_mock(db: AsyncSession = Depends(get_db)):
             db.add(
                 Wallet(
                     id=wallet_id,
-                    season_id="2026-Q1",
                     agent_id=agent_data["id"],
                     currency="CNY",
                     initial_cash=wallet_initial,
@@ -183,7 +166,6 @@ async def enable_mock(db: AsyncSession = Depends(get_db)):
             db.add(
                 Account(
                     id=us_id,
-                    season_id="2026-Q1",
                     agent_id=agent_data["id"],
                     market="us",
                     currency="CNY",
@@ -204,7 +186,6 @@ async def enable_mock(db: AsyncSession = Depends(get_db)):
             db.add(
                 Account(
                     id=cn_id,
-                    season_id="2026-Q1",
                     agent_id=agent_data["id"],
                     market="cn",
                     currency="CNY",
@@ -225,7 +206,6 @@ async def enable_mock(db: AsyncSession = Depends(get_db)):
             db.add(
                 Account(
                     id=hk_id,
-                    season_id="2026-Q1",
                     agent_id=agent_data["id"],
                     market="hk",
                     currency="CNY",

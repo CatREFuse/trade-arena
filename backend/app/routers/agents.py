@@ -6,9 +6,10 @@ import logging
 import re
 import secrets
 import zipfile
-from datetime import date, datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -19,10 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_current_account
 from app.config import settings
 from app.database import get_db
-from app.models import Agent, Account, Position, Season, Snapshot, Wallet
+from app.models import Agent, Account, AgentEquityPoint, Position, Snapshot, Wallet
 from app.schemas import (
     AgentMarketPortfolioOut,
     AgentPortfolioSummaryOut,
+    AgentEquityCurveOut,
     AgentEmailCodeRequest,
     AgentOut,
     AgentRegisterRequest,
@@ -39,31 +41,6 @@ from app.services.email_verification import (
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 logger = logging.getLogger(__name__)
-
-
-async def _resolve_registration_season(db: AsyncSession, log_prefix: str) -> Season:
-    """
-    Resolve a season for account binding without active-season business gating.
-
-    Business rule: registration should never be blocked by season status.
-    """
-    season_result = await db.execute(
-        select(Season).order_by(Season.start_date.desc(), Season.created_at.desc())
-    )
-    season = season_result.scalars().first()
-    if season:
-        return season
-
-    default_season = Season(
-        id="season-default",
-        name="默认赛季",
-        start_date=date.today(),
-        status="active",
-    )
-    db.add(default_season)
-    await db.flush()
-    logger.info(f"{log_prefix} DEFAULT_SEASON_CREATED: id={default_season.id}")
-    return default_season
 
 
 def _hosted_skill_dir() -> Path:
@@ -132,7 +109,10 @@ async def get_me(
     )
     accs = accounts_result.scalars().all()
     wallet_result = await db.execute(
-        select(Wallet).where(Wallet.agent_id == account.agent_id, Wallet.season_id == account.season_id)
+        select(Wallet)
+        .where(Wallet.agent_id == account.agent_id)
+        .order_by(Wallet.updated_at.desc(), Wallet.created_at.desc())
+        .limit(1)
     )
     wallet = wallet_result.scalar_one_or_none()
     wallet_cash = wallet.cash if wallet is not None else Decimal("0")
@@ -394,10 +374,7 @@ async def register_agent(
                 409, detail={"error": "EMAIL_ALREADY_USED", "message": "该邮箱已注册过选手"}
             )
 
-        # 4. 解析可用 season（不再使用 active-season 门禁）
-        season = await _resolve_registration_season(db, log_prefix)
-
-        # 5. 创建 Agent
+        # 4. 创建 Agent
         agent = Agent(
             id=agent_id,
             name=req.name.strip(),
@@ -419,7 +396,6 @@ async def register_agent(
         api_token = secrets.token_hex(32)
         us_account = Account(
             id=f"{agent_id}-us",
-            season_id=season.id,
             agent_id=agent_id,
             market="us",
             currency="CNY",
@@ -431,7 +407,6 @@ async def register_agent(
 
         cn_account = Account(
             id=f"{agent_id}-cn",
-            season_id=season.id,
             agent_id=agent_id,
             market="cn",
             currency="CNY",
@@ -443,7 +418,6 @@ async def register_agent(
 
         hk_account = Account(
             id=f"{agent_id}-hk",
-            season_id=season.id,
             agent_id=agent_id,
             market="hk",
             currency="CNY",
@@ -454,8 +428,7 @@ async def register_agent(
         db.add(hk_account)
 
         wallet = Wallet(
-            id=f"{agent_id}-{season.id}-wallet",
-            season_id=season.id,
+            id=f"{agent_id}-wallet",
             agent_id=agent_id,
             currency="CNY",
             initial_cash=initial_wallet_cash,
@@ -511,43 +484,193 @@ def _generate_agent_id(name: str) -> str:
     return slug[:20]
 
 
+_CURVE_CHART_TYPE_DEFAULT_SPAN: dict[str, str] = {
+    "intraday": "1d",
+    "swing": "7d",
+    "trend": "30d",
+    "long": "max",
+}
+
+_CURVE_SPAN_DAYS: dict[str, int | None] = {
+    "1d": 1,
+    "3d": 3,
+    "7d": 7,
+    "30d": 30,
+    "max": None,
+}
+
+_CURVE_INTERVAL_MINUTES: dict[str, int] = {
+    "5m": 5,
+    "15m": 15,
+    "1h": 60,
+    "1d": 1440,
+}
+
+
+def _floor_to_five_minutes(ts: datetime) -> datetime:
+    return ts.replace(minute=(ts.minute // 5) * 5, second=0, microsecond=0)
+
+
+def _resolve_curve_span(
+    span: str | None,
+    chart_type: str | None,
+) -> str:
+    if span and span in _CURVE_SPAN_DAYS:
+        return span
+    if chart_type and chart_type in _CURVE_CHART_TYPE_DEFAULT_SPAN:
+        return _CURVE_CHART_TYPE_DEFAULT_SPAN[chart_type]
+    return "30d"
+
+
+def _resolve_curve_interval(span: str, interval: str) -> str:
+    if interval in _CURVE_INTERVAL_MINUTES:
+        return interval
+    if span == "1d":
+        return "5m"
+    if span in {"3d", "7d"}:
+        return "15m"
+    if span == "30d":
+        return "1h"
+    return "1d"
+
+
+def _resample_curve_rows(
+    rows: list[tuple[datetime, Decimal]],
+    interval_minutes: int,
+) -> list[tuple[datetime, Decimal]]:
+    if not rows or interval_minutes <= 5:
+        return rows
+
+    bucket_seconds = interval_minutes * 60
+    sampled: dict[int, tuple[datetime, Decimal]] = {}
+    for point_time, equity in rows:
+        bucket_key = int(point_time.timestamp()) // bucket_seconds
+        sampled[bucket_key] = (point_time, equity)
+    return [sampled[key] for key in sorted(sampled.keys())]
+
+
+def _downsample_curve_rows(
+    rows: list[tuple[datetime, Decimal]],
+    max_points: int = 900,
+) -> list[tuple[datetime, Decimal]]:
+    if len(rows) <= max_points:
+        return rows
+    if max_points <= 1:
+        return [rows[-1]]
+    sampled: list[tuple[datetime, Decimal]] = []
+    last_index = len(rows) - 1
+    for i in range(max_points):
+        idx = round(i * last_index / (max_points - 1))
+        sampled.append(rows[idx])
+    return sampled
+
+
+async def _build_agent_curve_payload(
+    *,
+    agent_id: str,
+    db: AsyncSession,
+    span: str,
+    interval: str,
+) -> AgentEquityCurveOut:
+    interval_minutes = _CURVE_INTERVAL_MINUTES[interval]
+    end_time = _floor_to_five_minutes(datetime.utcnow())
+    span_days = _CURVE_SPAN_DAYS[span]
+    start_time = end_time - timedelta(days=span_days) if span_days is not None else None
+
+    query = (
+        select(AgentEquityPoint.point_time, AgentEquityPoint.equity_cny)
+        .where(AgentEquityPoint.agent_id == agent_id)
+        .order_by(AgentEquityPoint.point_time)
+    )
+    if start_time is not None:
+        query = query.where(AgentEquityPoint.point_time >= start_time)
+
+    rows_result = await db.execute(query)
+    rows = [(point_time, equity_cny) for point_time, equity_cny in rows_result.all()]
+
+    wallet_result = await db.execute(
+        select(Wallet)
+        .where(Wallet.agent_id == agent_id)
+        .order_by(Wallet.updated_at.desc(), Wallet.created_at.desc())
+        .limit(1)
+    )
+    wallet = wallet_result.scalar_one_or_none()
+    initial_value = wallet.initial_cash if wallet is not None else Decimal(str(settings.total_starting_capital_cny))
+
+    if not rows:
+        synthetic_start = start_time or (end_time - timedelta(days=30))
+        points = [
+            ChartPointOut(date=synthetic_start.isoformat(), value=float(initial_value)),
+            ChartPointOut(date=end_time.isoformat(), value=float(initial_value)),
+        ]
+        return AgentEquityCurveOut(span=span, interval=interval, points=points)
+
+    sampled_rows = _resample_curve_rows(rows, interval_minutes)
+    sampled_rows = _downsample_curve_rows(sampled_rows)
+    if len(sampled_rows) == 1:
+        only_time, only_value = sampled_rows[0]
+        start_anchor = start_time or (only_time - timedelta(minutes=5))
+        if start_anchor >= only_time:
+            start_anchor = only_time - timedelta(minutes=5)
+        sampled_rows = [(start_anchor, only_value), (only_time, only_value)]
+    points = [
+        ChartPointOut(date=point_time.isoformat(), value=float(equity_cny))
+        for point_time, equity_cny in sampled_rows
+    ]
+    return AgentEquityCurveOut(span=span, interval=interval, points=points)
+
+
+@router.get("/{agent_id}/equity-curve", response_model=AgentEquityCurveOut)
+async def get_agent_equity_curve(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    span: str | None = None,
+    chart_type: Literal["intraday", "swing", "trend", "long"] | None = None,
+    interval: Literal["auto", "5m", "15m", "1h", "1d"] = "auto",
+):
+    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    if not agent_result.scalar_one_or_none():
+        raise HTTPException(404, detail="Agent not found")
+
+    resolved_span = _resolve_curve_span(span, chart_type)
+    resolved_interval = _resolve_curve_interval(resolved_span, interval)
+    return await _build_agent_curve_payload(
+        agent_id=agent_id,
+        db=db,
+        span=resolved_span,
+        interval=resolved_interval,
+    )
+
+
 @router.get("/{agent_id}/chart")
 async def get_agent_chart(
     agent_id: str,
     days: int = 30,
     db: AsyncSession = Depends(get_db),
 ):
-    """获取 Agent 资产历史曲线数据"""
-    from datetime import date, timedelta
-    from sqlalchemy import func
-
-    # 获取 Agent 的所有账户
-    result = await db.execute(select(Account).where(Account.agent_id == agent_id))
-    accounts = result.scalars().all()
-
-    if not accounts:
+    """兼容旧接口：返回资产曲线点数组。"""
+    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    if not agent_result.scalar_one_or_none():
         raise HTTPException(404, detail="Agent not found")
 
-    account_ids = [a.id for a in accounts]
-    start_date = date.today() - timedelta(days=days)
-
-    # 查询每个日期的总资产（所有账户加总）
-    result = await db.execute(
-        select(Snapshot.date, func.sum(Snapshot.total_asset).label("total"))
-        .where(Snapshot.account_id.in_(account_ids), Snapshot.date >= start_date)
-        .group_by(Snapshot.date)
-        .order_by(Snapshot.date)
+    if days <= 1:
+        span = "1d"
+    elif days <= 3:
+        span = "3d"
+    elif days <= 7:
+        span = "7d"
+    elif days <= 30:
+        span = "30d"
+    else:
+        span = "max"
+    interval = _resolve_curve_interval(span, "auto")
+    curve = await _build_agent_curve_payload(
+        agent_id=agent_id,
+        db=db,
+        span=span,
+        interval=interval,
     )
-
-    rows = result.all()
-
-    # 转换为返回格式
-    chart_data = [
-        {"date": row.date.isoformat(), "value": float(row.total or 0)} for row in rows
-    ]
-
-    # 如果没有数据，返回空数组
-    return chart_data
+    return curve.points
 
 
 @router.get("/{agent_id}/accounts")
@@ -607,14 +730,13 @@ async def get_agent_portfolio_summary(
     accounts = accounts_result.scalars().all()
     account_by_market = {account.market: account for account in accounts}
 
-    season_ids = {account.season_id for account in accounts}
-    wallet = None
-    if season_ids:
-        season_id = sorted(season_ids)[-1]
-        wallet_result = await db.execute(
-            select(Wallet).where(Wallet.agent_id == agent_id, Wallet.season_id == season_id)
-        )
-        wallet = wallet_result.scalar_one_or_none()
+    wallet_result = await db.execute(
+        select(Wallet)
+        .where(Wallet.agent_id == agent_id)
+        .order_by(Wallet.updated_at.desc(), Wallet.created_at.desc())
+        .limit(1)
+    )
+    wallet = wallet_result.scalar_one_or_none()
     wallet_cash_cny = wallet.cash if wallet is not None else Decimal("0")
 
     account_ids = [account.id for account in accounts]

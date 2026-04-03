@@ -11,17 +11,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
 
-class Season(Base):
-    __tablename__ = "seasons"
-
-    id: Mapped[str] = mapped_column(String(20), primary_key=True)
-    name: Mapped[str] = mapped_column(String(50))
-    start_date: Mapped[date] = mapped_column(Date)
-    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="active")
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-
-
 class Agent(Base):
     __tablename__ = "agents"
 
@@ -41,7 +30,6 @@ class Account(Base):
     __tablename__ = "accounts"
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
-    season_id: Mapped[str] = mapped_column(ForeignKey("seasons.id"))
     agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"))
     market: Mapped[str] = mapped_column(String(5))
     currency: Mapped[str] = mapped_column(String(5))
@@ -55,7 +43,6 @@ class Wallet(Base):
     __tablename__ = "wallets"
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
-    season_id: Mapped[str] = mapped_column(ForeignKey("seasons.id"))
     agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"))
     currency: Mapped[str] = mapped_column(String(5), default="CNY")
     initial_cash: Mapped[Decimal] = mapped_column(Numeric(15, 2))
@@ -65,7 +52,7 @@ class Wallet(Base):
         default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
-    __table_args__ = (UniqueConstraint("season_id", "agent_id"),)
+    __table_args__ = (UniqueConstraint("agent_id"),)
 
 
 @event.listens_for(Account.__table__, "after_create")
@@ -126,6 +113,21 @@ class Snapshot(Base):
     trade_count: Mapped[int] = mapped_column(Integer, default=0)
 
     __table_args__ = (UniqueConstraint("account_id", "date"),)
+
+
+class AgentEquityPoint(Base):
+    __tablename__ = "agent_equity_points"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"))
+    point_time: Mapped[datetime] = mapped_column(index=True)
+    equity_cny: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    return_pct: Mapped[Decimal] = mapped_column(Numeric(12, 6))
+    cash_cny: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    position_value_cny: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("agent_id", "point_time"),)
 
 
 class Event(Base):

@@ -23,6 +23,7 @@ from app.routers import (
 )
 from app.services.market_data import MarketDataService
 from app.services.market_providers import close_shared_http_clients
+from app.services.equity_sampler import EquitySamplerService
 from app.services.fx import FXService
 
 logger = logging.getLogger(__name__)
@@ -47,9 +48,18 @@ async def lifespan(app: FastAPI):
     )
     app.state.market_data_service = MarketDataService(app.state.redis)
     app.state.fx_service = FXService(app.state.redis)
+    app.state.equity_sampler_service = EquitySamplerService(
+        app.state.redis,
+        market_svc=app.state.market_data_service,
+        fx_service=app.state.fx_service,
+    )
     await app.state.fx_service.start()
+    await app.state.equity_sampler_service.start()
     app.state.market_cache_warm_task = asyncio.create_task(_warm_market_cache(app))
     yield
+    equity_sampler = getattr(app.state, "equity_sampler_service", None)
+    if equity_sampler:
+        await equity_sampler.stop()
     fx_service = getattr(app.state, "fx_service", None)
     if fx_service:
         await fx_service.stop()

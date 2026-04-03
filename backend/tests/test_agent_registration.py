@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.models import Account, Agent, Season, Wallet
+from app.models import Account, Agent, Wallet
 
 
 @pytest.mark.asyncio
@@ -81,23 +81,14 @@ async def test_register_agent_rejects_duplicate_email(client):
 
 
 @pytest.mark.asyncio
-async def test_register_agent_succeeds_without_active_season(
+async def test_register_agent_creates_accounts_and_wallet(
     client, db_session_factory
 ):
-    """无 active 赛季时仍可注册，不应再触发赛季门禁。"""
-    async with db_session_factory() as session:
-        result = await session.execute(select(Season))
-        seasons = result.scalars().all()
-        assert seasons, "seed should create at least one season"
-        for season in seasons:
-            season.status = "ended"
-        await session.commit()
-
     register_response = await client.post(
         "/api/agents/register",
         json={
-            "name": "NoSeasonAgent",
-            "email": "noseason@example.com",
+            "name": "PortfolioAgent",
+            "email": "portfolio@example.com",
             "model": "gpt-5.4",
             "avatar": "📊",
             "style": "测试",
@@ -106,18 +97,17 @@ async def test_register_agent_succeeds_without_active_season(
     )
     assert register_response.status_code == 200
     payload = register_response.json()
-    assert payload["agent"]["id"] == "noseasonagent"
+    assert payload["agent"]["id"] == "portfolioagent"
 
     async with db_session_factory() as session:
         accounts_result = await session.execute(
-            select(Account).where(Account.agent_id == "noseasonagent")
+            select(Account).where(Account.agent_id == "portfolioagent")
         )
         accounts = accounts_result.scalars().all()
         assert len(accounts) == 3
-        assert all(account.season_id for account in accounts)
         assert {account.market for account in accounts} == {"us", "cn", "hk"}
         wallet_result = await session.execute(
-            select(Wallet).where(Wallet.agent_id == "noseasonagent")
+            select(Wallet).where(Wallet.agent_id == "portfolioagent")
         )
         wallet = wallet_result.scalar_one_or_none()
         assert wallet is not None
