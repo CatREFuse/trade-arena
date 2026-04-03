@@ -26,21 +26,30 @@ async def test_stock_detail_route_returns_history_and_site_stats(
             market_status="open",
         )
 
-    async def fake_get_stock_history(self, ticker: str, *, days: int = 90, refresh: bool = False):
+    async def fake_get_stock_history_with_source(
+        self,
+        ticker: str,
+        *,
+        days: int = 90,
+        refresh: bool = False,
+    ):
         assert ticker == "AAPL"
         assert days == 90
         assert refresh is False
-        return [
-            StockHistoryPointOut(
-                ts=1774915200000,
-                date="2026-03-30",
-                open=195.0,
-                high=199.0,
-                low=194.0,
-                close=198.5,
-                volume=1200,
-            )
-        ]
+        return (
+            [
+                StockHistoryPointOut(
+                    ts=1774915200000,
+                    date="2026-03-30",
+                    open=195.0,
+                    high=199.0,
+                    low=194.0,
+                    close=198.5,
+                    volume=1200,
+                )
+            ],
+            "yahoo_chart",
+        )
 
     async def fake_get_rate_to_cny(self, market: str):
         assert market == "us"
@@ -52,7 +61,7 @@ async def test_stock_detail_route_returns_history_and_site_stats(
         return "1980-12-12"
 
     monkeypatch.setattr(md.MarketDataService, "get_quote", fake_get_quote)
-    monkeypatch.setattr(md.MarketDataService, "get_stock_history", fake_get_stock_history)
+    monkeypatch.setattr(md.MarketDataService, "get_stock_history_with_source", fake_get_stock_history_with_source)
     monkeypatch.setattr(md.MarketDataService, "get_stock_listing_date", fake_get_stock_listing_date)
     monkeypatch.setattr(fx_module.FXService, "get_rate_to_cny", fake_get_rate_to_cny)
 
@@ -65,6 +74,7 @@ async def test_stock_detail_route_returns_history_and_site_stats(
     assert payload["market"] == "us"
     assert payload["days"] == 90
     assert payload["listed_at"] == "1980-12-12"
+    assert payload["history_source"] == "yahoo_chart"
     assert payload["quote"]["price"] == "198.50"
     assert payload["history"][0]["date"] == "2026-03-30"
     assert payload["site_stats"]["total_trade_count"] == 1
@@ -162,6 +172,7 @@ async def test_stock_intraday_route_returns_points(
             ticker="AAPL",
             interval="5m",
             span="1d",
+            source="yahoo_chart",
             points=[
                 StockIntradayPointOut(
                     ts=1774915200000,
@@ -184,5 +195,6 @@ async def test_stock_intraday_route_returns_points(
     assert payload["ticker"] == "AAPL"
     assert payload["interval"] == "5m"
     assert payload["span"] == "1d"
+    assert payload["source"] == "yahoo_chart"
     assert len(payload["points"]) == 1
     assert payload["points"][0]["close"] == 198.5

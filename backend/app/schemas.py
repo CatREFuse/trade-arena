@@ -216,6 +216,7 @@ class StockIntradayOut(BaseModel):
     interval: str
     span: str
     points: list[StockIntradayPointOut]
+    source: Optional[str] = None
     updated_at: datetime
 
 
@@ -261,6 +262,7 @@ class StockDetailOut(BaseModel):
     listed_at: Optional[str] = None
     quote: QuoteOut
     history: list[StockHistoryPointOut]
+    history_source: Optional[str] = None
     site_stats: StockSiteStatsOut
     recent_trades: list[StockRecentTradeOut]
     position_stats: StockPositionStatsOut

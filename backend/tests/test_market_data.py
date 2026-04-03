@@ -16,6 +16,7 @@ from app.schemas import (
     MarketOverviewOut,
     QuoteOut,
     StockHistoryPointOut,
+    StockIntradayPointOut,
 )
 from app.services import market_data as md
 from app.services.market_providers import AkshareProvider, QuoteData
@@ -481,12 +482,12 @@ async def test_get_stock_history_fetches_and_caches_series(fake_redis, monkeypat
     monkeypatch.setattr(service, "_is_stock_history_usable", lambda history, _days: len(history) > 0)
 
     async def fake_fetch_payload(ticker: str, days: int):
-        assert ticker == "AAPL"
+        assert ticker == "0700.HK"
         assert days == 90
         return (
             {
                 "data": {
-                    "usAAPL": {
+                    "hk00700": {
                         "day": [
                             ["2026-03-28", "100", "101", "102", "99", "1000"],
                             ["2026-03-31", "101", "103", "104", "100", "1500"],
@@ -494,26 +495,70 @@ async def test_get_stock_history_fetches_and_caches_series(fake_redis, monkeypat
                     }
                 }
             },
-            "usAAPL",
+            "hk00700",
         )
 
     monkeypatch.setattr(service, "_fetch_tencent_stock_history_payload", fake_fetch_payload)
 
-    history = await service.get_stock_history("aapl", days=90)
+    history = await service.get_stock_history("0700.HK", days=90)
 
     assert len(history) == 2
     assert history[0].date == "2026-03-28"
     assert history[-1].close == 103.0
     assert history[-1].volume == 1500
-    assert fake_redis.set_calls[-1][0] == "stock:history:v3:v3:AAPL:90"
+    assert ("stock:history:v4:v3:0700.HK:90", 300, fake_redis.store["stock:history:v4:v3:0700.HK:90"].decode("utf-8")) in fake_redis.set_calls
+    assert ("stock:history:v4:v3:0700.HK:90:source", 300, "tencent_kline") in fake_redis.set_calls
 
     async def fail_if_called(_ticker: str, _days: int):
         raise AssertionError("history provider should not be called on cache hit")
 
     monkeypatch.setattr(service, "_fetch_tencent_stock_history_payload", fail_if_called)
-    cached_history = await service.get_stock_history("AAPL", days=90)
+    cached_history = await service.get_stock_history("0700.HK", days=90)
     assert len(cached_history) == 2
     assert cached_history[-1].close == 103.0
+
+
+def test_is_stock_history_usable_rejects_sparse_multi_year_two_points():
+    history = [
+        StockHistoryPointOut(
+            ts=1306972800000,
+            date="2011-06-02",
+            open=346.22,
+            high=347.84,
+            low=344.53,
+            close=346.22,
+            volume=16780815,
+        ),
+        StockHistoryPointOut(
+            ts=1775088000000,
+            date="2026-04-02",
+            open=254.2,
+            high=256.13,
+            low=250.65,
+            close=255.92,
+            volume=31289369,
+        ),
+    ]
+    assert md.MarketDataService._is_stock_history_usable(history, 180) is False
+
+
+def test_is_stock_history_usable_accepts_recent_dense_points():
+    history: list[StockHistoryPointOut] = []
+    base_ts = 1770000000000
+    for idx in range(15):
+        ts = base_ts + idx * 86_400_000
+        history.append(
+            StockHistoryPointOut(
+                ts=ts,
+                date=f"2026-02-{idx + 1:02d}",
+                open=100 + idx,
+                high=101 + idx,
+                low=99 + idx,
+                close=100.5 + idx,
+                volume=1000 + idx,
+            )
+        )
+    assert md.MarketDataService._is_stock_history_usable(history, 90) is True
 
 
 @pytest.mark.asyncio
@@ -548,6 +593,7 @@ async def test_get_stock_intraday_fallback_builds_flat_series_when_upstream_unav
         )
 
     monkeypatch.setattr(service, "_fetch_yahoo_chart_payload", fake_yahoo_payload)
+    monkeypatch.setattr(service, "_build_intraday_points_from_nasdaq", AsyncMock(return_value=[]))
     monkeypatch.setattr(service, "get_quote", fake_get_quote)
 
     intraday = await service.get_stock_intraday("AAPL", span="1d", interval="5m", refresh=True)
@@ -600,12 +646,80 @@ async def test_get_stock_intraday_uses_history_records_when_market_closed_and_no
         ]
 
     monkeypatch.setattr(service, "_fetch_yahoo_chart_payload", fake_yahoo_payload)
+    monkeypatch.setattr(service, "_build_intraday_points_from_nasdaq", AsyncMock(return_value=[]))
     monkeypatch.setattr(service, "get_stock_history", fake_get_stock_history)
 
     intraday = await service.get_stock_intraday("AAPL", span="1d", interval="5m", refresh=True)
     assert len(intraday.points) >= 200
     close_values = {point.close for point in intraday.points}
     assert len(close_values) >= 2
+
+
+@pytest.mark.asyncio
+async def test_get_stock_history_uses_nasdaq_for_us_when_yahoo_unusable(
+    fake_redis,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+
+    monkeypatch.setattr(service, "_build_stock_history_from_yahoo", AsyncMock(return_value=[]))
+    monkeypatch.setattr(service, "_build_stock_history_from_stooq", AsyncMock(return_value=[]))
+
+    nasdaq_series: list[StockHistoryPointOut] = []
+    base_ts = 1770000000000
+    for idx in range(30):
+        ts = base_ts + idx * 86_400_000
+        nasdaq_series.append(
+            StockHistoryPointOut(
+                ts=ts,
+                date=f"2026-02-{idx + 1:02d}",
+                open=200 + idx,
+                high=201 + idx,
+                low=199 + idx,
+                close=200.5 + idx,
+                volume=100000 + idx,
+            )
+        )
+    monkeypatch.setattr(service, "_build_stock_history_from_nasdaq", AsyncMock(return_value=nasdaq_series))
+
+    history, source = await service._build_stock_history("AAPL", 90)
+    assert source == "nasdaq_historical"
+    assert len(history) == len(nasdaq_series)
+    assert history[-1].close == nasdaq_series[-1].close
+
+
+@pytest.mark.asyncio
+async def test_get_stock_intraday_uses_nasdaq_chart_when_yahoo_failed(
+    fake_redis,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+    monkeypatch.setattr(service.market_calendar, "status", lambda _market: "open")
+
+    async def fake_yahoo_payload(*, symbol: str, interval: str, range_: str):
+        raise RuntimeError("429")
+
+    now = 1775200000000
+    nasdaq_points = [
+        StockIntradayPointOut(
+            ts=now + idx * 300000,
+            time="",
+            open=250 + idx * 0.1,
+            high=250 + idx * 0.1,
+            low=250 + idx * 0.1,
+            close=250 + idx * 0.1,
+            volume=None,
+        )
+        for idx in range(20)
+    ]
+
+    monkeypatch.setattr(service, "_fetch_yahoo_chart_payload", fake_yahoo_payload)
+    monkeypatch.setattr(service, "_build_intraday_points_from_nasdaq", AsyncMock(return_value=nasdaq_points))
+
+    intraday = await service.get_stock_intraday("AAPL", span="1d", interval="5m", refresh=True)
+    assert intraday.source == "nasdaq_chart"
+    assert len(intraday.points) == len(nasdaq_points)
+    assert intraday.points[0].close != intraday.points[-1].close
 
 
 @pytest.mark.asyncio

@@ -84,7 +84,7 @@ STOCK_LISTING_CACHE_TTL = 86400  # 上市时间缓存24小时
 BOARD_FETCH_CHUNK_SIZE = 24  # 大榜单分批抓取，避免单次 upstream 请求过大
 MARKET_CACHE_VERSION = "v3"
 TREND_CACHE_VERSION = "v2"
-STOCK_HISTORY_CACHE_VERSION = "v3"
+STOCK_HISTORY_CACHE_VERSION = "v4"
 STOCK_INTRADAY_CACHE_VERSION = "v3"
 STOCK_LISTING_CACHE_VERSION = "v2"
 SHADOW_CACHE_TTL_SECONDS = 300
@@ -663,6 +663,20 @@ class MarketDataService:
         days: int = 90,
         refresh: bool = False,
     ) -> list[StockHistoryPointOut]:
+        history, _source = await self.get_stock_history_with_source(
+            ticker,
+            days=days,
+            refresh=refresh,
+        )
+        return history
+
+    async def get_stock_history_with_source(
+        self,
+        ticker: str,
+        *,
+        days: int = 90,
+        refresh: bool = False,
+    ) -> tuple[list[StockHistoryPointOut], str]:
         original_ticker = ticker.upper()
         ticker = self._normalize_supported_ticker(original_ticker)
         if ticker is None:
@@ -677,14 +691,29 @@ class MarketDataService:
 
         days = max(30, min(days, 365))
         cache_key = f"stock:history:{STOCK_HISTORY_CACHE_VERSION}:{MARKET_CACHE_VERSION}:{ticker}:{days}"
+        source_cache_key = f"{cache_key}:source"
         if not refresh:
             cached_history = await self._load_cached_list(cache_key, StockHistoryPointOut)
             if cached_history is not None:
-                return cached_history
+                cached_source_raw = await _redis_get_safe(self.redis, source_cache_key)
+                cached_source = "unknown"
+                if cached_source_raw:
+                    cached_source = (
+                        cached_source_raw.decode("utf-8")
+                        if isinstance(cached_source_raw, bytes)
+                        else str(cached_source_raw)
+                    )
+                return cached_history, cached_source
 
-        history = await self._build_stock_history(ticker, days)
+        history, history_source = await self._build_stock_history(ticker, days)
         await self._cache_model_list(cache_key, STOCK_HISTORY_CACHE_TTL, history)
-        return history
+        await _redis_setex_safe(
+            self.redis,
+            source_cache_key,
+            STOCK_HISTORY_CACHE_TTL,
+            history_source,
+        )
+        return history, history_source
 
     async def get_stock_intraday(
         self,
@@ -739,7 +768,7 @@ class MarketDataService:
                 await self._cache_model(cache_key, STOCK_INTRADAY_CACHE_TTL, last_good)
                 return last_good
 
-        points, is_usable_record = await self._build_stock_intraday_points(
+        points, is_usable_record, source = await self._build_stock_intraday_points(
             ticker=ticker,
             span=normalized_span,
             interval=normalized_interval,
@@ -750,6 +779,7 @@ class MarketDataService:
             interval=normalized_interval,
             span=normalized_span,
             points=points,
+            source=source,
             updated_at=datetime.now(timezone.utc),
         )
         await self._cache_model(cache_key, STOCK_INTRADAY_CACHE_TTL, result)
@@ -882,24 +912,40 @@ class MarketDataService:
             return parsed[-points:]
         return parsed
 
-    async def _build_stock_history(self, ticker: str, days: int) -> list[StockHistoryPointOut]:
+    async def _build_stock_history(self, ticker: str, days: int) -> tuple[list[StockHistoryPointOut], str]:
+        market = self._ticker_market(ticker)
         yahoo_history = await self._build_stock_history_from_yahoo(ticker, days)
         if self._is_stock_history_usable(yahoo_history, days):
-            return yahoo_history[-days:]
+            return yahoo_history[-days:], "yahoo_chart"
 
-        payload, response_symbol = await self._fetch_tencent_stock_history_payload(ticker, days)
-        if payload is not None and response_symbol is not None:
-            series = self._parse_tencent_stock_history_series(payload, response_symbol, days)
-            if self._is_stock_history_usable(series, days):
-                return series
+        # 腾讯美股日线常出现“跨多年仅两点”异常序列，避免污染收益率计算。
+        if market in {"cn", "hk"}:
+            payload, response_symbol = await self._fetch_tencent_stock_history_payload(ticker, days)
+            if payload is not None and response_symbol is not None:
+                series = self._parse_tencent_stock_history_series(payload, response_symbol, days)
+                if self._is_stock_history_usable(series, days):
+                    return series, "tencent_kline"
+                if series:
+                    logger.warning(
+                        "Reject sparse/tencent history for %s: points=%s first=%s last=%s",
+                        ticker,
+                        len(series),
+                        series[0].date,
+                        series[-1].date,
+                    )
+
+        if market == "us":
+            nasdaq_history = await self._build_stock_history_from_nasdaq(ticker, days)
+            if self._is_stock_history_usable(nasdaq_history, days):
+                return nasdaq_history[-days:], "nasdaq_historical"
 
         stooq_history = await self._build_stock_history_from_stooq(ticker, days)
         if self._is_stock_history_usable(stooq_history, days):
-            return stooq_history[-days:]
+            return stooq_history[-days:], "stooq_csv"
 
         fallback_history = await self._build_stock_history_from_quote_fallback(ticker, days)
         if fallback_history:
-            return fallback_history
+            return fallback_history, "quote_flat"
 
         raise HTTPException(
             status_code=503,
@@ -1007,6 +1053,84 @@ class MarketDataService:
                 )
             )
 
+        if len(parsed) > days:
+            return parsed[-days:]
+        return parsed
+
+    async def _build_stock_history_from_nasdaq(
+        self,
+        ticker: str,
+        days: int,
+    ) -> list[StockHistoryPointOut]:
+        if self._ticker_market(ticker) != "us":
+            return []
+
+        today = datetime.now(timezone.utc).date()
+        start = today - timedelta(days=max(days * 3, 200))
+        params = {
+            "assetclass": "stocks",
+            "fromdate": start.isoformat(),
+            "todate": today.isoformat(),
+            "limit": str(max(120, min(days * 3, 1000))),
+        }
+        url = f"https://api.nasdaq.com/api/quote/{ticker}/historical"
+        headers = {
+            **YahooProvider.HEADERS,
+            "Accept": "application/json",
+            "Origin": "https://www.nasdaq.com",
+            "Referer": "https://www.nasdaq.com/",
+        }
+
+        try:
+            response = await _limited_get(
+                "nasdaq",
+                url,
+                client_name="nasdaq-stock-history",
+                timeout=FAST_HTTP_TIMEOUT,
+                params=params,
+                headers=headers,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except Exception as exc:
+            logger.warning("Fetch nasdaq stock history failed for %s: %s", ticker, exc)
+            return []
+
+        rows = ((((payload or {}).get("data") or {}).get("tradesTable") or {}).get("rows") or [])
+        if not isinstance(rows, list) or not rows:
+            return []
+
+        parsed: list[StockHistoryPointOut] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            date_raw = str(row.get("date") or "").strip()
+            if not date_raw:
+                continue
+            normalized_date = self._normalize_us_date(date_raw)
+            ts = self._parse_kline_ts(normalized_date)
+            if ts is None:
+                continue
+            open_ = self._parse_nasdaq_number(row.get("open"))
+            high = self._parse_nasdaq_number(row.get("high"))
+            low = self._parse_nasdaq_number(row.get("low"))
+            close = self._parse_nasdaq_number(row.get("close"))
+            if None in {open_, high, low, close}:
+                continue
+            volume = self._safe_int(str(row.get("volume") or "").replace(",", "")) or 0
+            parsed.append(
+                StockHistoryPointOut(
+                    ts=ts,
+                    date=normalized_date,
+                    open=open_,
+                    high=high,
+                    low=low,
+                    close=close,
+                    volume=volume,
+                )
+            )
+
+        parsed.sort(key=lambda point: point.ts)
         if len(parsed) > days:
             return parsed[-days:]
         return parsed
@@ -1134,8 +1258,26 @@ class MarketDataService:
     def _is_stock_history_usable(history: list[StockHistoryPointOut], days: int) -> bool:
         if not history:
             return False
-        del days
-        return len(history) >= 2
+        ordered = sorted(history, key=lambda item: item.ts)
+        if len(ordered) < 2:
+            return False
+        first_ts = int(ordered[0].ts)
+        last_ts = int(ordered[-1].ts)
+        if last_ts <= first_ts:
+            return False
+
+        span_days = (last_ts - first_ts) / 86_400_000
+        min_points = min(max(days // 8, 8), 60)
+        min_span_days = min(days * 0.4, 45)
+        if len(ordered) >= min_points and span_days >= min_span_days:
+            return True
+
+        # 兼容新上市标的：覆盖区间短，但仍需达到最低数据密度。
+        max_new_listing_span = max(days * 0.35, 21)
+        if span_days <= max_new_listing_span:
+            required_points = min(max(int(span_days // 2), 6), 20)
+            return len(ordered) >= required_points
+        return False
 
     async def _build_stock_intraday_points(
         self,
@@ -1144,7 +1286,7 @@ class MarketDataService:
         span: str,
         interval: str,
         market_status: str,
-    ) -> tuple[list[StockIntradayPointOut], bool]:
+    ) -> tuple[list[StockIntradayPointOut], bool, str]:
         symbol = self._to_yahoo_chart_symbol(ticker)
         try:
             payload = await self._fetch_yahoo_chart_payload(
@@ -1154,7 +1296,7 @@ class MarketDataService:
             )
             points = self._parse_yahoo_chart_points(payload)
             if self._is_intraday_points_usable(points, span=span, interval=interval):
-                return points, True
+                return points, True, "yahoo_chart"
             if points:
                 logger.warning(
                     "Yahoo intraday points are insufficient for %s (span=%s interval=%s, count=%s), use fallback",
@@ -1166,6 +1308,19 @@ class MarketDataService:
         except Exception as exc:
             logger.warning("Fetch stock intraday failed for %s: %s", ticker, exc)
 
+        if self._ticker_market(ticker) == "us":
+            nasdaq_points = await self._build_intraday_points_from_nasdaq(ticker=ticker, span=span, interval=interval)
+            if self._is_intraday_points_usable(nasdaq_points, span=span, interval=interval):
+                return nasdaq_points, True, "nasdaq_chart"
+            if nasdaq_points:
+                logger.warning(
+                    "Nasdaq intraday points are insufficient for %s (span=%s interval=%s, count=%s), use fallback",
+                    ticker,
+                    span,
+                    interval,
+                    len(nasdaq_points),
+                )
+
         if market_status != "open":
             history_fallback = await self._build_intraday_history_fallback(
                 ticker=ticker,
@@ -1173,7 +1328,7 @@ class MarketDataService:
                 interval=interval,
             )
             if history_fallback:
-                return history_fallback, False
+                return history_fallback, False, "history_projection"
 
         # 最后回退：在目标 span/interval 内构造平线，避免“跨年两点”破图。
         fallback = await self._build_intraday_flat_fallback(
@@ -1181,7 +1336,7 @@ class MarketDataService:
             span=span,
             interval=interval,
         )
-        return fallback, False
+        return fallback, False, "quote_flat"
 
     async def _build_intraday_history_fallback(
         self,
@@ -1225,6 +1380,117 @@ class MarketDataService:
                 )
             return points
         return []
+
+    async def _build_intraday_points_from_nasdaq(
+        self,
+        *,
+        ticker: str,
+        span: str,
+        interval: str,
+    ) -> list[StockIntradayPointOut]:
+        if self._ticker_market(ticker) != "us":
+            return []
+
+        url = f"https://api.nasdaq.com/api/quote/{ticker}/chart"
+        params = {"assetclass": "stocks"}
+        headers = {
+            **YahooProvider.HEADERS,
+            "Accept": "application/json",
+            "Origin": "https://www.nasdaq.com",
+            "Referer": "https://www.nasdaq.com/",
+        }
+
+        try:
+            response = await _limited_get(
+                "nasdaq",
+                url,
+                client_name="nasdaq-stock-intraday",
+                timeout=FAST_HTTP_TIMEOUT,
+                params=params,
+                headers=headers,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except Exception as exc:
+            logger.warning("Fetch nasdaq intraday failed for %s: %s", ticker, exc)
+            return []
+
+        rows = (((payload or {}).get("data") or {}).get("chart") or [])
+        if not isinstance(rows, list) or not rows:
+            return []
+
+        step_ms = self._interval_to_ms(interval)
+        if step_ms <= 0:
+            step_ms = 5 * 60 * 1000
+
+        parsed: list[StockIntradayPointOut] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            ts = self._safe_int(row.get("x"))
+            if not ts:
+                continue
+            value = self._safe_float(row.get("y"))
+            if value is None:
+                value = self._parse_nasdaq_number((row.get("z") or {}).get("value"))
+            if value is None:
+                continue
+            price = round(value, 4)
+            parsed.append(
+                StockIntradayPointOut(
+                    ts=ts,
+                    time=datetime.fromtimestamp(ts / 1000, tz=timezone.utc).isoformat(),
+                    open=price,
+                    high=price,
+                    low=price,
+                    close=price,
+                    volume=None,
+                )
+            )
+
+        if not parsed:
+            return []
+        parsed.sort(key=lambda point: point.ts)
+
+        max_points = self._span_point_count(span)
+        if len(parsed) > max_points:
+            parsed = parsed[-max_points:]
+
+        # 统一到目标粒度，避免 1min 数据导致判定跨度异常。
+        bucketed: list[StockIntradayPointOut] = []
+        current_bucket_ts: int | None = None
+        current_prices: list[float] = []
+        for point in parsed:
+            bucket_ts = (point.ts // step_ms) * step_ms
+            if current_bucket_ts is None:
+                current_bucket_ts = bucket_ts
+            if bucket_ts != current_bucket_ts:
+                bucketed.append(self._build_bucket_point(current_bucket_ts, current_prices))
+                current_bucket_ts = bucket_ts
+                current_prices = []
+            current_prices.append(point.close)
+        if current_bucket_ts is not None and current_prices:
+            bucketed.append(self._build_bucket_point(current_bucket_ts, current_prices))
+
+        if len(bucketed) > max_points:
+            return bucketed[-max_points:]
+        return bucketed
+
+    @staticmethod
+    def _build_bucket_point(bucket_ts: int, prices: list[float]) -> StockIntradayPointOut:
+        open_price = round(prices[0], 4)
+        close_price = round(prices[-1], 4)
+        high_price = round(max(prices), 4)
+        low_price = round(min(prices), 4)
+        return StockIntradayPointOut(
+            ts=bucket_ts,
+            time=datetime.fromtimestamp(bucket_ts / 1000, tz=timezone.utc).isoformat(),
+            open=open_price,
+            high=high_price,
+            low=low_price,
+            close=close_price,
+            volume=None,
+        )
 
     async def _fetch_yahoo_chart_payload(
         self,
@@ -1439,6 +1705,17 @@ class MarketDataService:
             return None
 
     @staticmethod
+    def _parse_nasdaq_number(value) -> float | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        normalized = text.replace("$", "").replace(",", "").replace("%", "").strip()
+        try:
+            return float(normalized)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def _safe_int(value) -> int | None:
         try:
             if value in (None, "", "N/D"):
@@ -1456,6 +1733,15 @@ class MarketDataService:
             except ValueError:
                 continue
         return None
+
+    @staticmethod
+    def _normalize_us_date(date_str: str) -> str:
+        text = str(date_str).strip()
+        for fmt in ("%m/%d/%Y", "%Y-%m-%d"):
+            with suppress(ValueError):
+                parsed = datetime.strptime(text, fmt)
+                return parsed.strftime("%Y-%m-%d")
+        return text
 
     @staticmethod
     def _extract_tencent_latest_price(raw_data: dict, symbol: str) -> float | None:

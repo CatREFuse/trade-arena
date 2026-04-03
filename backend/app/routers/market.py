@@ -223,11 +223,16 @@ async def get_stock_detail(
         )
 
     try:
-        history = await svc.get_stock_history(quote.ticker, days=normalized_days, refresh=refresh)
+        history, history_source = await svc.get_stock_history_with_source(
+            quote.ticker,
+            days=normalized_days,
+            refresh=refresh,
+        )
     except HTTPException as exc:
         if exc.status_code != 503:
             raise
         history = _build_fallback_history(normalized_days, quote.price)
+        history_source = "route_fallback"
     listed_at = await svc.get_stock_listing_date(quote.ticker, refresh=refresh)
     market = svc._ticker_market(quote.ticker)
 
@@ -322,6 +327,7 @@ async def get_stock_detail(
         listed_at=listed_at,
         quote=quote,
         history=history,
+        history_source=history_source,
         site_stats=site_stats,
         recent_trades=recent_trades,
         position_stats=position_stats,
