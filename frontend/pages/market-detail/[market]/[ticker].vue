@@ -393,7 +393,9 @@ function setChartSpan(value: string) {
 async function initChart() {
   if (!chartEl.value || chart) return
   const lightweight = await import('lightweight-charts')
+  const initialWidth = Math.max(1, Math.floor(chartEl.value.getBoundingClientRect().width || chartEl.value.clientWidth || 320))
   chart = lightweight.createChart(chartEl.value, {
+    width: initialWidth,
     height: 340,
     layout: {
       textColor: '#9CA3AF',

@@ -48,8 +48,8 @@
         :to="`/market-detail/${market}/${item.ticker}`"
         class="flex items-center gap-4 py-3 rounded-xl px-1 md:transition-colors md:hover:bg-zinc-100/60 dark:md:hover:bg-zinc-800/50"
       >
-        <div class="w-7 text-center text-xs font-bold flex-shrink-0" :class="index < 3 ? 'text-amber-500' : 'text-tertiary'">
-          {{ index + 1 }}
+        <div class="w-7 text-center text-xs font-bold flex-shrink-0" :class="rankOffset + index < 3 ? 'text-amber-500' : 'text-tertiary'">
+          {{ rankOffset + index + 1 }}
         </div>
         <div class="flex items-center gap-3 min-w-0 flex-1">
           <div class="min-w-0">
@@ -91,16 +91,19 @@ interface MarketListItem {
   market_status: string
 }
 
-defineProps<{
+withDefaults(defineProps<{
   items: MarketListItem[]
   pending: boolean
   error: unknown
   updatedAt?: string | null
   sortDirection: 'asc' | 'desc'
+  rankOffset?: number
   market: 'us' | 'cn' | 'hk'
   formatPrice: (value: number, market: 'us' | 'cn' | 'hk') => string
   formatPercent: (value: number) => string
-}>()
+}>(), {
+  rankOffset: 0,
+})
 
 defineEmits<{
   (event: 'toggle-sort'): void

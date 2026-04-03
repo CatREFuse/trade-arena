@@ -170,7 +170,12 @@
 
       <div v-else class="mt-5 divide-y divide-zinc-200 dark:divide-zinc-700">
         <template v-if="panelMode === 'movers'">
-          <div v-for="(item, index) in sortedBoardItems.slice(0, 6)" :key="item.ticker" class="flex items-center gap-3 py-3">
+          <NuxtLink
+            v-for="(item, index) in sortedBoardItems.slice(0, 6)"
+            :key="item.ticker"
+            :to="`/market-detail/${selectedMarket}/${item.ticker}`"
+            class="flex items-center gap-3 py-3 rounded-xl px-1 transition-colors hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50"
+          >
             <div class="w-6 text-center text-xs font-bold flex-shrink-0" :class="index < 3 ? 'text-amber-500' : 'text-tertiary'">
               {{ index + 1 }}
             </div>
@@ -190,14 +195,19 @@
                 {{ formatPercent(item.change_pct) }}
               </div>
             </div>
-          </div>
+          </NuxtLink>
         </template>
 
         <template v-else>
           <div v-if="!filteredHotActivityItems.length" class="py-12 text-center text-sm text-tertiary">
             当前还没有足够的 Agent 操作热度数据。
           </div>
-          <div v-for="(item, index) in filteredHotActivityItems.slice(0, 6)" :key="`${selectedMarket}-${item.ticker}`" class="flex items-center gap-3 py-3">
+          <NuxtLink
+            v-for="(item, index) in filteredHotActivityItems.slice(0, 6)"
+            :key="`${selectedMarket}-${item.ticker}`"
+            :to="`/market-detail/${selectedMarket}/${item.ticker}`"
+            class="flex items-center gap-3 py-3 rounded-xl px-1 transition-colors hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50"
+          >
             <div class="w-6 text-center text-xs font-bold flex-shrink-0" :class="index < 3 ? 'text-amber-500' : 'text-tertiary'">
               {{ index + 1 }}
             </div>
@@ -216,7 +226,7 @@
                 {{ formatPercent(item.changePct) }}
               </div>
             </div>
-          </div>
+          </NuxtLink>
         </template>
       </div>
     </section>

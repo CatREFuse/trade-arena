@@ -142,7 +142,14 @@
             <div class="flex items-center justify-between gap-2 rounded-xl bg-emerald-500/5 dark:bg-emerald-500/10 px-3 py-2 border border-emerald-500/10">
               <div class="flex items-center gap-2">
                 <span class="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400">领涨</span>
-                <span class="text-sm font-bold text-main">{{ usSummary?.leader?.ticker || '--' }}</span>
+                <NuxtLink
+                  v-if="usSummary?.leader?.ticker"
+                  :to="`/market-detail/us/${usSummary.leader.ticker}`"
+                  class="text-sm font-bold text-main hover:underline"
+                >
+                  {{ usSummary.leader.ticker }}
+                </NuxtLink>
+                <span v-else class="text-sm font-bold text-main">--</span>
               </div>
               <div class="text-right">
                 <div class="text-xs font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
@@ -153,7 +160,14 @@
             <div class="flex items-center justify-between gap-2 rounded-xl bg-red-500/5 dark:bg-red-500/10 px-3 py-2 border border-red-500/10">
               <div class="flex items-center gap-2">
                 <span class="text-[10px] uppercase tracking-wider text-red-600 dark:text-red-400">领跌</span>
-                <span class="text-sm font-bold text-main">{{ usSummary?.laggard?.ticker || '--' }}</span>
+                <NuxtLink
+                  v-if="usSummary?.laggard?.ticker"
+                  :to="`/market-detail/us/${usSummary.laggard.ticker}`"
+                  class="text-sm font-bold text-main hover:underline"
+                >
+                  {{ usSummary.laggard.ticker }}
+                </NuxtLink>
+                <span v-else class="text-sm font-bold text-main">--</span>
               </div>
               <div class="text-right">
                 <div class="text-xs font-bold text-red-600 dark:text-red-400 tabular-nums">
@@ -243,7 +257,14 @@
             <div class="flex items-center justify-between gap-2 rounded-xl bg-red-500/5 dark:bg-red-500/10 px-3 py-2 border border-red-500/10">
               <div class="flex items-center gap-2">
                 <span class="text-[10px] uppercase tracking-wider text-red-600 dark:text-red-400">领涨</span>
-                <span class="text-sm font-bold text-main">{{ cnSummary?.leader?.ticker || '--' }}</span>
+                <NuxtLink
+                  v-if="cnSummary?.leader?.ticker"
+                  :to="`/market-detail/cn/${cnSummary.leader.ticker}`"
+                  class="text-sm font-bold text-main hover:underline"
+                >
+                  {{ cnSummary.leader.ticker }}
+                </NuxtLink>
+                <span v-else class="text-sm font-bold text-main">--</span>
               </div>
               <div class="text-right">
                 <div class="text-xs font-bold text-red-600 dark:text-red-400 tabular-nums">
@@ -254,7 +275,14 @@
             <div class="flex items-center justify-between gap-2 rounded-xl bg-emerald-500/5 dark:bg-emerald-500/10 px-3 py-2 border border-emerald-500/10">
               <div class="flex items-center gap-2">
                 <span class="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400">领跌</span>
-                <span class="text-sm font-bold text-main">{{ cnSummary?.laggard?.ticker || '--' }}</span>
+                <NuxtLink
+                  v-if="cnSummary?.laggard?.ticker"
+                  :to="`/market-detail/cn/${cnSummary.laggard.ticker}`"
+                  class="text-sm font-bold text-main hover:underline"
+                >
+                  {{ cnSummary.laggard.ticker }}
+                </NuxtLink>
+                <span v-else class="text-sm font-bold text-main">--</span>
               </div>
               <div class="text-right">
                 <div class="text-xs font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
@@ -344,7 +372,14 @@
             <div class="flex items-center justify-between gap-2 rounded-xl bg-emerald-500/5 dark:bg-emerald-500/10 px-3 py-2 border border-emerald-500/10">
               <div class="flex items-center gap-2">
                 <span class="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400">领涨</span>
-                <span class="text-sm font-bold text-main">{{ hkSummary?.leader?.ticker || '--' }}</span>
+                <NuxtLink
+                  v-if="hkSummary?.leader?.ticker"
+                  :to="`/market-detail/hk/${hkSummary.leader.ticker}`"
+                  class="text-sm font-bold text-main hover:underline"
+                >
+                  {{ hkSummary.leader.ticker }}
+                </NuxtLink>
+                <span v-else class="text-sm font-bold text-main">--</span>
               </div>
               <div class="text-right">
                 <div class="text-xs font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
@@ -355,7 +390,14 @@
             <div class="flex items-center justify-between gap-2 rounded-xl bg-red-500/5 dark:bg-red-500/10 px-3 py-2 border border-red-500/10">
               <div class="flex items-center gap-2">
                 <span class="text-[10px] uppercase tracking-wider text-red-600 dark:text-red-400">领跌</span>
-                <span class="text-sm font-bold text-main">{{ hkSummary?.laggard?.ticker || '--' }}</span>
+                <NuxtLink
+                  v-if="hkSummary?.laggard?.ticker"
+                  :to="`/market-detail/hk/${hkSummary.laggard.ticker}`"
+                  class="text-sm font-bold text-main hover:underline"
+                >
+                  {{ hkSummary.laggard.ticker }}
+                </NuxtLink>
+                <span v-else class="text-sm font-bold text-main">--</span>
               </div>
               <div class="text-right">
                 <div class="text-xs font-bold text-red-600 dark:text-red-400 tabular-nums">
@@ -451,7 +493,12 @@
         class="mt-5 pr-1 divide-y divide-zinc-200 dark:divide-zinc-700"
       >
         <template v-if="panelMode === 'movers'">
-          <div v-for="(item, index) in paginatedBoardItems" :key="`${selectedMarket}-${item.ticker}`" class="flex items-center gap-4 py-3">
+          <NuxtLink
+            v-for="(item, index) in paginatedBoardItems"
+            :key="`${selectedMarket}-${item.ticker}`"
+            :to="`/market-detail/${selectedMarket}/${item.ticker}`"
+            class="flex items-center gap-4 py-3 rounded-xl px-1 md:transition-colors md:hover:bg-zinc-100/60 dark:md:hover:bg-zinc-800/50"
+          >
             <div class="w-7 text-center text-xs font-bold flex-shrink-0" :class="(moversPage - 1) * ITEMS_PER_PAGE + index < 3 ? 'text-amber-500' : 'text-tertiary'">
               {{ (moversPage - 1) * ITEMS_PER_PAGE + index + 1 }}
             </div>
@@ -471,7 +518,7 @@
                 {{ formatPercent(item.change_pct) }}
               </div>
             </div>
-          </div>
+          </NuxtLink>
 
           <!-- Pagination for movers -->
           <div v-if="moversTotalPages > 1" class="py-4 flex items-center justify-center gap-2">
@@ -512,7 +559,12 @@
           <div v-if="!filteredHotActivityItems.length" class="py-12 text-center text-sm text-tertiary">
             当前还没有足够的 Agent 操作热度数据。
           </div>
-          <div v-for="(item, index) in paginatedHotActivityItems" :key="`${selectedMarket}-hot-${item.ticker}`" class="flex items-center gap-4 py-3">
+          <NuxtLink
+            v-for="(item, index) in paginatedHotActivityItems"
+            :key="`${selectedMarket}-hot-${item.ticker}`"
+            :to="`/market-detail/${selectedMarket}/${item.ticker}`"
+            class="flex items-center gap-4 py-3 rounded-xl px-1 md:transition-colors md:hover:bg-zinc-100/60 dark:md:hover:bg-zinc-800/50"
+          >
             <div class="w-7 text-center text-xs font-bold flex-shrink-0" :class="(activityPage - 1) * ITEMS_PER_PAGE + index < 3 ? 'text-amber-500' : 'text-tertiary'">
               {{ (activityPage - 1) * ITEMS_PER_PAGE + index + 1 }}
             </div>
@@ -533,7 +585,7 @@
                 {{ formatPercent(item.changePct) }}
               </div>
             </div>
-          </div>
+          </NuxtLink>
 
           <!-- Pagination for activity -->
           <div v-if="activityTotalPages > 1 && filteredHotActivityItems.length > 0" class="py-4 flex items-center justify-center gap-2">

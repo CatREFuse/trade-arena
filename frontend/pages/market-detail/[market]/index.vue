@@ -62,35 +62,10 @@
         </div>
       </div>
 
-      <div class="mt-5 flex items-end gap-3">
-        <svg class="w-full h-[84px]" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true">
-          <path :d="detail.marketPulse.value.area" fill="currentColor" opacity="0.08" class="text-blue-500" />
-          <path
-            :d="detail.marketPulse.value.line"
-            fill="none"
-            class="text-blue-500"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            opacity="0.6"
-          />
-        </svg>
+      <div class="mt-5">
+        <MarketPulseChart :values="distributionValues" />
       </div>
     </div>
-
-    <MarketMoversSection
-      class="mt-4"
-      :items="detail.sortedItems.value"
-      :pending="detail.pending.value"
-      :error="detail.error.value"
-      :updated-at="detail.updatedAt.value"
-      :sort-direction="detail.sortDirection.value"
-      :market="marketKey"
-      :format-price="detail.formatPrice"
-      :format-percent="detail.formatPercent"
-      @toggle-sort="detail.toggleSort"
-    />
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
       <div class="card">
@@ -104,7 +79,14 @@
         </div>
         <div class="mt-2 flex items-center justify-between gap-3">
           <div class="min-w-0">
-            <div class="font-bold text-main truncate">{{ detail.bestMover.value?.ticker || 'N/A' }}</div>
+            <NuxtLink
+              v-if="detail.bestMover.value"
+              :to="`/market-detail/${marketKey}/${detail.bestMover.value.ticker}`"
+              class="font-bold text-main truncate hover:underline"
+            >
+              {{ detail.bestMover.value.ticker }}
+            </NuxtLink>
+            <div v-else class="font-bold text-main truncate">N/A</div>
             <div class="text-xs text-secondary truncate">{{ detail.bestMover.value?.name || '暂无数据' }}</div>
           </div>
           <div class="text-right flex-shrink-0">
@@ -127,7 +109,14 @@
         </div>
         <div class="mt-2 flex items-center justify-between gap-3">
           <div class="min-w-0">
-            <div class="font-bold text-main truncate">{{ detail.worstMover.value?.ticker || 'N/A' }}</div>
+            <NuxtLink
+              v-if="detail.worstMover.value"
+              :to="`/market-detail/${marketKey}/${detail.worstMover.value.ticker}`"
+              class="font-bold text-main truncate hover:underline"
+            >
+              {{ detail.worstMover.value.ticker }}
+            </NuxtLink>
+            <div v-else class="font-bold text-main truncate">N/A</div>
             <div class="text-xs text-secondary truncate">{{ detail.worstMover.value?.name || '暂无数据' }}</div>
           </div>
           <div class="text-right flex-shrink-0">
@@ -139,13 +128,61 @@
         </div>
       </div>
     </div>
+
+    <MarketMoversSection
+      class="mt-4"
+      :items="paginatedItems"
+      :pending="detail.pending.value"
+      :error="detail.error.value"
+      :updated-at="detail.updatedAt.value"
+      :sort-direction="detail.sortDirection.value"
+      :rank-offset="(currentPage - 1) * PAGE_SIZE"
+      :market="marketKey"
+      :format-price="detail.formatPrice"
+      :format-percent="detail.formatPercent"
+      @toggle-sort="onToggleSort"
+    />
+
+    <div v-if="totalPages > 1" class="mt-3 flex items-center justify-center gap-2">
+      <button
+        type="button"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+        :class="currentPage === 1 ? 'text-zinc-400 cursor-not-allowed' : 'text-main hover:bg-overlay-2'"
+        :disabled="currentPage === 1"
+        @click="goToPage(currentPage - 1)"
+      >
+        上一页
+      </button>
+      <div class="flex items-center gap-1">
+        <button
+          v-for="page in totalPages"
+          :key="page"
+          type="button"
+          class="min-w-[28px] px-2 py-1.5 rounded-lg text-xs font-medium transition-all"
+          :class="currentPage === page ? 'bg-blue-600 text-white' : 'text-secondary hover:bg-overlay-2 hover:text-main'"
+          @click="goToPage(page)"
+        >
+          {{ page }}
+        </button>
+      </div>
+      <button
+        type="button"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+        :class="currentPage === totalPages ? 'text-zinc-400 cursor-not-allowed' : 'text-main hover:bg-overlay-2'"
+        :disabled="currentPage === totalPages"
+        @click="goToPage(currentPage + 1)"
+      >
+        下一页
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import MarketDataTimestamp from '~/components/market/MarketDataTimestamp.vue'
 import MarketMoversSection from '~/components/market/MarketMoversSection.vue'
+import MarketPulseChart from '~/components/market/MarketPulseChart.vue'
 import { useMarketDetail, type MarketKey } from '~/composables/useMarketDetail'
 
 const route = useRoute()
@@ -158,10 +195,34 @@ if (rawMarket !== 'us' && rawMarket !== 'cn' && rawMarket !== 'hk') {
 
 const marketKey = rawMarket as MarketKey
 const detail = await useMarketDetail(marketKey)
+const PAGE_SIZE = 20
+const currentPage = ref(1)
 
 useHead(() => ({
   title: `${detail.meta.value.title} · 市场详情 - CocoLoop Agent 理财竞赛`,
 }))
 
 const stockCount = computed(() => detail.items.value.length)
+const distributionValues = computed(() => detail.sortedItems.value.map((item) => Number(item.change_pct)))
+const totalPages = computed(() => Math.max(1, Math.ceil(detail.sortedItems.value.length / PAGE_SIZE)))
+const paginatedItems = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return detail.sortedItems.value.slice(start, start + PAGE_SIZE)
+})
+
+function goToPage(page: number) {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+}
+
+function onToggleSort() {
+  detail.toggleSort()
+  currentPage.value = 1
+}
+
+watch(() => detail.items.value.length, () => {
+  if (currentPage.value > totalPages.value) {
+    currentPage.value = totalPages.value
+  }
+})
 </script>

@@ -144,7 +144,12 @@
                 >
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
-                      <span class="font-mono font-bold text-main text-sm">{{ pos.ticker }}</span>
+                      <NuxtLink
+                        :to="`/market-detail/${section.key}/${pos.ticker}`"
+                        class="font-mono font-bold text-main text-sm hover:underline"
+                      >
+                        {{ pos.ticker }}
+                      </NuxtLink>
                       <span class="text-[11px] text-tertiary">{{ Number(pos.shares).toFixed(2) }} 股</span>
                     </div>
                     <div class="text-[11px] text-tertiary mt-0.5">
@@ -185,7 +190,12 @@
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-mono font-bold text-main text-sm">{{ t.ticker }}</span>
+                <NuxtLink
+                  :to="`/market-detail/${resolveTickerMarket(t.ticker)}/${t.ticker}`"
+                  class="font-mono font-bold text-main text-sm hover:underline"
+                >
+                  {{ t.ticker }}
+                </NuxtLink>
                 <span class="text-[11px] text-tertiary">{{ Number(t.shares).toFixed(1) }} 股 × {{ formatCny(t.price) }}</span>
               </div>
               <div v-if="t.reasoning" class="text-xs text-secondary mt-0.5 truncate">{{ t.reasoning }}</div>
@@ -460,6 +470,13 @@ function onChartTypeChange(nextType: ChartType) {
   chartType.value = nextType
   const preset = chartTypeItems.find(item => item.value === nextType)?.defaultSpan || '30d'
   selectedSpan.value = preset
+}
+
+function resolveTickerMarket(ticker: string): 'us' | 'cn' | 'hk' {
+  const normalized = String(ticker || '').toUpperCase()
+  if (normalized.endsWith('.HK')) return 'hk'
+  if (normalized.endsWith('.SZ') || normalized.endsWith('.SH') || normalized.endsWith('.BJ')) return 'cn'
+  return 'us'
 }
 
 function formatTime(ts?: string) {

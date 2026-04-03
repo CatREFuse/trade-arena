@@ -69,11 +69,9 @@ function focusInstallBox() {
     return
   }
 
-  const navOffset = 88
-  const boxTop = box.getBoundingClientRect().top + window.scrollY - navOffset
-  window.scrollTo({
-    top: Math.max(boxTop, 0),
+  box.scrollIntoView({
     behavior: 'smooth',
+    block: 'start',
   })
   isHighlighted.value = true
   if (highlightTimer) {
