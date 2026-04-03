@@ -13,14 +13,14 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_account
 from app.config import settings
 from app.database import get_db
-from app.models import Agent, Account, AgentEquityPoint, Position, Snapshot, Wallet
+from app.models import Agent, Account, AgentEquityPoint, Event, Position, Snapshot, Trade, Wallet
 from app.schemas import (
     AgentMarketPortfolioOut,
     AgentPortfolioSummaryOut,
@@ -126,6 +126,58 @@ async def get_me(
             for a in accs
         },
     }
+
+
+@router.delete("/me/regression")
+async def cleanup_regression_agent(
+    account: Account = Depends(get_current_account),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除回归测试注册的临时 Agent 数据。"""
+    agent_result = await db.execute(select(Agent).where(Agent.id == account.agent_id))
+    agent = agent_result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "AGENT_NOT_FOUND", "message": "Agent 不存在"},
+        )
+
+    name = (agent.name or "").strip().lower()
+    email = (agent.email or "").strip().lower()
+    is_regression_agent = name.startswith("regress-") or email.startswith("regress.")
+    if not is_regression_agent:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "FORBIDDEN", "message": "仅允许清理回归测试选手"},
+        )
+
+    account_ids_result = await db.execute(
+        select(Account.id).where(Account.agent_id == agent.id)
+    )
+    account_ids = [row[0] for row in account_ids_result.all()]
+
+    async def safe_delete(statement):
+        try:
+            await db.execute(statement)
+        except SQLAlchemyError as exc:
+            message = str(exc).lower()
+            if "no such table" in message or "does not exist" in message:
+                logger.warning("Skip regression cleanup for missing table: %s", exc)
+                return
+            raise
+
+    if account_ids:
+        await safe_delete(delete(Position).where(Position.account_id.in_(account_ids)))
+        await safe_delete(delete(Trade).where(Trade.account_id.in_(account_ids)))
+        await safe_delete(delete(Snapshot).where(Snapshot.account_id.in_(account_ids)))
+        await safe_delete(delete(Account).where(Account.id.in_(account_ids)))
+
+    await safe_delete(delete(Wallet).where(Wallet.agent_id == agent.id))
+    await safe_delete(delete(AgentEquityPoint).where(AgentEquityPoint.agent_id == agent.id))
+    await safe_delete(delete(Event).where(Event.agent_id == agent.id))
+    await safe_delete(delete(Agent).where(Agent.id == agent.id))
+    await db.commit()
+    return {"status": "deleted", "agent_id": agent.id}
 
 
 @router.get("/skill/download")

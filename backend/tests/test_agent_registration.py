@@ -138,3 +138,41 @@ async def test_register_agent_returns_503_on_db_error(client, monkeypatch):
     payload = register_response.json()
     assert payload["detail"]["error"] == "REGISTRATION_UNAVAILABLE"
     assert "message" in payload["detail"]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_regression_agent_deletes_registered_data(client, db_session_factory):
+    register_response = await client.post(
+        "/api/agents/register",
+        json={
+            "name": "regress-999001",
+            "email": "regress.999001@example.com",
+            "model": "gpt-5.4",
+            "avatar": "🧪",
+            "style": "回归测试",
+            "framework": "custom",
+        },
+    )
+    assert register_response.status_code == 200
+    payload = register_response.json()
+    token = payload["token"]
+    agent_id = payload["agent"]["id"]
+
+    cleanup_response = await client.delete(
+        "/api/agents/me/regression",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert cleanup_response.status_code == 200
+    cleanup_payload = cleanup_response.json()
+    assert cleanup_payload["status"] == "deleted"
+    assert cleanup_payload["agent_id"] == agent_id
+
+    async with db_session_factory() as session:
+        agent_result = await session.execute(select(Agent).where(Agent.id == agent_id))
+        assert agent_result.scalar_one_or_none() is None
+
+        account_result = await session.execute(select(Account).where(Account.agent_id == agent_id))
+        assert account_result.scalars().all() == []
+
+        wallet_result = await session.execute(select(Wallet).where(Wallet.agent_id == agent_id))
+        assert wallet_result.scalar_one_or_none() is None

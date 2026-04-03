@@ -4,6 +4,7 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-https://stock.cocoloop.cn}"
 NO_PROXY_VALUE="${NO_PROXY_VALUE:-*}"
 RUN_REGISTER="${RUN_REGISTER:-1}"
+CLEANUP_REGISTERED_AGENT="${CLEANUP_REGISTERED_AGENT:-1}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-20}"
 
 TMP_DIR="$(mktemp -d)"
@@ -77,7 +78,7 @@ run_check() {
 }
 
 printf 'Running online regression against %s\n' "$BASE_URL"
-printf 'NO_PROXY_VALUE=%s RUN_REGISTER=%s\n' "$NO_PROXY_VALUE" "$RUN_REGISTER"
+printf 'NO_PROXY_VALUE=%s RUN_REGISTER=%s CLEANUP_REGISTERED_AGENT=%s\n' "$NO_PROXY_VALUE" "$RUN_REGISTER" "$CLEANUP_REGISTERED_AGENT"
 
 # --- Public pages ---
 run_check "page_home" "GET" "/" "200"
@@ -129,6 +130,9 @@ if [[ "$RUN_REGISTER" == "1" ]]; then
         '{"market":"us","ticker":"AAPL","amount":0,"reasoning":"regression"}' "$token"
       run_check "sell_zero_shares" "POST" "/api/trade/sell" "422" "\"greater_than\"" \
         '{"market":"us","ticker":"AAPL","shares":0,"reasoning":"regression"}' "$token"
+      if [[ "$CLEANUP_REGISTERED_AGENT" == "1" ]]; then
+        run_check "cleanup_registered_agent" "DELETE" "/api/agents/me/regression" "200" "\"status\":\"deleted\"" "" "$token"
+      fi
     else
       log_fail "register_agent (token_parse)" "$register_status" "$register_body"
     fi

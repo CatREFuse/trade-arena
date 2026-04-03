@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from app.schemas import (
     QuoteOut,
     StockDetailOut,
     StockIntradayOut,
+    StockHistoryPointOut,
     StockPositionStatsOut,
     StockRecentTradeOut,
     StockSiteStatsOut,
@@ -45,6 +46,27 @@ def _decimal_or_zero(value) -> Decimal:
 
 def _money(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"))
+
+
+def _build_fallback_history(days: int, price: Decimal) -> list[StockHistoryPointOut]:
+    today = datetime.now(timezone.utc).date()
+    close = float(price)
+    history: list[StockHistoryPointOut] = []
+    for offset in range(days):
+        day = today - timedelta(days=days - offset - 1)
+        ts = int(datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc).timestamp() * 1000)
+        history.append(
+            StockHistoryPointOut(
+                ts=ts,
+                date=day.isoformat(),
+                open=close,
+                high=close,
+                low=close,
+                close=close,
+                volume=0,
+            )
+        )
+    return history
 
 
 @router.get("/quote/{ticker}", response_model=QuoteOut)
@@ -174,8 +196,38 @@ async def get_stock_detail(
     normalized_days = max(30, min(days, 365))
     normalized_trade_limit = max(1, min(trade_limit, 50))
 
-    quote = await svc.get_quote(ticker.upper())
-    history = await svc.get_stock_history(quote.ticker, days=normalized_days, refresh=refresh)
+    normalized_ticker = ticker.upper()
+    try:
+        quote = await svc.get_quote(normalized_ticker)
+    except HTTPException as exc:
+        if exc.status_code != 503:
+            raise
+        intraday_seed = await svc.get_stock_intraday(
+            ticker=normalized_ticker,
+            span="1d",
+            interval="5m",
+            refresh=refresh,
+        )
+        if not intraday_seed.points:
+            raise
+        first_close = float(intraday_seed.points[0].close)
+        last_close = float(intraday_seed.points[-1].close)
+        change_pct = ((last_close - first_close) / first_close * 100) if first_close else 0.0
+        quote = QuoteOut(
+            ticker=normalized_ticker,
+            price=Decimal(str(round(last_close, 4))),
+            change_pct=round(change_pct, 4),
+            name=normalized_ticker,
+            volume=0,
+            market_status=svc._market_status(svc._ticker_market(normalized_ticker)),
+        )
+
+    try:
+        history = await svc.get_stock_history(quote.ticker, days=normalized_days, refresh=refresh)
+    except HTTPException as exc:
+        if exc.status_code != 503:
+            raise
+        history = _build_fallback_history(normalized_days, quote.price)
     listed_at = await svc.get_stock_listing_date(quote.ticker, refresh=refresh)
     market = svc._ticker_market(quote.ticker)
 

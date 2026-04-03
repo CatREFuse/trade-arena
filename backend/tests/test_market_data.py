@@ -4,6 +4,7 @@ import asyncio
 import json
 from datetime import datetime, timezone
 from decimal import Decimal
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -476,6 +477,8 @@ async def test_redis_safe_wrapper_handles_exceptions():
 @pytest.mark.asyncio
 async def test_get_stock_history_fetches_and_caches_series(fake_redis, monkeypatch):
     service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+    monkeypatch.setattr(service, "_build_stock_history_from_yahoo", AsyncMock(return_value=[]))
+    monkeypatch.setattr(service, "_is_stock_history_usable", lambda history, _days: len(history) > 0)
 
     async def fake_fetch_payload(ticker: str, days: int):
         assert ticker == "AAPL"
@@ -502,7 +505,7 @@ async def test_get_stock_history_fetches_and_caches_series(fake_redis, monkeypat
     assert history[0].date == "2026-03-28"
     assert history[-1].close == 103.0
     assert history[-1].volume == 1500
-    assert fake_redis.set_calls[-1][0] == "stock:history:v1:v3:AAPL:90"
+    assert fake_redis.set_calls[-1][0] == "stock:history:v3:v3:AAPL:90"
 
     async def fail_if_called(_ticker: str, _days: int):
         raise AssertionError("history provider should not be called on cache hit")

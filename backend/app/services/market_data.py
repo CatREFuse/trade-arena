@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import json
 import logging
 import re
@@ -83,8 +84,8 @@ STOCK_LISTING_CACHE_TTL = 86400  # 上市时间缓存24小时
 BOARD_FETCH_CHUNK_SIZE = 24  # 大榜单分批抓取，避免单次 upstream 请求过大
 MARKET_CACHE_VERSION = "v3"
 TREND_CACHE_VERSION = "v2"
-STOCK_HISTORY_CACHE_VERSION = "v1"
-STOCK_INTRADAY_CACHE_VERSION = "v2"
+STOCK_HISTORY_CACHE_VERSION = "v3"
+STOCK_INTRADAY_CACHE_VERSION = "v3"
 STOCK_LISTING_CACHE_VERSION = "v2"
 SHADOW_CACHE_TTL_SECONDS = 300
 
@@ -882,28 +883,161 @@ class MarketDataService:
         return parsed
 
     async def _build_stock_history(self, ticker: str, days: int) -> list[StockHistoryPointOut]:
+        yahoo_history = await self._build_stock_history_from_yahoo(ticker, days)
+        if self._is_stock_history_usable(yahoo_history, days):
+            return yahoo_history[-days:]
+
         payload, response_symbol = await self._fetch_tencent_stock_history_payload(ticker, days)
-        if payload is None or response_symbol is None:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "HISTORY_DATA_UNAVAILABLE",
-                    "message": f"历史行情暂不可用：{ticker}",
-                    "detail": {"ticker": ticker},
-                },
+        if payload is not None and response_symbol is not None:
+            series = self._parse_tencent_stock_history_series(payload, response_symbol, days)
+            if self._is_stock_history_usable(series, days):
+                return series
+
+        stooq_history = await self._build_stock_history_from_stooq(ticker, days)
+        if self._is_stock_history_usable(stooq_history, days):
+            return stooq_history[-days:]
+
+        fallback_history = await self._build_stock_history_from_quote_fallback(ticker, days)
+        if fallback_history:
+            return fallback_history
+
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "HISTORY_DATA_UNAVAILABLE",
+                "message": f"历史行情暂不可用：{ticker}",
+                "detail": {"ticker": ticker},
+            },
+        )
+
+    async def _build_stock_history_from_yahoo(
+        self,
+        ticker: str,
+        days: int,
+    ) -> list[StockHistoryPointOut]:
+        symbol = self._to_yahoo_chart_symbol(ticker)
+        range_ = self._yahoo_history_range(days)
+        try:
+            payload = await self._fetch_yahoo_chart_payload(
+                symbol=symbol,
+                interval="1d",
+                range_=range_,
+            )
+            points = self._parse_yahoo_chart_points(payload)
+            history: list[StockHistoryPointOut] = []
+            for point in points:
+                history.append(
+                    StockHistoryPointOut(
+                        ts=point.ts,
+                        date=datetime.fromtimestamp(point.ts / 1000, tz=timezone.utc).date().isoformat(),
+                        open=point.open,
+                        high=point.high,
+                        low=point.low,
+                        close=point.close,
+                        volume=point.volume or 0,
+                    )
+                )
+            if len(history) > days:
+                return history[-days:]
+            return history
+        except Exception as exc:
+            logger.warning("Fetch yahoo stock history failed for %s: %s", ticker, exc)
+            return []
+
+    async def _build_stock_history_from_stooq(
+        self,
+        ticker: str,
+        days: int,
+    ) -> list[StockHistoryPointOut]:
+        symbol = self._to_stooq_history_symbol(ticker)
+        if not symbol:
+            return []
+
+        today = datetime.now(timezone.utc).date()
+        start = today - timedelta(days=max(days * 3, 180))
+        params = {
+            "s": symbol,
+            "i": "d",
+            "d1": start.strftime("%Y%m%d"),
+            "d2": today.strftime("%Y%m%d"),
+        }
+
+        try:
+            response = await _limited_get(
+                "stooq",
+                "https://stooq.com/q/d/l/",
+                client_name="stooq-stock-history",
+                timeout=FAST_HTTP_TIMEOUT,
+                params=params,
+                headers=YahooProvider.HEADERS,
+            )
+            response.raise_for_status()
+        except Exception as exc:
+            logger.warning("Fetch stooq stock history failed for %s: %s", ticker, exc)
+            return []
+
+        lines = [line.strip() for line in response.text.splitlines() if line.strip()]
+        if len(lines) < 2:
+            return []
+
+        parsed: list[StockHistoryPointOut] = []
+        for row in csv.DictReader(lines):
+            date_raw = str(row.get("Date") or "").strip()
+            if not date_raw:
+                continue
+            ts = self._parse_kline_ts(date_raw)
+            if ts is None:
+                continue
+            open_ = self._safe_float(row.get("Open"))
+            high = self._safe_float(row.get("High"))
+            low = self._safe_float(row.get("Low"))
+            close = self._safe_float(row.get("Close"))
+            if None in {open_, high, low, close}:
+                continue
+            volume = self._safe_int(row.get("Volume")) or 0
+            parsed.append(
+                StockHistoryPointOut(
+                    ts=ts,
+                    date=date_raw,
+                    open=open_,
+                    high=high,
+                    low=low,
+                    close=close,
+                    volume=volume,
+                )
             )
 
-        series = self._parse_tencent_stock_history_series(payload, response_symbol, days)
-        if not series:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "HISTORY_DATA_UNAVAILABLE",
-                    "message": f"历史行情暂不可用：{ticker}",
-                    "detail": {"ticker": ticker},
-                },
-            )
-        return series
+        if len(parsed) > days:
+            return parsed[-days:]
+        return parsed
+
+    async def _build_stock_history_from_quote_fallback(
+        self,
+        ticker: str,
+        days: int,
+    ) -> list[StockHistoryPointOut]:
+        with suppress(Exception):
+            quote = await self.get_quote(ticker, refresh=False)
+            price = float(quote.price)
+            volume = int(quote.volume or 0)
+            today = datetime.now(timezone.utc).date()
+            points: list[StockHistoryPointOut] = []
+            for offset in range(days):
+                day = today - timedelta(days=days - offset - 1)
+                ts = int(datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc).timestamp() * 1000)
+                points.append(
+                    StockHistoryPointOut(
+                        ts=ts,
+                        date=day.isoformat(),
+                        open=price,
+                        high=price,
+                        low=price,
+                        close=price,
+                        volume=volume,
+                    )
+                )
+            return points
+        return []
 
     async def _fetch_tencent_stock_history_payload(
         self,
@@ -995,6 +1129,13 @@ class MarketDataService:
         if len(parsed) > days:
             return parsed[-days:]
         return parsed
+
+    @staticmethod
+    def _is_stock_history_usable(history: list[StockHistoryPointOut], days: int) -> bool:
+        if not history:
+            return False
+        del days
+        return len(history) >= 2
 
     async def _build_stock_intraday_points(
         self,
@@ -1263,6 +1404,48 @@ class MarketDataService:
         if cls._is_hk_ticker(normalized):
             return normalized
         return normalized.replace(".", "-")
+
+    @classmethod
+    def _to_stooq_history_symbol(cls, ticker: str) -> str | None:
+        normalized = ticker.upper()
+        if cls._is_hk_ticker(normalized):
+            return normalized.lower()
+        if cls._is_cn_ticker(normalized):
+            return normalized.lower()
+        base = normalized.replace(".", "-").lower()
+        if not base:
+            return None
+        return f"{base}.us"
+
+    @staticmethod
+    def _yahoo_history_range(days: int) -> str:
+        if days <= 30:
+            return "1mo"
+        if days <= 90:
+            return "3mo"
+        if days <= 180:
+            return "6mo"
+        if days <= 365:
+            return "1y"
+        return "2y"
+
+    @staticmethod
+    def _safe_float(value) -> float | None:
+        try:
+            if value in (None, "", "N/D"):
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _safe_int(value) -> int | None:
+        try:
+            if value in (None, "", "N/D"):
+                return None
+            return int(float(value))
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _parse_kline_ts(date_str: str) -> int | None:
