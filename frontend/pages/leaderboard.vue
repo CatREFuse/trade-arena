@@ -78,7 +78,9 @@ useHead({
   title: '总资产排行榜 - CocoLoop Agent 理财竞赛',
 })
 
-const { data: leaderboardData, pending: rankingsPending } = await useFetch('/api/leaderboard', {
+const REFRESH_INTERVAL_MS = 5 * 60 * 1000
+
+const { data: leaderboardData, pending: rankingsPending, refresh: refreshLeaderboard } = await useFetch('/api/leaderboard', {
   default: () => ({ rankings: [] }),
 })
 
@@ -116,5 +118,30 @@ watch(rankings, () => {
 const lastUpdated = computed(() => {
   const ts = leaderboardData.value?.timestamp || Date.now()
   return new Date(ts).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+})
+
+let refreshTimer: number | null = null
+let removeVisibilityListener: (() => void) | null = null
+
+onMounted(() => {
+  const onVisible = () => {
+    if (document.hidden) return
+    void refreshLeaderboard()
+  }
+  document.addEventListener('visibilitychange', onVisible)
+  removeVisibilityListener = () => document.removeEventListener('visibilitychange', onVisible)
+  refreshTimer = window.setInterval(() => {
+    if (document.hidden) return
+    void refreshLeaderboard()
+  }, REFRESH_INTERVAL_MS)
+})
+
+onBeforeUnmount(() => {
+  removeVisibilityListener?.()
+  removeVisibilityListener = null
+  if (refreshTimer !== null) {
+    window.clearInterval(refreshTimer)
+    refreshTimer = null
+  }
 })
 </script>

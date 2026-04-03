@@ -44,22 +44,40 @@
             </span>
           </div>
         </div>
-        <div class="relative h-48 w-full">
-          <svg class="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" :stop-color="chartColor" stop-opacity="0.3" />
-                <stop offset="100%" :stop-color="chartColor" stop-opacity="0" />
-              </linearGradient>
-            </defs>
-            <path :d="areaPath" fill="url(#chartGradient)" />
-            <path :d="linePath" fill="none" :stroke="chartColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-          <div class="absolute bottom-0 left-0 right-0 flex justify-between text-[10px] text-tertiary">
-            <span>{{ formatDate(chartData[0]?.date) }}</span>
-            <span>{{ formatDate(chartData[Math.floor(chartData.length / 2)]?.date) }}</span>
-            <span>{{ formatDate(chartData[chartData.length - 1]?.date) }}</span>
-          </div>
+        <div class="mb-4 flex flex-wrap items-center gap-2">
+          <button
+            v-for="item in chartTypeItems"
+            :key="item.value"
+            type="button"
+            class="px-2.5 py-1 rounded-lg text-xs transition"
+            :class="chartType === item.value ? 'bg-blue-600 text-white' : 'bg-overlay-2 text-secondary hover:text-main'"
+            @click="onChartTypeChange(item.value)"
+          >
+            {{ item.label }}
+          </button>
+          <div class="w-px h-5 bg-zinc-200 dark:bg-zinc-700 mx-1"></div>
+          <button
+            v-for="spanItem in spanOptions"
+            :key="spanItem"
+            type="button"
+            class="px-2.5 py-1 rounded-lg text-xs transition"
+            :class="selectedSpan === spanItem ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'bg-overlay-2 text-secondary hover:text-main'"
+            @click="selectedSpan = spanItem"
+          >
+            {{ spanLabelMap[spanItem] }}
+          </button>
+        </div>
+        <div class="relative h-56 w-full">
+          <ClientOnly>
+            <VChart
+              class="h-full w-full"
+              :option="equityChartOption"
+              autoresize
+            />
+            <template #fallback>
+              <div class="h-full w-full flex items-center justify-center text-xs text-tertiary">图表加载中</div>
+            </template>
+          </ClientOnly>
         </div>
       </div>
 
@@ -186,6 +204,12 @@
 </template>
 
 <script setup lang="ts">
+import { use as useECharts } from 'echarts/core'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import VChart from 'vue-echarts'
+
 interface AgentRanking {
   agent_id: string
   name: string
@@ -241,11 +265,46 @@ interface TradeItem {
   created_at: string
 }
 
+interface AgentEquityCurveResponse {
+  span: '1d' | '3d' | '7d' | '30d' | 'max'
+  interval: '5m' | '15m' | '1h' | '1d'
+  points: Array<{ date: string; value: number }>
+}
+
+type ChartType = 'intraday' | 'swing' | 'trend' | 'long'
+type SpanType = '1d' | '3d' | '7d' | '30d' | 'max'
+
+useECharts([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
+
 const cc = useColorConvention()
 const route = useRoute()
 const agentId = String(route.params.id)
+const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
-const { data: leaderboardData } = await useFetch<{ rankings?: AgentRanking[] }>('/api/leaderboard?market=overall', {
+const chartTypeItems: Array<{ value: ChartType; label: string; defaultSpan: SpanType }> = [
+  { value: 'intraday', label: '日内', defaultSpan: '1d' },
+  { value: 'swing', label: '波段', defaultSpan: '7d' },
+  { value: 'trend', label: '趋势', defaultSpan: '30d' },
+  { value: 'long', label: '长期', defaultSpan: 'max' },
+]
+const spanLabelMap: Record<SpanType, string> = {
+  '1d': '1天',
+  '3d': '3天',
+  '7d': '7天',
+  '30d': '30天',
+  max: '全部',
+}
+const spanOptionsByChartType: Record<ChartType, SpanType[]> = {
+  intraday: ['1d', '3d'],
+  swing: ['3d', '7d', '30d'],
+  trend: ['7d', '30d', 'max'],
+  long: ['30d', 'max'],
+}
+
+const chartType = ref<ChartType>('trend')
+const selectedSpan = ref<SpanType>('30d')
+
+const { data: leaderboardData, refresh: refreshLeaderboard } = await useFetch<{ rankings?: AgentRanking[] }>('/api/leaderboard?market=overall', {
   default: () => ({ rankings: [] }),
 })
 
@@ -270,10 +329,14 @@ const overallAssetCny = computed(() => Number(
 const { data: allFeed } = await useFetch<TradeItem[]>('/api/feed?limit=100', { default: () => [] })
 const agentTrades = computed(() => (allFeed.value || []).filter(t => t.agent_id === agentId))
 
-const { data: chartData } = await useFetch<{ date: string; value: number }[]>(() => `/api/agents/${agentId}/chart?days=30`, {
-  default: () => [],
-  transform: data => data || [],
+const spanOptions = computed(() => spanOptionsByChartType[chartType.value])
+
+const { data: curveData, refresh: refreshCurve } = await useFetch<AgentEquityCurveResponse>(() =>
+  `/api/agents/${agentId}/equity-curve?chart_type=${chartType.value}&span=${selectedSpan.value}&interval=auto`,
+{
+  default: () => ({ span: '30d', interval: '1h', points: [] }),
 })
+const chartData = computed(() => curveData.value?.points || [])
 
 const marketSections = computed(() => {
   const marketSummaryMap = new Map(
@@ -337,45 +400,66 @@ const chartChange = computed(() => {
   return first > 0 ? ((last - first) / first) * 100 : 0
 })
 
-const linePath = computed(() => {
-  const data = chartData.value
-  if (!data.length) return ''
+const equityChartOption = computed(() => {
+  const points = chartData.value
+  const values = points.map(point => Number(point.value))
+  const minValue = values.length ? Math.min(...values) : 0
+  const maxValue = values.length ? Math.max(...values) : 0
+  const spread = maxValue - minValue
+  const padding = spread > 0 ? spread * 0.08 : Math.max(Math.abs(maxValue) * 0.02, 1)
 
-  const min = Math.min(...data.map(d => d.value))
-  const max = Math.max(...data.map(d => d.value))
-  const range = max - min || 1
-
-  const points = data.map((d, i) => {
-    const x = (i / (data.length - 1)) * 100
-    const y = 100 - ((d.value - min) / range) * 80 - 10
-    return { x, y }
-  })
-
-  return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
+  return {
+    animation: false,
+    grid: { left: 10, right: 10, top: 10, bottom: 28, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'line' },
+      formatter: (params: any[]) => {
+        const item = params?.[0]
+        if (!item) return ''
+        const dateLabel = new Date(item.data[0]).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+        const valueLabel = formatCny(item.data[1])
+        return `${dateLabel}<br/>${valueLabel}`
+      },
+    },
+    xAxis: {
+      type: 'time',
+      boundaryGap: false,
+      axisLabel: { color: '#9CA3AF' },
+      axisLine: { lineStyle: { color: '#E5E7EB' } },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      scale: true,
+      min: minValue - padding,
+      max: maxValue + padding,
+      axisLabel: {
+        color: '#9CA3AF',
+        formatter: (value: number) => formatCny(value, { compact: true }),
+      },
+      splitLine: { lineStyle: { color: '#F1F5F9' } },
+    },
+    series: [
+      {
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        lineStyle: { width: 2, color: chartColor.value },
+        areaStyle: {
+          color: chartColor.value,
+          opacity: 0.18,
+        },
+        data: points.map(point => [point.date, point.value]),
+      },
+    ],
+  }
 })
 
-const areaPath = computed(() => {
-  const data = chartData.value
-  if (!data.length) return ''
-
-  const min = Math.min(...data.map(d => d.value))
-  const max = Math.max(...data.map(d => d.value))
-  const range = max - min || 1
-
-  const points = data.map((d, i) => {
-    const x = (i / (data.length - 1)) * 100
-    const y = 100 - ((d.value - min) / range) * 80 - 10
-    return { x, y }
-  })
-
-  const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
-  return `${line} L100,100 L0,100 Z`
-})
-
-function formatDate(dateStr?: string) {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+function onChartTypeChange(nextType: ChartType) {
+  chartType.value = nextType
+  const preset = chartTypeItems.find(item => item.value === nextType)?.defaultSpan || '30d'
+  selectedSpan.value = preset
 }
 
 function formatTime(ts?: string) {
@@ -388,6 +472,33 @@ function formatTime(ts?: string) {
   if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
+
+let refreshTimer: number | null = null
+let removeVisibilityListener: (() => void) | null = null
+
+onMounted(() => {
+  const onVisible = () => {
+    if (document.hidden) return
+    void refreshCurve()
+    void refreshLeaderboard()
+  }
+  document.addEventListener('visibilitychange', onVisible)
+  removeVisibilityListener = () => document.removeEventListener('visibilitychange', onVisible)
+  refreshTimer = window.setInterval(() => {
+    if (document.hidden) return
+    void refreshCurve()
+    void refreshLeaderboard()
+  }, REFRESH_INTERVAL_MS)
+})
+
+onBeforeUnmount(() => {
+  removeVisibilityListener?.()
+  removeVisibilityListener = null
+  if (refreshTimer !== null) {
+    window.clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+})
 
 useHead({
   title: computed(() => agent.value ? `${agent.value.name} - CocoLoop Agent 理财竞赛` : 'CocoLoop Agent 理财竞赛'),

@@ -60,6 +60,7 @@ interface LeaderboardRanking {
   total_asset_usd?: number | string | null
   return_pct: number
   rank: number
+  sparkline_3d?: Array<{ time: string; value: number }>
 }
 
 defineProps<{
@@ -67,35 +68,24 @@ defineProps<{
 }>()
 
 const cc = useColorConvention()
-const sparklineCache: Record<string, { line: string; area: string }> = {}
-
-function hashSeed(str: string) {
-  let h = 0
-  for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0
-  return Math.abs(h)
-}
 
 function getAgentSparkline(agent: LeaderboardRanking) {
-  if (sparklineCache[agent.agent_id]) return sparklineCache[agent.agent_id]
+  const rawValues = (agent.sparkline_3d || []).map(point => Number(point.value))
+  const values = rawValues.length >= 2
+    ? rawValues
+    : [Number(agent.total_asset_cny ?? agent.total_asset_usd ?? 0), Number(agent.total_asset_cny ?? agent.total_asset_usd ?? 0)]
 
-  const seed = hashSeed(agent.agent_id)
-  const trend = agent.return_pct >= 0 ? 1 : -1
-  const points = 16
-  const values: number[] = []
-  let value = 12 + (seed % 6)
-
-  for (let i = 0; i < points; i++) {
-    const noise = (Math.sin(seed * 7.3 + i * 2.7) * 0.5 + 0.5) * 6 - 3
-    const drift = trend * (i / points) * 5
-    value = Math.max(2, Math.min(22, value + noise + drift * 0.4))
-    values.push(value)
-  }
-
-  const step = 56 / (points - 1)
-  const linePoints = values.map((y, i) => `${(i * step).toFixed(1)},${(24 - y).toFixed(1)}`)
+  const points = values.length
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min
+  const step = points > 1 ? 56 / (points - 1) : 56
+  const linePoints = values.map((value, i) => {
+    const y = range <= 0.000001 ? 12 : 22 - ((value - min) / range) * 20
+    return `${(i * step).toFixed(1)},${y.toFixed(1)}`
+  })
   const line = 'M' + linePoints.join(' L')
   const area = `${line} L56,24 L0,24 Z`
-  sparklineCache[agent.agent_id] = { line, area }
   return { line, area }
 }
 </script>
