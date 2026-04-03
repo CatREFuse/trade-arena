@@ -51,12 +51,13 @@
               {{ sseConnected ? 'LIVE' : 'OFF' }}
             </span>
           </div>
-          <NuxtLink
-            to="/#skill-install-box"
+          <button
+            type="button"
+            @click="handleJoinNow"
             class="ml-2 px-4 py-2 rounded-2xl text-sm font-semibold bg-blue-600 text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 hover:shadow-blue-600/30 transition-all"
           >
             立刻参赛
-          </NuxtLink>
+          </button>
         </div>
       </div>
     </nav>
@@ -78,10 +79,19 @@ const navLinks = [
   { to: '/market', label: '行情' },
   { to: '/about', label: '关于' },
 ]
+const route = useRoute()
 const { connected: sseConnected } = useTradeEvents()
 const { isDark, toggle } = useAppearance()
 const { isCN, toggle: toggleColor } = useColorConvention()
 const { toasts } = useToastState()
+const { triggerParticipationEntry } = useParticipationCommand()
+
+async function handleJoinNow() {
+  await triggerParticipationEntry()
+  if (route.path !== '/') {
+    await navigateTo('/')
+  }
+}
 </script>
 
 <style>

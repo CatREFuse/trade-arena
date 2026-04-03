@@ -8,6 +8,8 @@
 - 维护 webhook 与部署日志
 - 故障时快速止损并恢复服务
 
+操作本项目线上服务器时，优先结合 `docs/ssh-skill-ops-handbook.md` 使用 `ssh-skill`。
+
 ## 1. 运行拓扑与关键路径
 
 - Nginx：对外入口
@@ -26,12 +28,22 @@
 - `webhook/DEPLOY_LOG.md`：Markdown 格式部署事件记录
 - `/var/log/trade-arena-deploy.log`：部署运行日志（服务器）
 
+线上服务器 SSH 配置入口：
+
+- 本地凭据模板：`.env.ssh.trade-arena.example`
+- 本地实际凭据：`.env.ssh.trade-arena.local`（已加入 `.gitignore`）
+- 一键生成 ssh-skill 配置：`bash scripts/setup_trade_arena_ssh_skill.sh`
+- 一键切换为高性能密钥认证：`bash scripts/bootstrap_trade_arena_ssh_key_auth.sh`
+- 原生 SSH 快速执行：`bash scripts/trade_arena_ssh.sh "<command>"`
+- 复用连接预热：`bash scripts/trade_arena_ssh_master.sh start`
+- 详细说明：`docs/ssh-skill-ops-handbook.md`
+- 当前线上仓库路径：`/etc/nginx/website/trade-arena`
+
 ## 2. CI/CD 流程（当前实现）
 
 ### 2.1 触发链路
 
-1. GitHub `push` 请求到 `/webhook`
-   兼容入口仍为 `/webhook`，新推荐入口为 `/hooks/github/push`
+1. GitHub `push` 请求到 `/hooks/github/push`
 2. `webhook/main.py` 使用 `X-Hub-Signature-256` + `WEBHOOK_SECRET` 验签
    若分支不在 `OPS_ALLOWED_BRANCHES`（默认 `main`），请求会被忽略
    Webhook 请求体兼容 `application/json` 与 `application/x-www-form-urlencoded`（`payload=<json>`）
@@ -99,6 +111,9 @@ bash scripts/opsctl.sh init-secrets --output .env.ops.local
 - 确认目标分支可用，避免将未审核提交直接部署。
 - 确认数据库迁移脚本已随代码入库。
 - 确认 `WEBHOOK_SECRET` 已在服务器环境变量中设置（不要使用默认值）。
+- 禁止直接修改线上服务器仓库工作树中的业务代码后再手动重启服务。
+- 代码上线统一流程是：本地改动 -> 本地验证 -> `git commit` -> `git push` -> 等 webhook 自动 CI/CD 部署。
+- 如果出现线上热修，必须立刻把同一改动补回本地仓库并重新 `git push`，让线上重新回到可追踪的 Git 状态。
 
 ### 3.2 部署后
 
@@ -121,10 +136,10 @@ bash scripts/opsctl.sh status
 bash scripts/service_ctl.sh status
 ```
 
-Webhook 事件日志读取需要鉴权：
+运维日志读取需要鉴权：
 
 ```bash
-curl --noproxy '*' -H "Authorization: Bearer <OPS_API_KEY>" http://127.0.0.1:9000/webhook/logs
+curl --noproxy '*' -H "Authorization: Bearer <OPS_API_KEY>" "http://127.0.0.1:9000/ops/logs?scope=webhook&tail=200"
 ```
 
 ### 3.3 后台口令登录防护与 CLI 解封
@@ -247,3 +262,4 @@ alembic upgrade head
 - `docs/testing-checklist.md`
 - `docs/cloud-deployment-guide.md`
 - `docs/ops-runbook-online-regression-and-handoff.md`
+- `docs/ssh-skill-ops-handbook.md`

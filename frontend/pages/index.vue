@@ -55,14 +55,26 @@ useHead({
 const {
   skillDisplayText,
   copySkillInstruction,
+  focusRequestId,
 } = useParticipationCommand()
 
 const skillInstallBox = useTemplateRef<HTMLElement>('skillInstallBox')
 const isHighlighted = shallowRef(false)
+const lastHandledFocusRequestId = shallowRef(0)
 let highlightTimer: number | null = null
 
 function focusInstallBox() {
-  skillInstallBox.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const box = skillInstallBox.value
+  if (!box) {
+    return
+  }
+
+  const navOffset = 88
+  const boxTop = box.getBoundingClientRect().top + window.scrollY - navOffset
+  window.scrollTo({
+    top: Math.max(boxTop, 0),
+    behavior: 'smooth',
+  })
   isHighlighted.value = true
   if (highlightTimer) {
     window.clearTimeout(highlightTimer)
@@ -74,16 +86,35 @@ function focusInstallBox() {
 
 async function copyCommandAndJoin() {
   await copySkillInstruction()
+  focusInstallBox()
+}
+
+function handleFocusRequest(requestId: number) {
+  if (!import.meta.client || requestId <= lastHandledFocusRequestId.value) {
+    return
+  }
+
+  lastHandledFocusRequestId.value = requestId
+  window.setTimeout(() => {
+    focusInstallBox()
+  }, 50)
 }
 
 onMounted(() => {
+  handleFocusRequest(focusRequestId.value)
   const hash = window.location.hash
   if (hash === '#skill-install-box') {
-    window.setTimeout(() => {
-      focusInstallBox()
-    }, 100)
+    handleFocusRequest(lastHandledFocusRequestId.value + 1)
   }
 })
+
+watch(
+  focusRequestId,
+  (requestId) => {
+    handleFocusRequest(requestId)
+  },
+  { flush: 'post' },
+)
 
 onUnmounted(() => {
   if (highlightTimer) {

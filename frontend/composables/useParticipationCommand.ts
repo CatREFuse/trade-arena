@@ -1,5 +1,6 @@
 export function useParticipationCommand() {
   const hostedSkillPath = '/file/cocoloop-trade-arena.zip'
+  const focusRequestId = useState<number>('participation-focus-request-id', () => 0)
 
   const siteOrigin = computed(() => {
     if (import.meta.server)
@@ -51,10 +52,22 @@ export function useParticipationCommand() {
     }
   }
 
+  function requestParticipationFocus() {
+    focusRequestId.value += 1
+  }
+
+  async function triggerParticipationEntry() {
+    await copySkillInstruction()
+    requestParticipationFocus()
+  }
+
   return {
     hostedSkillUrl,
     apiBaseUrl,
     skillDisplayText,
+    focusRequestId,
+    requestParticipationFocus,
+    triggerParticipationEntry,
     copySkillInstruction,
     hostedLink: hostedSkillUrl,
     participationCommand: skillDisplayText,
