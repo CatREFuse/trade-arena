@@ -42,7 +42,12 @@
     </div>
 
     <div v-else class="divide-y divide-zinc-200 dark:divide-zinc-700">
-      <div v-for="(item, index) in items" :key="item.ticker" class="flex items-center gap-4 py-3">
+      <NuxtLink
+        v-for="(item, index) in items"
+        :key="item.ticker"
+        :to="`/market-detail/${market}/${item.ticker}`"
+        class="flex items-center gap-4 py-3 rounded-xl px-1 md:transition-colors md:hover:bg-zinc-100/60 dark:md:hover:bg-zinc-800/50"
+      >
         <div class="w-7 text-center text-xs font-bold flex-shrink-0" :class="index < 3 ? 'text-amber-500' : 'text-tertiary'">
           {{ index + 1 }}
         </div>
@@ -69,7 +74,7 @@
             {{ formatPercent(item.change_pct) }}
           </div>
         </div>
-      </div>
+      </NuxtLink>
     </div>
   </section>
 </template>
@@ -92,8 +97,8 @@ defineProps<{
   error: unknown
   updatedAt?: string | null
   sortDirection: 'asc' | 'desc'
-  market: 'us' | 'cn'
-  formatPrice: (value: number, market: 'us' | 'cn') => string
+  market: 'us' | 'cn' | 'hk'
+  formatPrice: (value: number, market: 'us' | 'cn' | 'hk') => string
   formatPercent: (value: number) => string
 }>()
 

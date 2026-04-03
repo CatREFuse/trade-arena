@@ -8,7 +8,14 @@ from decimal import Decimal
 import pytest
 from fastapi import HTTPException
 
-from app.schemas import IndexQuoteOut, MarketBoardItemOut, MarketBoardSnapshotOut, MarketOverviewOut, QuoteOut
+from app.schemas import (
+    IndexQuoteOut,
+    MarketBoardItemOut,
+    MarketBoardSnapshotOut,
+    MarketOverviewOut,
+    QuoteOut,
+    StockHistoryPointOut,
+)
 from app.services import market_data as md
 from app.services.market_providers import AkshareProvider, QuoteData
 
@@ -515,3 +522,199 @@ async def test_get_stock_history_rejects_unknown_ticker(fake_redis):
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail["error"] == "TICKER_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_get_stock_intraday_fallback_builds_flat_series_when_upstream_unavailable(
+    fake_redis,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+    monkeypatch.setattr(service.market_calendar, "status", lambda _market: "open")
+
+    async def fake_yahoo_payload(*, symbol: str, interval: str, range_: str):
+        raise RuntimeError("429")
+
+    async def fake_get_quote(ticker: str):
+        return QuoteOut(
+            ticker=ticker,
+            price=Decimal("123.45"),
+            change_pct=0,
+            volume=100,
+            market_status="closed",
+        )
+
+    monkeypatch.setattr(service, "_fetch_yahoo_chart_payload", fake_yahoo_payload)
+    monkeypatch.setattr(service, "get_quote", fake_get_quote)
+
+    intraday = await service.get_stock_intraday("AAPL", span="1d", interval="5m", refresh=True)
+
+    assert intraday.ticker == "AAPL"
+    assert intraday.span == "1d"
+    assert intraday.interval == "5m"
+    assert len(intraday.points) >= 200
+    assert all(point.close == 123.45 for point in intraday.points[:10])
+    assert intraday.points[-1].ts > intraday.points[0].ts
+
+
+@pytest.mark.asyncio
+async def test_get_stock_intraday_uses_history_records_when_market_closed_and_no_last_good(
+    fake_redis,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+    monkeypatch.setattr(service.market_calendar, "status", lambda _market: "closed")
+
+    async def fake_yahoo_payload(*, symbol: str, interval: str, range_: str):
+        raise RuntimeError("429")
+
+    async def fake_get_stock_history(
+        ticker: str,
+        *,
+        days: int = 30,
+        refresh: bool = False,
+    ):
+        assert ticker == "AAPL"
+        return [
+            StockHistoryPointOut(
+                ts=1775088000000,
+                date="2026-04-02",
+                open=254.2,
+                high=256.13,
+                low=250.65,
+                close=255.92,
+                volume=31289369,
+            ),
+            StockHistoryPointOut(
+                ts=1775174400000,
+                date="2026-04-03",
+                open=255.0,
+                high=257.0,
+                low=254.5,
+                close=256.4,
+                volume=30100000,
+            ),
+        ]
+
+    monkeypatch.setattr(service, "_fetch_yahoo_chart_payload", fake_yahoo_payload)
+    monkeypatch.setattr(service, "get_stock_history", fake_get_stock_history)
+
+    intraday = await service.get_stock_intraday("AAPL", span="1d", interval="5m", refresh=True)
+    assert len(intraday.points) >= 200
+    close_values = {point.close for point in intraday.points}
+    assert len(close_values) >= 2
+
+
+@pytest.mark.asyncio
+async def test_get_stock_listing_date_fallbacks_to_oldest_history_date(
+    fake_redis,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+
+    async def fake_yahoo_payload(*, symbol: str, interval: str, range_: str):
+        raise RuntimeError("listing upstream failed")
+
+    async def fake_get_stock_history(
+        ticker: str,
+        *,
+        days: int = 365,
+        refresh: bool = False,
+    ):
+        assert ticker == "AAPL"
+        assert days == 365
+        return [
+            StockHistoryPointOut(
+                ts=1306972800000,
+                date="2011-06-02",
+                open=346.22,
+                high=347.84,
+                low=344.53,
+                close=346.22,
+                volume=16780815,
+            ),
+            StockHistoryPointOut(
+                ts=1775088000000,
+                date="2026-04-02",
+                open=254.2,
+                high=256.13,
+                low=250.65,
+                close=255.92,
+                volume=31289369,
+            ),
+        ]
+
+    monkeypatch.setattr(service, "_fetch_yahoo_chart_payload", fake_yahoo_payload)
+    monkeypatch.setattr(service, "get_stock_history", fake_get_stock_history)
+
+    listed_at = await service.get_stock_listing_date("AAPL", refresh=True)
+    assert listed_at == "2011-06-02"
+
+
+@pytest.mark.asyncio
+async def test_get_stock_intraday_uses_last_good_when_market_closed(
+    fake_redis,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+    monkeypatch.setattr(service.market_calendar, "status", lambda _market: "closed")
+
+    last_good = {
+        "ticker": "AAPL",
+        "interval": "5m",
+        "span": "1d",
+        "points": [
+            {
+                "ts": 1775200800000,
+                "time": "2026-04-03T07:20:00+00:00",
+                "open": 255.1,
+                "high": 256.0,
+                "low": 254.9,
+                "close": 255.92,
+                "volume": 123456,
+            },
+            {
+                "ts": 1775201100000,
+                "time": "2026-04-03T07:25:00+00:00",
+                "open": 255.92,
+                "high": 256.05,
+                "low": 255.8,
+                "close": 255.88,
+                "volume": 100000,
+            },
+            {
+                "ts": 1775201400000,
+                "time": "2026-04-03T07:30:00+00:00",
+                "open": 255.88,
+                "high": 255.95,
+                "low": 255.7,
+                "close": 255.8,
+                "volume": 90000,
+            },
+            {
+                "ts": 1775201700000,
+                "time": "2026-04-03T07:35:00+00:00",
+                "open": 255.8,
+                "high": 255.9,
+                "low": 255.75,
+                "close": 255.82,
+                "volume": 85000,
+            },
+        ],
+        "updated_at": "2026-04-03T07:35:00+00:00",
+    }
+    last_good_key = (
+        f"stock:intraday:last-good:{md.STOCK_INTRADAY_CACHE_VERSION}:{md.MARKET_CACHE_VERSION}:"
+        "AAPL:1d:5m"
+    )
+    fake_redis.store[last_good_key] = json.dumps(last_good).encode("utf-8")
+
+    async def fake_yahoo_payload(*, symbol: str, interval: str, range_: str):
+        raise RuntimeError("429")
+
+    monkeypatch.setattr(service, "_fetch_yahoo_chart_payload", fake_yahoo_payload)
+
+    intraday = await service.get_stock_intraday("AAPL", span="1d", interval="5m", refresh=False)
+    assert intraday.points[0].close == 255.92
+    assert intraday.points[-1].close == 255.82
+    assert len(intraday.points) == 4

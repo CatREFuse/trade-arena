@@ -50,9 +50,6 @@
       <div class="flex items-start justify-between gap-4">
         <div>
           <h2 class="text-base font-bold text-main">当前收益分布</h2>
-          <p class="text-xs text-secondary mt-1">
-            这是基于当前行情快照生成的市场热度曲线，不是历史分钟线。
-          </p>
           <div class="mt-2">
             <MarketDataTimestamp :timestamp="detail.updatedAt.value" />
           </div>

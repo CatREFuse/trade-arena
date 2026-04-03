@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.schemas import QuoteOut, StockHistoryPointOut
+from app.schemas import QuoteOut, StockHistoryPointOut, StockIntradayOut, StockIntradayPointOut
 from app.services import fx as fx_module
 from app.services import market_data as md
 
@@ -46,8 +46,14 @@ async def test_stock_detail_route_returns_history_and_site_stats(
         assert market == "us"
         return Decimal("7.20"), "USD/CNY", None
 
+    async def fake_get_stock_listing_date(self, ticker: str, *, refresh: bool = False):
+        assert ticker == "AAPL"
+        assert refresh is False
+        return "1980-12-12"
+
     monkeypatch.setattr(md.MarketDataService, "get_quote", fake_get_quote)
     monkeypatch.setattr(md.MarketDataService, "get_stock_history", fake_get_stock_history)
+    monkeypatch.setattr(md.MarketDataService, "get_stock_listing_date", fake_get_stock_listing_date)
     monkeypatch.setattr(fx_module.FXService, "get_rate_to_cny", fake_get_rate_to_cny)
 
     response = await client.get("/api/market/stocks/aapl?days=90&trade_limit=5")
@@ -58,6 +64,7 @@ async def test_stock_detail_route_returns_history_and_site_stats(
     assert payload["name"] == "Apple"
     assert payload["market"] == "us"
     assert payload["days"] == 90
+    assert payload["listed_at"] == "1980-12-12"
     assert payload["quote"]["price"] == "198.50"
     assert payload["history"][0]["date"] == "2026-03-30"
     assert payload["site_stats"]["total_trade_count"] == 1
@@ -132,3 +139,50 @@ async def test_market_fx_route_returns_realtime_and_history(
     assert hkd["rate"] == 0.93
     assert hkd["change_pct_24h"] > 1.0
     assert len(hkd["points"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_stock_intraday_route_returns_points(
+    client,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def fake_get_stock_intraday(
+        self,
+        ticker: str,
+        *,
+        span: str = "1d",
+        interval: str = "5m",
+        refresh: bool = False,
+    ):
+        assert ticker == "AAPL"
+        assert span == "1d"
+        assert interval == "5m"
+        assert refresh is False
+        return StockIntradayOut(
+            ticker="AAPL",
+            interval="5m",
+            span="1d",
+            points=[
+                StockIntradayPointOut(
+                    ts=1774915200000,
+                    time="2026-03-30T00:00:00+00:00",
+                    open=195.0,
+                    high=199.0,
+                    low=194.0,
+                    close=198.5,
+                    volume=1200,
+                )
+            ],
+            updated_at=datetime.now(timezone.utc),
+        )
+
+    monkeypatch.setattr(md.MarketDataService, "get_stock_intraday", fake_get_stock_intraday)
+
+    response = await client.get("/api/market/stocks/aapl/intraday?span=1d&interval=5m")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ticker"] == "AAPL"
+    assert payload["interval"] == "5m"
+    assert payload["span"] == "1d"
+    assert len(payload["points"]) == 1
+    assert payload["points"][0]["close"] == 198.5

@@ -201,6 +201,24 @@ class StockHistoryPointOut(BaseModel):
     volume: int | None = None
 
 
+class StockIntradayPointOut(BaseModel):
+    ts: int
+    time: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int | None = None
+
+
+class StockIntradayOut(BaseModel):
+    ticker: str
+    interval: str
+    span: str
+    points: list[StockIntradayPointOut]
+    updated_at: datetime
+
+
 class StockSiteStatsOut(BaseModel):
     total_trade_count: int
     buy_trade_count: int
@@ -240,6 +258,7 @@ class StockDetailOut(BaseModel):
     name: Optional[str] = None
     market: str
     days: int
+    listed_at: Optional[str] = None
     quote: QuoteOut
     history: list[StockHistoryPointOut]
     site_stats: StockSiteStatsOut

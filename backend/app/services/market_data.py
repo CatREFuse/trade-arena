@@ -24,6 +24,8 @@ from app.schemas import (
     MarketTrendPointOut,
     QuoteOut,
     StockHistoryPointOut,
+    StockIntradayOut,
+    StockIntradayPointOut,
 )
 from app.services.market_calendar import MarketCalendarService
 from app.services.market_providers import (
@@ -75,10 +77,15 @@ BOARD_CACHE_TTL = 120  # 市场看盘榜单缓存2分钟，兼顾新鲜度和负
 OVERVIEW_CACHE_TTL = 120  # 市场总览缓存2分钟，和看盘榜单保持一致
 TREND_CACHE_TTL = 300  # 市场代表指数曲线缓存5分钟
 STOCK_HISTORY_CACHE_TTL = 300  # 个股历史行情缓存5分钟
+STOCK_INTRADAY_CACHE_TTL = 60  # 分时曲线缓存60秒
+STOCK_INTRADAY_LAST_GOOD_TTL = 86400 * 7  # 分时最后有效记录保留7天
+STOCK_LISTING_CACHE_TTL = 86400  # 上市时间缓存24小时
 BOARD_FETCH_CHUNK_SIZE = 24  # 大榜单分批抓取，避免单次 upstream 请求过大
 MARKET_CACHE_VERSION = "v3"
 TREND_CACHE_VERSION = "v2"
 STOCK_HISTORY_CACHE_VERSION = "v1"
+STOCK_INTRADAY_CACHE_VERSION = "v2"
+STOCK_LISTING_CACHE_VERSION = "v2"
 SHADOW_CACHE_TTL_SECONDS = 300
 
 REPRESENTATIVE_INDEX = {
@@ -678,6 +685,132 @@ class MarketDataService:
         await self._cache_model_list(cache_key, STOCK_HISTORY_CACHE_TTL, history)
         return history
 
+    async def get_stock_intraday(
+        self,
+        ticker: str,
+        *,
+        span: str = "1d",
+        interval: str = "5m",
+        refresh: bool = False,
+    ) -> StockIntradayOut:
+        original_ticker = ticker.upper()
+        ticker = self._normalize_supported_ticker(original_ticker)
+        if ticker is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "TICKER_NOT_FOUND",
+                    "message": f"未找到行情标的：{original_ticker}",
+                    "detail": {"ticker": original_ticker},
+                },
+            )
+
+        normalized_span = span.lower()
+        if normalized_span not in {"1d", "5d"}:
+            normalized_span = "1d"
+        normalized_interval = interval.lower()
+        if normalized_interval != "5m":
+            normalized_interval = "5m"
+
+        cache_key = (
+            f"stock:intraday:{STOCK_INTRADAY_CACHE_VERSION}:{MARKET_CACHE_VERSION}:"
+            f"{ticker}:{normalized_span}:{normalized_interval}"
+        )
+        last_good_cache_key = (
+            f"stock:intraday:last-good:{STOCK_INTRADAY_CACHE_VERSION}:{MARKET_CACHE_VERSION}:"
+            f"{ticker}:{normalized_span}:{normalized_interval}"
+        )
+        if not refresh:
+            cached = await self._load_cached_model_safe(cache_key, StockIntradayOut)
+            if cached is not None:
+                return cached
+
+        market = self._ticker_market(ticker)
+        market_status = self._market_status(market)
+
+        if not refresh and market_status != "open":
+            last_good = await self._load_cached_model_safe(last_good_cache_key, StockIntradayOut)
+            if last_good is not None and self._is_intraday_points_usable(
+                last_good.points,
+                span=normalized_span,
+                interval=normalized_interval,
+            ):
+                await self._cache_model(cache_key, STOCK_INTRADAY_CACHE_TTL, last_good)
+                return last_good
+
+        points, is_usable_record = await self._build_stock_intraday_points(
+            ticker=ticker,
+            span=normalized_span,
+            interval=normalized_interval,
+            market_status=market_status,
+        )
+        result = StockIntradayOut(
+            ticker=ticker,
+            interval=normalized_interval,
+            span=normalized_span,
+            points=points,
+            updated_at=datetime.now(timezone.utc),
+        )
+        await self._cache_model(cache_key, STOCK_INTRADAY_CACHE_TTL, result)
+        if is_usable_record:
+            await self._cache_model(last_good_cache_key, STOCK_INTRADAY_LAST_GOOD_TTL, result)
+        return result
+
+    async def get_stock_listing_date(
+        self,
+        ticker: str,
+        *,
+        refresh: bool = False,
+    ) -> str | None:
+        original_ticker = ticker.upper()
+        ticker = self._normalize_supported_ticker(original_ticker)
+        if ticker is None:
+            return None
+
+        cache_key = (
+            f"stock:listing:{STOCK_LISTING_CACHE_VERSION}:{MARKET_CACHE_VERSION}:{ticker}"
+        )
+        if not refresh:
+            raw = await _redis_get_safe(self.redis, cache_key)
+            if raw:
+                value = raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
+                if value != "null":
+                    return value
+                return None
+
+        listed_at: str | None = None
+        try:
+            symbol = self._to_yahoo_chart_symbol(ticker)
+            payload = await self._fetch_yahoo_chart_payload(
+                symbol=symbol,
+                interval="1mo",
+                range_="max",
+            )
+            timestamps = (
+                ((payload.get("chart") or {}).get("result") or [{}])[0].get("timestamp")
+                or []
+            )
+            if timestamps:
+                listed_at = datetime.fromtimestamp(int(timestamps[0]), tz=timezone.utc).date().isoformat()
+        except Exception as exc:
+            logger.warning("Fetch listing date failed for %s: %s", ticker, exc)
+
+        if listed_at is None:
+            with suppress(Exception):
+                history = await self.get_stock_history(ticker, days=365, refresh=False)
+                if history:
+                    oldest = min(history, key=lambda item: item.ts)
+                    listed_at = oldest.date
+
+        with suppress(Exception):
+            await _redis_setex_safe(
+                self.redis,
+                cache_key,
+                STOCK_LISTING_CACHE_TTL,
+                listed_at if listed_at is not None else "null",
+            )
+        return listed_at
+
     async def _build_market_trend(self, market: str, points: int) -> MarketTrendOut:
         representative = REPRESENTATIVE_INDEX[market]
         symbol = representative["symbol"]
@@ -862,6 +995,274 @@ class MarketDataService:
         if len(parsed) > days:
             return parsed[-days:]
         return parsed
+
+    async def _build_stock_intraday_points(
+        self,
+        *,
+        ticker: str,
+        span: str,
+        interval: str,
+        market_status: str,
+    ) -> tuple[list[StockIntradayPointOut], bool]:
+        symbol = self._to_yahoo_chart_symbol(ticker)
+        try:
+            payload = await self._fetch_yahoo_chart_payload(
+                symbol=symbol,
+                interval=interval,
+                range_=span,
+            )
+            points = self._parse_yahoo_chart_points(payload)
+            if self._is_intraday_points_usable(points, span=span, interval=interval):
+                return points, True
+            if points:
+                logger.warning(
+                    "Yahoo intraday points are insufficient for %s (span=%s interval=%s, count=%s), use fallback",
+                    ticker,
+                    span,
+                    interval,
+                    len(points),
+                )
+        except Exception as exc:
+            logger.warning("Fetch stock intraday failed for %s: %s", ticker, exc)
+
+        if market_status != "open":
+            history_fallback = await self._build_intraday_history_fallback(
+                ticker=ticker,
+                span=span,
+                interval=interval,
+            )
+            if history_fallback:
+                return history_fallback, False
+
+        # 最后回退：在目标 span/interval 内构造平线，避免“跨年两点”破图。
+        fallback = await self._build_intraday_flat_fallback(
+            ticker=ticker,
+            span=span,
+            interval=interval,
+        )
+        return fallback, False
+
+    async def _build_intraday_history_fallback(
+        self,
+        *,
+        ticker: str,
+        span: str,
+        interval: str,
+    ) -> list[StockIntradayPointOut]:
+        with suppress(Exception):
+            history = await self.get_stock_history(ticker, days=30, refresh=False)
+            if not history:
+                return []
+            source = history[-min(len(history), 120):]
+            closes = [float(point.close) for point in source if float(point.close) > 0]
+            if not closes:
+                return []
+
+            point_count = self._span_point_count(span)
+            step_ms = self._interval_to_ms(interval) or 5 * 60 * 1000
+            end_ts_seconds = int(datetime.now(timezone.utc).timestamp())
+            step_seconds = step_ms // 1000
+            end_ts_seconds = (end_ts_seconds // step_seconds) * step_seconds
+            start_ts = end_ts_seconds * 1000 - (point_count - 1) * step_ms
+
+            points: list[StockIntradayPointOut] = []
+            for idx in range(point_count):
+                ratio = idx / max(point_count - 1, 1)
+                source_idx = round(ratio * (len(closes) - 1))
+                value = round(closes[source_idx], 4)
+                ts = start_ts + idx * step_ms
+                points.append(
+                    StockIntradayPointOut(
+                        ts=ts,
+                        time=datetime.fromtimestamp(ts / 1000, tz=timezone.utc).isoformat(),
+                        open=value,
+                        high=value,
+                        low=value,
+                        close=value,
+                        volume=None,
+                    )
+                )
+            return points
+        return []
+
+    async def _fetch_yahoo_chart_payload(
+        self,
+        *,
+        symbol: str,
+        interval: str,
+        range_: str,
+    ) -> dict:
+        response = await _limited_get(
+            "yahoo",
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+            client_name="yahoo-chart",
+            timeout=FAST_HTTP_TIMEOUT,
+            headers=YahooProvider.HEADERS,
+            params={
+                "interval": interval,
+                "range": range_,
+                "includePrePost": "false",
+                "events": "div,splits",
+            },
+        )
+        response.raise_for_status()
+        return response.json()
+
+    @classmethod
+    def _parse_yahoo_chart_points(cls, payload: dict) -> list[StockIntradayPointOut]:
+        chart = payload.get("chart") or {}
+        result_list = chart.get("result") or []
+        if not result_list:
+            return []
+        result = result_list[0] or {}
+        timestamps = result.get("timestamp") or []
+        quote = (((result.get("indicators") or {}).get("quote") or [{}])[0] or {})
+        opens = quote.get("open") or []
+        highs = quote.get("high") or []
+        lows = quote.get("low") or []
+        closes = quote.get("close") or []
+        volumes = quote.get("volume") or []
+
+        points: list[StockIntradayPointOut] = []
+        for idx, ts in enumerate(timestamps):
+            close_price = cls._value_at(closes, idx)
+            if close_price is None:
+                continue
+            open_price = cls._value_at(opens, idx) or close_price
+            high_price = cls._value_at(highs, idx) or max(open_price, close_price)
+            low_price = cls._value_at(lows, idx) or min(open_price, close_price)
+            volume_raw = cls._value_at(volumes, idx)
+            points.append(
+                StockIntradayPointOut(
+                    ts=int(ts) * 1000,
+                    time=datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat(),
+                    open=round(open_price, 4),
+                    high=round(high_price, 4),
+                    low=round(low_price, 4),
+                    close=round(close_price, 4),
+                    volume=int(volume_raw) if volume_raw is not None else None,
+                )
+            )
+        return points
+
+    @staticmethod
+    def _value_at(items: list, index: int) -> float | None:
+        if index >= len(items):
+            return None
+        value = items[index]
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _is_intraday_points_usable(
+        cls,
+        points: list[StockIntradayPointOut],
+        *,
+        span: str,
+        interval: str,
+    ) -> bool:
+        if len(points) < 4:
+            return False
+        step_ms = cls._interval_to_ms(interval)
+        if step_ms <= 0:
+            return False
+
+        first_ts = points[0].ts
+        last_ts = points[-1].ts
+        if last_ts <= first_ts:
+            return False
+
+        max_span_ms = 48 * 60 * 60 * 1000 if span == "1d" else 8 * 24 * 60 * 60 * 1000
+        if last_ts - first_ts > max_span_ms:
+            return False
+
+        gaps = [max(0, points[idx + 1].ts - points[idx].ts) for idx in range(len(points) - 1)]
+        avg_gap = sum(gaps) / len(gaps) if gaps else 0
+        # 允许夜盘/休市造成的间隔，但均值不应远超目标粒度。
+        return avg_gap <= step_ms * 18
+
+    async def _build_intraday_flat_fallback(
+        self,
+        *,
+        ticker: str,
+        span: str,
+        interval: str,
+    ) -> list[StockIntradayPointOut]:
+        step_ms = self._interval_to_ms(interval)
+        if step_ms <= 0:
+            step_ms = 5 * 60 * 1000
+
+        point_count = self._span_point_count(span)
+
+        end_ts_seconds = int(datetime.now(timezone.utc).timestamp())
+        step_seconds = step_ms // 1000
+        end_ts_seconds = (end_ts_seconds // step_seconds) * step_seconds
+        start_ts = end_ts_seconds * 1000 - (point_count - 1) * step_ms
+        seed_price = await self._resolve_intraday_seed_price(ticker)
+        value = round(seed_price, 4)
+
+        points: list[StockIntradayPointOut] = []
+        for idx in range(point_count):
+            ts = start_ts + idx * step_ms
+            points.append(
+                StockIntradayPointOut(
+                    ts=ts,
+                    time=datetime.fromtimestamp(ts / 1000, tz=timezone.utc).isoformat(),
+                    open=value,
+                    high=value,
+                    low=value,
+                    close=value,
+                    volume=None,
+                )
+            )
+        return points
+
+    async def _resolve_intraday_seed_price(self, ticker: str) -> float:
+        with suppress(Exception):
+            quote = await self.get_quote(ticker)
+            price = float(quote.price)
+            if price > 0:
+                return price
+
+        with suppress(Exception):
+            history = await self.get_stock_history(ticker, days=30, refresh=False)
+            if history:
+                close = float(history[-1].close)
+                if close > 0:
+                    return close
+        return 1.0
+
+    @staticmethod
+    def _interval_to_ms(interval: str) -> int:
+        text = interval.strip().lower()
+        match = re.fullmatch(r"(\d+)([mhd])", text)
+        if match is None:
+            return 0
+        value = int(match.group(1))
+        unit = match.group(2)
+        factor = {"m": 60_000, "h": 3_600_000, "d": 86_400_000}.get(unit, 0)
+        return value * factor
+
+    @staticmethod
+    def _span_point_count(span: str) -> int:
+        span_points = {"1d": 24 * 60 // 5, "5d": 5 * 24 * 60 // 5}
+        return max(24, span_points.get(span, 24 * 60 // 5))
+
+    @classmethod
+    def _to_yahoo_chart_symbol(cls, ticker: str) -> str:
+        normalized = ticker.upper()
+        if cls._is_cn_ticker(normalized):
+            code, market = normalized.split(".")
+            if market == "SH":
+                return f"{code}.SS"
+            return f"{code}.{market}"
+        if cls._is_hk_ticker(normalized):
+            return normalized
+        return normalized.replace(".", "-")
 
     @staticmethod
     def _parse_kline_ts(date_str: str) -> int | None:

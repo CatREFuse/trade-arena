@@ -19,6 +19,7 @@ from app.schemas import (
     MarketTrendOut,
     QuoteOut,
     StockDetailOut,
+    StockIntradayOut,
     StockPositionStatsOut,
     StockRecentTradeOut,
     StockSiteStatsOut,
@@ -175,6 +176,7 @@ async def get_stock_detail(
 
     quote = await svc.get_quote(ticker.upper())
     history = await svc.get_stock_history(quote.ticker, days=normalized_days, refresh=refresh)
+    listed_at = await svc.get_stock_listing_date(quote.ticker, refresh=refresh)
     market = svc._ticker_market(quote.ticker)
 
     stats_stmt = (
@@ -265,10 +267,29 @@ async def get_stock_detail(
         name=quote.name,
         market=market,
         days=normalized_days,
+        listed_at=listed_at,
         quote=quote,
         history=history,
         site_stats=site_stats,
         recent_trades=recent_trades,
         position_stats=position_stats,
         updated_at=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/stocks/{ticker}/intraday", response_model=StockIntradayOut)
+async def get_stock_intraday(
+    ticker: str,
+    request: Request,
+    span: str = "1d",
+    interval: str = "5m",
+    refresh: bool = False,
+):
+    """获取个股分时数据（默认 5 分钟）。"""
+    svc = _market_service(request)
+    return await svc.get_stock_intraday(
+        ticker=ticker.upper(),
+        span=span,
+        interval=interval,
+        refresh=refresh,
     )
