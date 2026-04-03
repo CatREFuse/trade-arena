@@ -68,6 +68,12 @@ const MARKET_META: Record<MarketKey, MarketDetailMeta> = {
   },
 }
 
+const BOARD_SOURCE_LABEL: Record<MarketKey, string> = {
+  us: 'Yahoo Finance / NASDAQ / 站内兜底',
+  cn: 'Akshare / 腾讯 / 新浪',
+  hk: 'Akshare / 腾讯 / Yahoo Finance',
+}
+
 export async function useMarketDetail(marketKey: MaybeRefOrGetter<MarketKey>) {
   const resolvedMarket = computed<MarketKey>(() => {
     const raw = toValue(marketKey)
@@ -90,6 +96,7 @@ export async function useMarketDetail(marketKey: MaybeRefOrGetter<MarketKey>) {
 
   const items = computed<MarketBoardItem[]>(() => boardData.value?.items || [])
   const updatedAt = computed(() => boardData.value?.updated_at || '')
+  const boardSourceLabel = computed(() => BOARD_SOURCE_LABEL[resolvedMarket.value])
 
   const sortedItems = computed(() => {
     const direction = sortDirection.value === 'desc' ? -1 : 1
@@ -145,6 +152,7 @@ export async function useMarketDetail(marketKey: MaybeRefOrGetter<MarketKey>) {
     error,
     refresh,
     updatedAt,
+    boardSourceLabel,
     sortDirection,
     toggleSort,
     positiveCount,

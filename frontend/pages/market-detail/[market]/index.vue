@@ -50,6 +50,7 @@
       <div class="flex items-start justify-between gap-4">
         <div>
           <h2 class="text-base font-bold text-main">当前收益分布</h2>
+          <p class="mt-1 text-xs text-tertiary">数据来源：{{ detail.boardSourceLabel.value }}</p>
           <div class="mt-2">
             <MarketDataTimestamp :timestamp="detail.updatedAt.value" />
           </div>

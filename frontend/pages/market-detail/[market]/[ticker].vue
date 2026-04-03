@@ -30,6 +30,9 @@
       <div class="flex items-center justify-between gap-3 mb-4">
         <div>
           <h2 class="text-base font-bold text-main">走势与 K 线</h2>
+          <p class="mt-1 text-xs text-tertiary">
+            数据来源：{{ activeChartSourceLabel }}
+          </p>
         </div>
         <div class="flex flex-col items-end gap-2">
           <div class="inline-flex rounded-xl bg-overlay-2 p-1">
@@ -61,31 +64,33 @@
           </div>
         </div>
       </div>
-      <div ref="chartEl" class="h-[340px] w-full rounded-xl bg-white dark:bg-zinc-950"></div>
+      <ClientOnly>
+        <VChart :option="stockChartOption" autoresize class="h-[340px] w-full rounded-xl bg-white dark:bg-zinc-950" />
+      </ClientOnly>
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
       <div class="rounded-2xl bg-overlay-2 px-4 py-3">
         <div class="text-[10px] uppercase tracking-widest text-tertiary">1日收益</div>
-        <div class="mt-1 text-lg font-bold tabular-nums" :class="cc.textClass(returnStats.r1d)">
+        <div class="mt-1 text-lg font-bold tabular-nums" :class="resolveReturnClass(returnStats.r1d)">
           {{ formatPercent(returnStats.r1d) }}
         </div>
       </div>
       <div class="rounded-2xl bg-overlay-2 px-4 py-3">
         <div class="text-[10px] uppercase tracking-widest text-tertiary">5日收益</div>
-        <div class="mt-1 text-lg font-bold tabular-nums" :class="cc.textClass(returnStats.r5d)">
+        <div class="mt-1 text-lg font-bold tabular-nums" :class="resolveReturnClass(returnStats.r5d)">
           {{ formatPercent(returnStats.r5d) }}
         </div>
       </div>
       <div class="rounded-2xl bg-overlay-2 px-4 py-3">
         <div class="text-[10px] uppercase tracking-widest text-tertiary">30日收益</div>
-        <div class="mt-1 text-lg font-bold tabular-nums" :class="cc.textClass(returnStats.r30d)">
+        <div class="mt-1 text-lg font-bold tabular-nums" :class="resolveReturnClass(returnStats.r30d)">
           {{ formatPercent(returnStats.r30d) }}
         </div>
       </div>
       <div class="rounded-2xl bg-overlay-2 px-4 py-3">
         <div class="text-[10px] uppercase tracking-widest text-tertiary">90日收益</div>
-        <div class="mt-1 text-lg font-bold tabular-nums" :class="cc.textClass(returnStats.r90d)">
+        <div class="mt-1 text-lg font-bold tabular-nums" :class="resolveReturnClass(returnStats.r90d)">
           {{ formatPercent(returnStats.r90d) }}
         </div>
       </div>
@@ -136,15 +141,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type {
-  CandlestickData,
-  IChartApi,
-  ISeriesApi,
-  LineData,
-  UTCTimestamp,
-} from 'lightweight-charts'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { use as useECharts } from 'echarts/core'
+import { CandlestickChart, LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 import MarketDataTimestamp from '~/components/market/MarketDataTimestamp.vue'
+
+const VChart = defineAsyncComponent(() => import('vue-echarts'))
+useECharts([LineChart, CandlestickChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 interface StockHistoryPoint {
   ts: number
@@ -186,6 +191,7 @@ interface StockDetailResponse {
   market: string
   days: number
   listed_at?: string | null
+  history_source?: string | null
   quote: {
     ticker: string
     price: string | number
@@ -202,6 +208,7 @@ interface StockIntradayResponse {
   ticker: string
   interval: string
   span: string
+  source?: string | null
   points: Array<{
     ts: number
     time: string
@@ -262,14 +269,16 @@ const siteStats = computed(() => detailData.value?.site_stats || {
   unique_agent_count: 0,
 })
 const recentTrades = computed(() => detailData.value?.recent_trades || [])
-const latestUpdatedAt = computed(() => intradayData.value?.updated_at || detailData.value?.updated_at || '')
-
 const chartMode = ref<'line' | 'candlestick'>('line')
-const chartEl = ref<HTMLElement | null>(null)
-let chart: IChartApi | null = null
-let lineSeries: ISeriesApi<'Line'> | null = null
-let candleSeries: ISeriesApi<'Candlestick'> | null = null
-let resizeObserver: ResizeObserver | null = null
+const latestUpdatedAt = computed(() => intradayData.value?.updated_at || detailData.value?.updated_at || '')
+const activeChartSource = computed(() => (
+  chartMode.value === 'line'
+    ? String(intradayData.value?.source || '')
+    : String(detailData.value?.history_source || '')
+))
+const activeChartSourceLabel = computed(() => {
+  return formatChartSourceLabel(activeChartSource.value)
+})
 let refreshWorker: number | null = null
 let removeVisibilityListener: (() => void) | null = null
 
@@ -301,28 +310,29 @@ const activeSpanValue = computed(() => (
   chartMode.value === 'line' ? intradaySpan.value : String(candleSpanDays.value)
 ))
 
-const lineSeriesData = computed<LineData[]>(() => {
+const lineSeriesData = computed(() => {
   return (intradayData.value?.points || [])
     .map((point) => ({
-      time: Math.floor(point.ts / 1000) as UTCTimestamp,
+      ts: Number(point.ts),
       value: Number(point.close),
     }))
-    .filter((point) => Number.isFinite(point.value))
+    .filter((point) => Number.isFinite(point.ts) && Number.isFinite(point.value))
 })
 
-const candleSeriesData = computed<CandlestickData[]>(() => {
+const candleSeriesData = computed(() => {
   const cutoffTs = Date.now() - candleSpanDays.value * 24 * 60 * 60 * 1000
   const selectedHistory = (detailData.value?.history || []).filter((point) => point.ts >= cutoffTs)
   const sourceHistory = selectedHistory.length ? selectedHistory : (detailData.value?.history || [])
   return sourceHistory
     .map((point) => ({
-      time: Math.floor(point.ts / 1000) as UTCTimestamp,
+      ts: Number(point.ts),
       open: Number(point.open),
       high: Number(point.high),
       low: Number(point.low),
       close: Number(point.close),
     }))
     .filter((point) =>
+      Number.isFinite(point.ts) &&
       Number.isFinite(point.open) &&
       Number.isFinite(point.high) &&
       Number.isFinite(point.low) &&
@@ -330,23 +340,131 @@ const candleSeriesData = computed<CandlestickData[]>(() => {
     )
 })
 
-function computeReturn(days: number): number {
+const hasMeaningfulHistory = computed(() => {
   const history = detailData.value?.history || []
-  if (!history.length) return 0
-  const sorted = [...history].sort((a, b) => a.ts - b.ts)
-  const lastClose = quotePrice.value || Number(sorted[sorted.length - 1]?.close || 0)
-  if (!lastClose) return 0
-  const targetTs = Date.now() - days * 24 * 60 * 60 * 1000
-  let base = Number(sorted[0]?.close || 0)
-  for (const point of sorted) {
-    if (point.ts <= targetTs) base = Number(point.close)
+  if (history.length < 8) return false
+  const closeSet = new Set(
+    history
+      .map(point => Number(point.close))
+      .filter(value => Number.isFinite(value))
+      .map(value => value.toFixed(4))
+  )
+  return closeSet.size >= 4
+})
+
+const stockChartOption = computed(() => {
+  const isLine = chartMode.value === 'line'
+  const linePoints = lineSeriesData.value
+  const candlePoints = candleSeriesData.value
+  const sourcePoints = isLine ? linePoints : candlePoints
+  const categories = sourcePoints.map((point) => formatChartTimeLabel(point.ts, isLine))
+  const hasData = categories.length > 0
+
+  const emptyOption = {
+    animation: false,
+    grid: { left: 44, right: 16, top: 18, bottom: 34 },
+    xAxis: {
+      type: 'category',
+      data: [],
+      axisLabel: { color: '#9CA3AF', fontSize: 11 },
+      axisLine: { lineStyle: { color: '#E5E7EB' } },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      scale: true,
+      axisLabel: { color: '#9CA3AF', fontSize: 11 },
+      splitLine: { lineStyle: { color: '#F1F5F9' } },
+    },
+    series: [],
   }
-  if (!base) return 0
+  if (!hasData) return emptyOption
+
+  return {
+    animation: false,
+    grid: { left: 44, right: 16, top: 18, bottom: 34 },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      formatter: (params: any[]) => {
+        const item = params?.[0]
+        if (!item) return ''
+        const index = Number(item.dataIndex || 0)
+        const label = categories[index] || ''
+        if (isLine) {
+          const value = Number(linePoints[index]?.value || 0)
+          return `${label}<br/>${formatPrice(value)}`
+        }
+        const row = candlePoints[index]
+        if (!row) return label
+        return `${label}<br/>开 ${formatPrice(row.open)} 高 ${formatPrice(row.high)}<br/>低 ${formatPrice(row.low)} 收 ${formatPrice(row.close)}`
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: categories,
+      axisLabel: { color: '#9CA3AF', fontSize: 11 },
+      axisLine: { lineStyle: { color: '#E5E7EB' } },
+      splitLine: { show: false },
+      boundaryGap: isLine,
+    },
+    yAxis: {
+      type: 'value',
+      scale: true,
+      axisLabel: {
+        color: '#9CA3AF',
+        fontSize: 11,
+      },
+      splitLine: { lineStyle: { color: '#F1F5F9' } },
+    },
+    series: isLine
+      ? [
+          {
+            type: 'line',
+            smooth: 0.2,
+            showSymbol: false,
+            data: linePoints.map(point => Number(point.value)),
+            lineStyle: { width: 2, color: '#2563EB' },
+            areaStyle: { color: 'rgba(37, 99, 235, 0.16)' },
+          },
+        ]
+      : [
+          {
+            type: 'candlestick',
+            data: candlePoints.map(point => [point.open, point.close, point.low, point.high]),
+            itemStyle: {
+              color: '#16A34A',
+              color0: '#EF4444',
+              borderColor: '#16A34A',
+              borderColor0: '#EF4444',
+            },
+          },
+        ],
+  }
+})
+
+function computeReturn(days: number): number | null {
+  const history = detailData.value?.history || []
+  if (days > 1 && !hasMeaningfulHistory.value) return null
+  if (!history.length) return null
+  const sorted = [...history].sort((a, b) => a.ts - b.ts)
+  if (sorted.length < 2) return null
+  const lastClose = quotePrice.value || Number(sorted[sorted.length - 1]?.close || 0)
+  if (!lastClose) return null
+  const totalSpanDays = (sorted[sorted.length - 1].ts - sorted[0].ts) / 86_400_000
+  if (sorted.length < Math.max(8, Math.floor(days / 2)) && totalSpanDays > days * 4) {
+    return null
+  }
+  const targetTs = Date.now() - days * 24 * 60 * 60 * 1000
+  const fallbackBase = Number(sorted[0]?.close || 0)
+  const targetBase = [...sorted].reverse().find(point => point.ts <= targetTs)
+  const base = Number(targetBase?.close || fallbackBase)
+  if (!base) return null
   return ((lastClose - base) / base) * 100
 }
 
 const returnStats = computed(() => ({
-  r1d: computeReturn(1),
+  r1d: quoteChangePct.value,
   r5d: computeReturn(5),
   r30d: computeReturn(30),
   r90d: computeReturn(90),
@@ -362,8 +480,14 @@ function formatMoney(value: string | number) {
   return `¥${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-function formatPercent(value: number) {
+function formatPercent(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return '--'
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
+}
+
+function resolveReturnClass(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return 'text-main'
+  return cc.textClass(value)
 }
 
 function formatTime(value: string) {
@@ -390,56 +514,46 @@ function setChartSpan(value: string) {
   }
 }
 
-async function initChart() {
-  if (!chartEl.value || chart) return
-  const lightweight = await import('lightweight-charts')
-  const initialWidth = Math.max(1, Math.floor(chartEl.value.getBoundingClientRect().width || chartEl.value.clientWidth || 320))
-  chart = lightweight.createChart(chartEl.value, {
-    width: initialWidth,
-    height: 340,
-    layout: {
-      textColor: '#9CA3AF',
-      background: { type: lightweight.ColorType.Solid, color: 'transparent' },
-    },
-    grid: {
-      vertLines: { color: '#F1F5F9' },
-      horzLines: { color: '#F1F5F9' },
-    },
-    rightPriceScale: { borderColor: '#E5E7EB' },
-    timeScale: { borderColor: '#E5E7EB' },
-    crosshair: { mode: lightweight.CrosshairMode.Normal },
+function formatChartTimeLabel(ts: number, isLine: boolean) {
+  const date = new Date(ts)
+  if (isLine) {
+    return date.toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  }
+  return date.toLocaleDateString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    month: '2-digit',
+    day: '2-digit',
   })
-
-  lineSeries = chart.addLineSeries({
-    color: '#2563EB',
-    lineWidth: 2,
-    priceLineVisible: false,
-    lastValueVisible: true,
-  })
-  candleSeries = chart.addCandlestickSeries({
-    upColor: '#16A34A',
-    downColor: '#EF4444',
-    wickUpColor: '#16A34A',
-    wickDownColor: '#EF4444',
-    borderVisible: false,
-    priceLineVisible: false,
-    lastValueVisible: true,
-  })
-  applyChartData()
-  resizeObserver = new ResizeObserver((entries) => {
-    const width = entries[0]?.contentRect.width
-    if (chart && width) chart.applyOptions({ width })
-  })
-  resizeObserver.observe(chartEl.value)
 }
 
-function applyChartData() {
-  if (!lineSeries || !candleSeries || !chart) return
-  lineSeries.setData(lineSeriesData.value)
-  candleSeries.setData(candleSeriesData.value)
-  lineSeries.applyOptions({ visible: chartMode.value === 'line' })
-  candleSeries.applyOptions({ visible: chartMode.value === 'candlestick' })
-  chart.timeScale().fitContent()
+function formatChartSourceLabel(value: string) {
+  switch (value) {
+    case 'yahoo_chart':
+      return 'Yahoo Finance'
+    case 'tencent_kline':
+      return '腾讯行情'
+    case 'nasdaq_historical':
+      return 'NASDAQ Historical'
+    case 'nasdaq_chart':
+      return 'NASDAQ Chart'
+    case 'stooq_csv':
+      return 'Stooq'
+    case 'history_projection':
+      return '历史收盘投影'
+    case 'quote_flat':
+      return '最新报价回填'
+    case 'route_fallback':
+      return '站内兜底数据'
+    default:
+      return '聚合行情'
+  }
 }
 
 function stopWorker() {
@@ -465,16 +579,11 @@ function ensureWorker() {
   }, REFRESH_INTERVAL_MS)
 }
 
-watch([lineSeriesData, candleSeriesData, chartMode], () => {
-  applyChartData()
-})
-
 watch(() => detailData.value?.quote?.market_status, () => {
   ensureWorker()
 }, { immediate: true })
 
 onMounted(() => {
-  void initChart()
   const onVisible = () => {
     if (document.hidden) {
       stopWorker()
@@ -492,12 +601,6 @@ onBeforeUnmount(() => {
   stopWorker()
   removeVisibilityListener?.()
   removeVisibilityListener = null
-  resizeObserver?.disconnect()
-  resizeObserver = null
-  chart?.remove()
-  chart = null
-  lineSeries = null
-  candleSeries = null
 })
 
 useHead({
