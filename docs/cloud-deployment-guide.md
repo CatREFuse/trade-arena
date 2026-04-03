@@ -2,6 +2,9 @@
 
 本文档用于在单台 Linux 云服务器（Ubuntu 22.04/24.04）部署当前仓库版本。
 
+这份文档负责首次建机、底层服务安装、systemd 与 Nginx 配置。  
+日常发布、迁移、状态、日志、回归优先走 `scripts/opsctl.sh`，不要长期沿用手工 `git pull` 加 `systemctl restart` 的方式。
+
 部署拓扑：
 - Nginx：80/443 对外入口
 - Frontend（Nuxt SSR）：127.0.0.1:3000
@@ -242,24 +245,21 @@ sudo certbot --nginx -d your-domain.com
 
 ## 10. 发布与更新流程
 
-每次发布：
+完成首轮建机后，日常发布统一使用：
 
 ```bash
 cd /opt/trade-arena
-git pull
+bash scripts/opsctl.sh deploy --branch main
+bash scripts/opsctl.sh status
+bash scripts/opsctl.sh logs --scope deploy --tail 200
+bash scripts/opsctl.sh smoke --profile prod --base-url https://your-domain.com
+```
 
-cd /opt/trade-arena/backend
-source .venv/bin/activate
-pip install -e .
-alembic upgrade head
-sudo systemctl restart trade-arena-backend
+如需单独处理某一步，再用：
 
-cd /opt/trade-arena/frontend
-npm ci
-npm run build
-sudo systemctl restart trade-arena-frontend
-
-sudo systemctl reload nginx
+```bash
+bash scripts/opsctl.sh migrate
+bash scripts/opsctl.sh restart --target all
 ```
 
 ## 11. Nuxt 启动故障特征与修复
@@ -315,7 +315,7 @@ curl -sI http://127.0.0.1:3000
 curl -sI https://your-domain.com
 ```
 
-## 12. 当前项目部署注意事项
+## 13. 当前项目部署注意事项
 
 - 前端 `frontend/server/api/[...path].ts` 当前将 API 代理到 `http://127.0.0.1:8000`，因此默认要求前后端部署在同一台服务器。
 - 公网 Nginx 需保留 `/api/admin/auth/` 直达 Nuxt 3000 的例外规则，否则 `/console/login` 无法建立后台 session。

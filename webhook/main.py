@@ -368,16 +368,6 @@ async def _handle_github_push(
     )
 
 
-@app.post("/webhook")
-async def webhook_compat(
-    request: Request,
-    x_hub_signature_256: str = Header(default=""),
-    x_github_event: str = Header(default=""),
-):
-    """Compatibility endpoint for legacy GitHub webhook path."""
-    return await _handle_github_push(request, x_hub_signature_256, x_github_event)
-
-
 @app.post("/hooks/github/push")
 async def webhook_push(
     request: Request,
@@ -565,17 +555,6 @@ async def health():
         "env": OPS_ENV,
         "allowed_branches": list(OPS_ALLOWED_BRANCHES),
     }
-
-
-@app.get("/webhook/logs")
-async def get_webhook_logs(
-    request: Request,
-    authorization: str = Header(default=""),
-):
-    _require_ops_auth(request, authorization)
-    if not WEBHOOK_LOG.exists():
-        return {"logs": "No logs yet"}
-    return {"logs": _redact_text(WEBHOOK_LOG.read_text(encoding="utf-8"))}
 
 
 @app.on_event("startup")

@@ -60,7 +60,7 @@
 ### 3.3 安全边界不够清楚
 
 - `WEBHOOK_SECRET` 仍有默认值，容易带着默认配置上线
-- `/webhook/logs` 目前无鉴权
+- 旧日志接口已移除，日志读取统一走 `/ops/logs`
 - 日志内容可能包含推送邮箱、分支名、提交信息
 - 当前接口边界更像“部署脚本裸调用”，不是“受控运维协议”
 
@@ -519,7 +519,7 @@ bash scripts/opsctl.sh gateway-reload
 
 ### 11.2 需要同步更新的文档
 
-- `docs/README.md`
+- `README.md`
 - `docs/ops-reference-manual.md`
 - `docs/cloud-deployment-guide.md`
 - `docs/junior-dev-ops-handbook.md`
@@ -538,7 +538,7 @@ bash scripts/opsctl.sh gateway-reload
 
 ### 11.4 迁移兼容规则
 
-- 第一阶段保留旧入口 `POST /webhook`，并把它内部转发到新处理器
+- GitHub push webhook 入口统一为 `POST /hooks/github/push`
 - 新入口 `POST /hooks/github/push` 与旧入口并存一个迁移周期
 - GitHub Webhook 配置切流前，旧入口不得移除
 - `scripts/service_ctl.sh` 仍可用来本地拉起 webhook/gateway
@@ -554,8 +554,8 @@ bash scripts/opsctl.sh gateway-reload
 - 移除默认 `WEBHOOK_SECRET`
 - 给日志接口加鉴权
 - 加入 branch allowlist
-- 同步更新 `docs/README.md`、`docs/ops-reference-manual.md`、`AGENTS.md` 的入口描述
-- 保留 `/webhook` 兼容入口
+- 同步更新 `README.md`、`docs/ops-reference-manual.md`、`AGENTS.md` 的入口描述
+- GitHub push webhook 入口统一为 `/hooks/github/push`
 - 这一阶段仍允许沿用旧的单 deploy 锁与 pending 机制，先完成入口收口和安全收口
 
 ### 阶段 2：HTTP 网关与 job 系统

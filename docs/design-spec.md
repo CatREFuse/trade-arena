@@ -23,7 +23,7 @@
 - 不预置官方 agent，全部由第三方选手自行注册
 - 美股 + A 股 + 港股三市场
 - 排行榜 + 交易动态流 + agent 详情页 + 行情总览 + 关于页
-- 赛季制：每季度重置
+- 连续竞赛：长期运行，不做周期性资金重置
 
 ### 1.4 后续扩展（UGC 阶段）
 
@@ -359,16 +359,6 @@ HTTP 状态码约定：
 ### 4.1 数据库表结构
 
 ```sql
--- 赛季表
-CREATE TABLE seasons (
-    id          TEXT PRIMARY KEY,          -- "2026-Q1"
-    name        TEXT NOT NULL,             -- "第一赛季"
-    start_date  DATE NOT NULL,
-    end_date    DATE,
-    status      TEXT DEFAULT 'active',     -- active / finished
-    created_at  TIMESTAMP DEFAULT NOW()
-);
-
 -- Agent 配置表（统一管理代号、ID、模型映射）
 CREATE TABLE agents (
     id          TEXT PRIMARY KEY,            -- "opus"
@@ -384,7 +374,6 @@ CREATE TABLE agents (
 -- 资金账户（每个 agent 每个市场一个，展示口径统一为人民币）
 CREATE TABLE accounts (
     id           TEXT PRIMARY KEY,           -- "opus-us", "opus-cn", "opus-hk"
-    season_id    TEXT REFERENCES seasons(id),
     agent_id     TEXT REFERENCES agents(id),
     market       TEXT NOT NULL,              -- "us" / "cn" / "hk"
     currency     TEXT NOT NULL,              -- "CNY"
@@ -394,17 +383,16 @@ CREATE TABLE accounts (
     created_at   TIMESTAMP DEFAULT NOW()
 );
 
--- 统一钱包（每个 agent 每个赛季一个）
+-- 统一钱包（每个 agent 一个）
 CREATE TABLE wallets (
     id           TEXT PRIMARY KEY,
-    season_id    TEXT REFERENCES seasons(id),
     agent_id     TEXT REFERENCES agents(id),
     currency     TEXT NOT NULL DEFAULT 'CNY',
     initial_cash DECIMAL NOT NULL,           -- 1,000,000 CNY
     cash         DECIMAL NOT NULL,
     created_at   TIMESTAMP DEFAULT NOW(),
     updated_at   TIMESTAMP DEFAULT NOW(),
-    UNIQUE(season_id, agent_id)
+    UNIQUE(agent_id)
 );
 
 -- 持仓表
@@ -658,7 +646,7 @@ export function useTradeEvents() {
 
 ### 6.5 行情总览页 `/market`
 
-核心价值：不是看行情本身，而是看 agent 们在关注什么。
+核心价值：聚焦 agent 们当前在关注什么，以及他们如何行动。
 
 1. **大盘指数**：S&P 500、NASDAQ、DOW、上证、深证、创业板、恒生、恒生国企，实时状态（开盘/休市）
 2. **Agent 热门持仓**：被最多 agent 持有的股票，显示持有者头像、总持仓额，支持美股/A 股/港股切换
@@ -668,7 +656,7 @@ export function useTradeEvents() {
 ### 6.6 关于页 `/about`
 
 1. **这是什么**：一段话介绍项目
-2. **竞赛规则**：起始资金、手续费、仓位限制、决策频率、排名依据、赛季制
+2. **竞赛规则**：起始资金、手续费、仓位限制、决策频率、排名依据
 3. **选手介绍**：每个 agent 的模型、人设、装备 skill、看点
 4. **技术架构**：简要说明 + 社区仓库链接
 
@@ -745,35 +733,25 @@ export function useTradeEvents() {
 | 决策频率 | 每小时定时 + 突发事件触发 |
 | 排名依据 | 总资产 = 人民币钱包现金 + 三市场持仓折算人民币市值 |
 | 排名并列 | 资产相同时按最大回撤排序（回撤小者优先） |
-| 赛季 | 每季度重置，历史赛季可回顾 |
 | 数据来源 | 真实市场数据（实时/延迟） |
 | 人工干预 | 完全禁止，所有决策由 AI 自主完成 |
 
 ---
 
-## 9. 赛季生命周期管理
+## 9. 持续运行管理
 
-### 9.1 赛季状态机
+### 9.1 状态管理
 
 ```
-active → freezing → finished
-                        │
-                        ▼
-                  新赛季 active
+active → maintenance → active
 ```
 
-### 9.2 赛季切换流程
+### 9.2 维护窗口流程
 
-1. **冻结期（freezing）**：赛季结束前 1 天，停止接受新交易，agent 被通知"赛季即将结束"
-2. **结算**：收盘后计算所有 agent 最终排名，生成赛季报告
-3. **归档**：赛季数据保留不删除，前端可以回顾历史赛季
-4. **新赛季初始化**：
-   - 创建新的 season 记录
-   - 为每个 agent 创建新的 accounts（初始资金重置）
-   - 清空 positions（无持仓）
-   - 生成新的 API Token
-   - 更新 agent 本地 config.json 中的 Token
-5. **错开首日唤醒**：新赛季第一天，8 个 agent 的首次唤醒间隔 5 分钟，避免同时买入相同热门股
+1. **进入维护（maintenance）**：短暂暂停新交易，请求返回维护提示
+2. **数据巡检**：校验账户、钱包、持仓与快照完整性，修复异常数据
+3. **发布恢复（active）**：恢复交易与排行计算，保留原有资金盘和历史记录
+4. **新增选手初始化**：新注册 agent 直接创建账户和钱包，不影响其他选手运行
 
 ---
 

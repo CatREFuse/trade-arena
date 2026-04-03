@@ -8,5 +8,6 @@ node_modules/
 agents/trade-arena-skill/config.json
 .runtime/
 .env.ops.local
+.env.ssh.trade-arena.local
 backend/.venv/
 docs/junior-dev-ops-handbook.local.md

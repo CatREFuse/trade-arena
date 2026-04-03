@@ -219,6 +219,65 @@ MODE=prod START_DOCKER=1 BUILD_FRONTEND=1 bash scripts/service_ctl.sh start
 
 生产模式下前端正式入口应是 `.output/server/index.mjs`。不要把 `nuxt preview` 或 `.nuxt/dist/*` 当成常驻生产入口。
 
+### 9.1 Nuxt 生产产物排查
+
+如果日志里出现下面这种错误：
+
+```text
+Package import specifier "#internal/nuxt/paths" is not defined in package .../frontend/package.json imported from .../.nuxt/dist/server/server.mjs
+```
+
+先看两个特征：
+
+1. 报错栈里出现 `.nuxt/dist/server/server.mjs`
+2. 同时出现 `#internal/nuxt/paths`
+
+这通常表示当前运行的是 Nuxt 内部构建目录，不是正式生产入口。
+
+处理顺序：
+
+```bash
+cd frontend
+rm -rf .nuxt .output
+npm ci
+npm run build
+HOST=127.0.0.1 PORT=3000 npm run start
+curl --noproxy '*' -I http://127.0.0.1:3000
+```
+
+排查时再确认：
+
+- 不要把 `nuxt preview` 当成常驻生产入口
+- 不要运行 `node .nuxt/dist/server/server.mjs`
+- 正式入口应是 `.output/server/index.mjs`
+
+### 9.2 Nuxt Dev Mode 排查
+
+如果本地 `npm run dev` 先报：
+
+```text
+Failed to resolve import "#app-manifest" from "node_modules/nuxt/dist/app/composables/manifest.js"
+```
+
+随后又掉成：
+
+```text
+Package import specifier "#internal/nuxt/paths" is not defined in package .../frontend/package.json imported from .../.nuxt/dist/server/server.mjs
+```
+
+按这个顺序处理：
+
+1. 先确认当前是 dev 态，不是生产态
+2. 关闭所有残留的 `npm run dev` 或 `nuxt dev` 进程，只保留一条
+3. 清掉旧的 `.nuxt` 目录后重启 `npm run dev`
+4. 如果日志里持续出现 `#app-manifest` 预处理错误，在 `frontend/nuxt.config.ts` 中显式设置 `experimental: { appManifest: false }`
+5. 用浏览器和 `curl --noproxy '*' -I http://localhost:3000/` 确认是否恢复 `200 OK`
+
+补充说明：
+
+- `npm run build` 会重建 `.nuxt/dist`，如果它和 `npm run dev` 同时跑，dev 服务会自动重启
+- 只看到 `.nuxt/dist directory has been removed. Restarting Nuxt...` 还不算故障，关键看后续是否恢复可访问状态
+
 ## 10. 页面打不开时的排查顺序
 
 第一步看状态：

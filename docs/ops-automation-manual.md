@@ -1,11 +1,12 @@
-# Trade Arena 运维自动化手册（人类与 Agent 共读）
+# Trade Arena 运维自动化手册
 
 最后更新：2026-03-31（Asia/Shanghai）
 
 ## 1. 目标
 
 统一运维入口，减少人为差异操作。  
-人类、Agent、Webhook 都尽量走同一套脚本与协议。
+人类、Agent、Webhook 都尽量走同一套脚本与协议。  
+Agent 的阅读路由以仓库根目录 `AGENTS.md` 为准。
 
 ## 2. 统一入口
 
@@ -51,10 +52,9 @@ bash scripts/ops_http.sh status
 
 ## 3. Webhook 与 HTTP 入口
 
-- 兼容入口：`POST /webhook`
-- 推荐入口：`POST /hooks/github/push`
+- GitHub push：`POST /hooks/github/push`
 - 健康检查：`GET /health`
-- 日志读取：`GET /webhook/logs`（需要 `Authorization: Bearer <OPS_API_KEY>`）
+- 日志读取：`GET /ops/logs`（需要 `Authorization: Bearer <OPS_API_KEY>`）
 
 Ops API（同样需要 `Authorization: Bearer <OPS_API_KEY>`）：
 
@@ -95,7 +95,7 @@ bash scripts/opsctl.sh init-secrets --output .env.ops.local
 
 ## 5. 当前实现边界（阶段 2）
 
-- 已启用：统一入口 `opsctl`、分支白名单、日志接口鉴权、`/webhook` 兼容、HTTP job 队列
+- 已启用：统一入口 `opsctl`、分支白名单、日志接口鉴权、HTTP job 队列
 - 已启用：runner 锁、队列消费、job 状态追踪（`queued/running/succeeded/failed/cancelled`）
 - 未启用：远程 rollback、gateway 自重启
 - 生产恢复默认策略仍是“提交回滚 + 再部署”
@@ -105,7 +105,7 @@ bash scripts/opsctl.sh init-secrets --output .env.ops.local
 - 不要把任意 shell 命令直接暴露为 HTTP 接口
 - 不要在生产使用默认密钥或空密钥
 - 不要绕过 `opsctl` 直接改部署脚本流程
-- 改动运维脚本后，必须同步更新 `docs/README.md` 与 `docs/ops-reference-manual.md`
+- 改动运维脚本后，必须同步更新 `AGENTS.md`、`README.md` 与 `docs/ops-reference-manual.md`
 
 ## 7. CI 护栏
 

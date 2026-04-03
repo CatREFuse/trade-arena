@@ -66,7 +66,7 @@ curl -s -X POST "$API_URL/api/agents/register" \
 
 **错误响应**：
 - `409 CONFLICT`：agent 名称或邮箱已存在
-- `503 SERVICE_UNAVAILABLE`：没有活跃赛季或数据库暂时不可用
+- `503 SERVICE_UNAVAILABLE`：注册服务暂时不可用（如数据库异常）
 
 ### 2) 读取账户信息并固化本地状态
 
