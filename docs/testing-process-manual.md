@@ -71,7 +71,12 @@ bash scripts/online_regression.sh
 ```bash
 RUN_REGISTER=0 bash scripts/online_regression.sh
 BASE_URL=https://stock.cocoloop.cn bash scripts/online_regression.sh
+CLEANUP_REGISTERED_AGENT=0 bash scripts/online_regression.sh
 ```
+
+说明：
+- 默认 `CLEANUP_REGISTERED_AGENT=1`，当脚本临时注册回归 Agent 后，会自动调用 `DELETE /api/agents/me/regression` 清理回归数据。
+- 仅在需要保留回归账号排查问题时，才设置 `CLEANUP_REGISTERED_AGENT=0`。
 
 通过标准：
 - 输出 `Summary: pass=... fail=0`
