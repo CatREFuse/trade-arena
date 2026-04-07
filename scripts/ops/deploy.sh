@@ -13,6 +13,9 @@ ALLOWED_BRANCHES="${OPS_ALLOWED_BRANCHES:-main}"
 HTTP_CHECK_RETRIES="${OPS_HTTP_CHECK_RETRIES:-10}"
 HTTP_CHECK_INTERVAL="${OPS_HTTP_CHECK_INTERVAL:-2}"
 DEPLOY_START_DOCKER="${OPS_DEPLOY_START_DOCKER:-1}"
+GIT_FETCH_TIMEOUT="${OPS_GIT_FETCH_TIMEOUT:-45}"
+GIT_FETCH_RETRIES="${OPS_GIT_FETCH_RETRIES:-3}"
+GIT_FETCH_RETRY_INTERVAL="${OPS_GIT_FETCH_RETRY_INTERVAL:-3}"
 DEPLOY_START_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 DEPLOY_SUCCESS=0
 CURRENT_BRANCH="unknown"
@@ -53,6 +56,48 @@ is_branch_allowed() {
   for allowed in $normalized; do
     if [[ "$allowed" == "$b" ]]; then
       return 0
+    fi
+  done
+  return 1
+}
+
+to_positive_int() {
+  local raw="$1"
+  local fallback="$2"
+  if [[ "$raw" =~ ^[0-9]+$ ]] && [[ "$raw" -gt 0 ]]; then
+    printf '%s\n' "$raw"
+    return
+  fi
+  printf '%s\n' "$fallback"
+}
+
+has_active_deploy_process() {
+  # 排除当前脚本进程；其余 deploy.sh 视为在执行中的部署。
+  pgrep -f "$PROJECT_ROOT/scripts/ops/deploy.sh" 2>/dev/null | grep -vw "$$" >/dev/null 2>&1
+}
+
+git_fetch_with_retry() {
+  local timeout_s retries interval_s
+  timeout_s="$(to_positive_int "$GIT_FETCH_TIMEOUT" "45")"
+  retries="$(to_positive_int "$GIT_FETCH_RETRIES" "3")"
+  interval_s="$(to_positive_int "$GIT_FETCH_RETRY_INTERVAL" "3")"
+  local attempt fetch_exit
+  for ((attempt=1; attempt<=retries; attempt++)); do
+    log_line "git fetch attempt ${attempt}/${retries} (timeout=${timeout_s}s)"
+    if command -v timeout >/dev/null 2>&1; then
+      if timeout "${timeout_s}" git fetch origin --prune; then
+        return 0
+      fi
+      fetch_exit=$?
+    else
+      if git fetch origin --prune; then
+        return 0
+      fi
+      fetch_exit=$?
+    fi
+    log_line "git fetch failed (exit=${fetch_exit}) on attempt ${attempt}/${retries}"
+    if (( attempt < retries )); then
+      sleep "$interval_s"
     fi
   done
   return 1
@@ -168,12 +213,16 @@ if ! is_branch_allowed "$BRANCH"; then
 fi
 
 if [[ -f "$LOCK_FILE" ]]; then
-  log_line "Deployment already in progress, skipping..."
-  append_cicd_markdown_record "end" "skipped" "0" "deploy_lock_active"
-  exit 0
+  if has_active_deploy_process; then
+    log_line "Deployment already in progress, skipping..."
+    append_cicd_markdown_record "end" "skipped" "0" "deploy_lock_active"
+    exit 0
+  fi
+  log_line "Found stale deploy lock without active deploy process, removing lock: $LOCK_FILE"
+  rm -f "$LOCK_FILE"
 fi
 
-touch "$LOCK_FILE"
+printf '%s\n' "$$" > "$LOCK_FILE"
 log_line "Starting deployment for branch: $BRANCH"
 
 cleanup() {
@@ -205,7 +254,7 @@ send_notify "stage=start branch=${BRANCH} current_branch=${CURRENT_BRANCH} curre
 
 log_line "Switching to branch: $BRANCH"
 prepare_repo_checkout
-git fetch origin
+git_fetch_with_retry
 git checkout "$BRANCH"
 git reset --hard "origin/$BRANCH"
 # Keep runtime state, docker bind-mount data, and ops secrets on server.

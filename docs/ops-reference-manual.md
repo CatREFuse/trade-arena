@@ -87,6 +87,11 @@ bash scripts/opsctl.sh init-secrets --output .env.ops.local
 4. 实际部署脚本仍使用锁文件与 pending 机制，避免同机并发部署
 5. 部署执行开始/结束会同步写入 `webhook/DEPLOY_LOG.md`
 
+补充（2026-04）：
+- `scripts/ops/deploy.sh` 对 `git fetch` 增加了超时与重试（默认 45 秒、3 次）
+- 若发现锁文件存在但没有活跃 deploy 进程，会自动判定为僵尸锁并清理
+- 可通过环境变量调优：`OPS_GIT_FETCH_TIMEOUT`、`OPS_GIT_FETCH_RETRIES`、`OPS_GIT_FETCH_RETRY_INTERVAL`
+
 ### 2.3 开始/结束通知规则
 
 脚本会向以下地址发通知：
@@ -230,6 +235,7 @@ alembic upgrade head
 - Webhook 401：签名错误或 `WEBHOOK_SECRET` 不一致
 - Webhook 503：`WEBHOOK_SECRET` 或 `OPS_API_KEY` 未正确配置
 - 部署一直排队：锁文件未清理
+- `git fetch` 卡住：默认会自动超时重试，超过重试上限后失败退出并记录失败上下文
 - `git` 同步报 `webhook/DEPLOY_LOG.md not uptodate`：旧部署遗留索引标记或本地日志改动
 - 前端启动异常：误用 `.nuxt` 产物，或构建产物损坏
 - API 500：迁移未完成或依赖安装失败

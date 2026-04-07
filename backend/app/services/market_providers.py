@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import io
 import logging
 import math
 import random
 import re
 from abc import ABC, abstractmethod
-from contextlib import suppress
+from contextlib import redirect_stderr, redirect_stdout, suppress
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 from typing import Awaitable, Callable
 
 import httpx
@@ -20,6 +22,16 @@ except Exception:  # pragma: no cover - 仅用于运行时降级
     ak = None
 
 logger = logging.getLogger(__name__)
+_WARN_THROTTLE_STATE: dict[str, float] = {}
+
+
+def _warning_throttled(key: str, message: str, *args, interval_seconds: float = 120.0) -> None:
+    now = monotonic()
+    last = _WARN_THROTTLE_STATE.get(key, 0.0)
+    if now - last < interval_seconds:
+        return
+    _WARN_THROTTLE_STATE[key] = now
+    logger.warning(message, *args)
 
 HTTP_CLIENT_LIMITS = httpx.Limits(max_connections=32, max_keepalive_connections=16, keepalive_expiry=30.0)
 DEFAULT_HTTP_TIMEOUT = httpx.Timeout(6.0, connect=2.5)
@@ -241,7 +253,7 @@ class YahooProvider(BaseProvider):
                 if (original_ticker := symbol_map.get(symbol))
             }
         except Exception as e:
-            logger.warning(f"Yahoo batch quote fetch failed: {e}")
+            _warning_throttled("yahoo_batch_quote", "Yahoo batch quote fetch failed: %s", e)
             quotes = {}
 
         missing = [ticker for ticker in tickers if ticker not in quotes or quotes[ticker] is None]
@@ -274,7 +286,7 @@ class YahooProvider(BaseProvider):
                 if (original_symbol := symbol_map.get(yahoo_symbol))
             }
         except Exception as e:
-            logger.warning(f"Yahoo batch index fetch failed: {e}")
+            _warning_throttled("yahoo_batch_index", "Yahoo batch index fetch failed: %s", e)
             quotes = {}
 
         missing = [symbol for symbol in symbols if symbol not in quotes or quotes[symbol] is None]
@@ -907,16 +919,21 @@ class AkshareProvider(BaseProvider):
         return {}
 
     async def _fetch_frame(self, name: str, loader: Callable[[], object]):
+        def _load_frame_silently():
+            buffer = io.StringIO()
+            with redirect_stdout(buffer), redirect_stderr(buffer):
+                return loader()
+
         try:
             frame = await asyncio.wait_for(
-                asyncio.to_thread(loader),
+                asyncio.to_thread(_load_frame_silently),
                 timeout=self.REQUEST_TIMEOUT_SECONDS,
             )
             if frame is None or getattr(frame, "empty", True):
                 return None
             return frame
         except Exception as e:
-            logger.warning("AKShare fetch failed for %s: %s", name, e)
+            _warning_throttled(f"akshare_frame:{name}", "AKShare fetch failed for %s: %s", name, e)
             return None
 
     def _parse_cn_quote_frame(self, frame) -> dict[str, QuoteData]:
