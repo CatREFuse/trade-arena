@@ -11,6 +11,7 @@
   --surface-raised: #1A1A1A;
   --border: #171717;
   --border-visible: #1F1F1F;
+  --divider: #1A1A1A;
   --text-disabled: #666666;
   --text-secondary: #999999;
   --text-primary: #E8E8E8;
@@ -51,6 +52,7 @@
   --surface-raised: #F0F0F0;
   --border: #ECECEC;
   --border-visible: #DADADA;
+  --divider: #E5E5E5;
   --text-disabled: #999999;
   --text-secondary: #666666;
   --text-primary: #1A1A1A;
@@ -493,4 +495,18 @@
 /* Tabular Numbers */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+@layer utilities {
+  .border-border {
+    border-color: var(--border);
+  }
+
+  .border-border-visible {
+    border-color: var(--border-visible);
+  }
+
+  .divide-border > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--divider);
+  }
 }
