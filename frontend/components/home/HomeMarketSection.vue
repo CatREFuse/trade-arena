@@ -20,23 +20,23 @@
             <span class="text-2xl">{{ section.emoji }}</span>
             <div>
               <div class="label">{{ section.badge }}</div>
-              <div class="font-body text-body-sm text-primary">{{ section.title }}</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-4">
-            <div class="text-right">
-              <div class="label">STATUS</div>
-              <div class="font-mono text-caption" :class="getStatusClass(section.marketStatus)">
-                {{ formatStatus(section.marketStatus) }}
+              <div class="flex items-center gap-2">
+                <div class="font-body text-body-sm text-primary">{{ section.title }}</div>
+                <span
+                  class="inline-flex items-center border px-2 py-[2px] font-mono text-[10px] leading-none tracking-[0.08em]"
+                  :class="getStatusBadgeClass(section.marketStatus)"
+                >
+                  {{ formatStatus(section.marketStatus) }}
+                </span>
               </div>
             </div>
-            <NuxtLink
-              :to="`/market-detail/${section.key}`"
-              class="font-mono text-caption text-secondary hover:text-primary transition-colors"
-            >
-              VIEW →
-            </NuxtLink>
           </div>
+          <NuxtLink
+            :to="`/market-detail/${section.key}`"
+            class="font-mono text-caption text-secondary hover:text-primary transition-colors"
+          >
+            VIEW →
+          </NuxtLink>
         </div>
 
         <!-- Stats -->
@@ -226,6 +226,12 @@ function getStatusClass(status: string): string {
   if (status === 'open') return 'text-success'
   if (status === 'closed') return 'text-warning'
   return 'text-disabled'
+}
+
+function getStatusBadgeClass(status: string): string {
+  if (status === 'open') return 'text-success border-success/40 bg-success/10'
+  if (status === 'closed') return 'text-warning border-warning/40 bg-warning/10'
+  return 'text-disabled border-border-visible bg-transparent'
 }
 
 function formatSessionWindows(sessionWindows: string[] | undefined): string {

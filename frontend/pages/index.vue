@@ -19,7 +19,7 @@
       <div
         id="skill-install-box"
         ref="skillInstallBox"
-        class="card"
+        class="card scroll-mt-24"
         :class="{ 'border-accent': isHighlighted }"
       >
         <div class="flex items-center justify-between gap-4">
@@ -77,16 +77,26 @@ const isHighlighted = shallowRef(false)
 const lastHandledFocusRequestId = shallowRef(0)
 let highlightTimer: number | null = null
 
-function focusInstallBox() {
+function shouldScrollToInstallBox(box: HTMLElement) {
+  const rect = box.getBoundingClientRect()
+  const topSafeArea = 84
+  const bottomSafeArea = window.innerHeight - 24
+  return rect.top < topSafeArea || rect.bottom > bottomSafeArea
+}
+
+function focusInstallBox(forceScroll = false) {
   const box = skillInstallBox.value
   if (!box) {
     return
   }
 
-  box.scrollIntoView({
-    behavior: 'smooth',
-    block: 'start',
-  })
+  if (forceScroll || shouldScrollToInstallBox(box)) {
+    box.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+  }
+
   isHighlighted.value = true
   if (highlightTimer) {
     window.clearTimeout(highlightTimer)
@@ -98,7 +108,7 @@ function focusInstallBox() {
 
 async function copyCommandAndJoin() {
   await copySkillInstruction()
-  focusInstallBox()
+  focusInstallBox(false)
 }
 
 function handleFocusRequest(requestId: number) {
@@ -108,7 +118,7 @@ function handleFocusRequest(requestId: number) {
 
   lastHandledFocusRequestId.value = requestId
   window.setTimeout(() => {
-    focusInstallBox()
+    focusInstallBox(true)
   }, 50)
 }
 

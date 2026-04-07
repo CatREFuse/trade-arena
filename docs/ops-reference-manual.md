@@ -1,6 +1,6 @@
 # Trade Arena 运维参考手册
 
-最后更新：2026-03-31（Asia/Shanghai）
+最后更新：2026-04-07（Asia/Shanghai）
 
 本文档面向接手部署与集成构建工作的 Agent，目标是让你在首次接手时就能稳定完成：
 - 触发并观察 CI/CD
@@ -116,6 +116,7 @@ bash scripts/opsctl.sh init-secrets --output .env.ops.local
 - 确认目标分支可用，避免将未审核提交直接部署。
 - 确认数据库迁移脚本已随代码入库。
 - 确认 `WEBHOOK_SECRET` 已在服务器环境变量中设置（不要使用默认值）。
+- 【强制】先执行 `timeout 20 git ls-remote origin HEAD` 预检 Git 连通性；若超时，先走“3.4 Git host 重配 SOP”，再部署。
 - 禁止直接修改线上服务器仓库工作树中的业务代码后再手动重启服务。
 - 代码上线统一流程是：本地改动 -> 本地验证 -> `git commit` -> `git push` -> 等 webhook 自动 CI/CD 部署。
 - 如果出现线上热修，必须立刻把同一改动补回本地仓库并重新 `git push`，让线上重新回到可追踪的 Git 状态。
@@ -188,6 +189,58 @@ bash scripts/opsctl.sh admin-login-guard unblock --fingerprint <fingerprint>
 3. 再执行 `unblock`
 4. 如为重复触发，继续检查是否存在暴力尝试来源
 
+### 3.4 Git host 重配 SOP（重点）
+
+适用场景（任一满足就执行）：
+
+- 部署日志持续停在 `git fetch attempt x/3`
+- `timeout 20 git ls-remote origin HEAD` 超时
+- webhook 已命中（200）但代码始终未拉到最新 commit
+
+先进入线上仓库目录：
+
+```bash
+cd /etc/nginx/website/trade-arena
+```
+
+1) 先做连通性确认：
+
+```bash
+timeout 20 git ls-remote origin HEAD
+```
+
+2) 如果超时，探测可用 GitHub IP（返回 `200` 视为可用）：
+
+```bash
+for ip in 140.82.112.4 140.82.114.3 20.205.243.166; do
+  curl --connect-timeout 5 --max-time 8 --resolve github.com:443:$ip -o /dev/null -s -w "$ip %{http_code}\n" https://github.com
+done
+```
+
+3) 将可用 IP 写入 `/etc/hosts`（示例使用 `140.82.112.4`）：
+
+```bash
+if grep -qE '[[:space:]]github\.com(\s|$)' /etc/hosts; then
+  sudo sed -i -E 's/^.*[[:space:]]github\.com(\s.*)?$/140.82.112.4 github.com/' /etc/hosts
+else
+  echo '140.82.112.4 github.com' | sudo tee -a /etc/hosts >/dev/null
+fi
+grep -n 'github.com' /etc/hosts
+```
+
+4) 复检 Git 连通性并重新部署：
+
+```bash
+timeout 60 git ls-remote origin HEAD
+bash scripts/opsctl.sh deploy --branch main
+```
+
+强调：
+
+- 这是生产故障恢复优先级最高的排障项之一，`git fetch` 卡住时不要反复盲目重试部署。
+- 仅修改 `github.com` 映射，不要批量改写其它 host。
+- 网络恢复后可评估是否恢复默认 DNS，避免长期依赖静态 IP。
+
 ## 4. 数据库迁移 SOP（强制）
 
 ### 4.1 开发阶段
@@ -236,6 +289,7 @@ alembic upgrade head
 - Webhook 503：`WEBHOOK_SECRET` 或 `OPS_API_KEY` 未正确配置
 - 部署一直排队：锁文件未清理
 - `git fetch` 卡住：默认会自动超时重试，超过重试上限后失败退出并记录失败上下文
+- `git fetch` 连续超时：优先执行“3.4 Git host 重配 SOP（重点）”，不要只做重复 deploy
 - `git` 同步报 `webhook/DEPLOY_LOG.md not uptodate`：旧部署遗留索引标记或本地日志改动
 - 前端启动异常：误用 `.nuxt` 产物，或构建产物损坏
 - API 500：迁移未完成或依赖安装失败

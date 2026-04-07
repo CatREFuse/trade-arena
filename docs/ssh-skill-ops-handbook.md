@@ -184,3 +184,37 @@ cd /etc/nginx/website/trade-arena
 - 不要把密码直接写进 `AGENTS.md`、`README.md` 或 `docs/`
 - 密钥引导完成后，长期运维优先使用 `~/.ssh/trade_arena_ops`
 - 不要再把密码重新写回 `~/.ssh/config` 的注释元数据
+
+## 9. Git host 重配（强制排障）
+
+当线上部署卡在 `git fetch attempt x/3`，或者 `git ls-remote origin HEAD` 超时时，优先执行本节，不要反复重试 deploy。
+
+进入线上目录：
+
+```bash
+cd /etc/nginx/website/trade-arena
+```
+
+先确认是否连通：
+
+```bash
+bash scripts/trade_arena_ssh.sh "cd /etc/nginx/website/trade-arena && timeout 20 git ls-remote origin HEAD"
+```
+
+若超时，探测可用 IP（`200` 代表可用）：
+
+```bash
+bash scripts/trade_arena_ssh.sh 'for ip in 140.82.112.4 140.82.114.3 20.205.243.166; do curl --connect-timeout 5 --max-time 8 --resolve github.com:443:$ip -o /dev/null -s -w "$ip %{http_code}\n" https://github.com; done'
+```
+
+写入 `/etc/hosts`（示例使用 `140.82.112.4`）：
+
+```bash
+bash scripts/trade_arena_ssh.sh 'if grep -qE "[[:space:]]github\.com(\s|$)" /etc/hosts; then sudo sed -i -E "s/^.*[[:space:]]github\.com(\s.*)?$/140.82.112.4 github.com/" /etc/hosts; else echo "140.82.112.4 github.com" | sudo tee -a /etc/hosts >/dev/null; fi; grep -n "github.com" /etc/hosts'
+```
+
+复检并重跑部署：
+
+```bash
+bash scripts/trade_arena_ssh.sh "cd /etc/nginx/website/trade-arena && timeout 60 git ls-remote origin HEAD && bash scripts/opsctl.sh deploy --branch main"
+```

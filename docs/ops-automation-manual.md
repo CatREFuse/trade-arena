@@ -105,6 +105,7 @@ bash scripts/opsctl.sh init-secrets --output .env.ops.local
 - 不要把任意 shell 命令直接暴露为 HTTP 接口
 - 不要在生产使用默认密钥或空密钥
 - 不要绕过 `opsctl` 直接改部署脚本流程
+- 若部署卡在 `git fetch`，先执行 `docs/ops-reference-manual.md` 的“3.4 Git host 重配 SOP（重点）”，再重试 deploy
 - 改动运维脚本后，必须同步更新 `AGENTS.md`、`README.md` 与 `docs/ops-reference-manual.md`
 
 ## 7. CI 护栏
