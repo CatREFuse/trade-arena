@@ -10,13 +10,13 @@
     </div>
     <div class="card-raised">
       <div class="label mb-2">AVG RETURN</div>
-      <div class="font-mono type-display-lg numeric" :class="getReturnColor(avgReturn)">
+      <div class="font-mono type-display-lg numeric" :class="cc.textClass(avgReturn)">
         {{ avgReturn >= 0 ? '+' : '' }}{{ avgReturn.toFixed(2) }}%
       </div>
     </div>
     <div class="card-raised">
       <div class="label mb-2">TOP RETURN</div>
-      <div class="font-mono type-display-lg numeric" :class="getReturnColor(topReturn)">
+      <div class="font-mono type-display-lg numeric" :class="cc.textClass(topReturn)">
         {{ topReturn >= 0 ? '+' : '' }}{{ topReturn.toFixed(2) }}%
       </div>
     </div>
@@ -40,7 +40,7 @@ const props = defineProps<{
   rankings: LeaderboardRanking[]
 }>()
 
-const { isCN } = useColorConvention()
+const cc = useColorConvention()
 
 const positiveCount = computed(() => props.rankings.filter(r => r.return_pct >= 0).length)
 const avgReturn = computed(() => {
@@ -52,10 +52,4 @@ const topReturn = computed(() => {
   return Math.max(...props.rankings.map(r => r.return_pct))
 })
 
-function getReturnColor(value: number): string {
-  if (isCN.value) {
-    return value >= 0 ? 'text-success' : 'text-accent'
-  }
-  return value >= 0 ? 'text-accent' : 'text-success'
-}
 </script>

@@ -47,7 +47,7 @@
 
       <!-- Return & Assets -->
       <div class="text-right flex-shrink-0">
-        <div class="font-mono text-body-sm numeric" :class="getReturnColor(agent.return_pct)">
+        <div class="font-mono text-body-sm numeric" :class="cc.textClass(agent.return_pct)">
           {{ agent.return_pct >= 0 ? '+' : '' }}{{ agent.return_pct.toFixed(2) }}%
         </div>
         <div class="font-mono text-caption text-secondary numeric">
@@ -76,20 +76,10 @@ defineProps<{
   rankings: LeaderboardRanking[]
 }>()
 
-const { isCN } = useColorConvention()
-
-function getReturnColor(value: number): string {
-  if (isCN.value) {
-    return value >= 0 ? 'text-success' : 'text-accent'
-  }
-  return value >= 0 ? 'text-accent' : 'text-success'
-}
+const cc = useColorConvention()
 
 function getSparklineColor(value: number): string {
-  if (isCN.value) {
-    return value >= 0 ? '#4A9E5C' : '#D71921'
-  }
-  return value >= 0 ? '#D71921' : '#4A9E5C'
+  return cc.hex(value)
 }
 
 function getAgentSparkline(agent: LeaderboardRanking) {
