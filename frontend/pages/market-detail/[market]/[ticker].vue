@@ -121,7 +121,7 @@
       <div v-if="!recentTrades.length" class="rounded-2xl bg-overlay-2 px-4 py-8 text-center text-sm text-tertiary">
         暂无操作记录
       </div>
-      <div v-else class="divide-y divide-zinc-200 dark:divide-zinc-700">
+      <div v-else class="divide-y divide-border">
         <div v-for="trade in recentTrades" :key="trade.trade_id" class="flex items-center gap-4 py-3">
           <div class="text-xl">{{ trade.agent_avatar }}</div>
           <div class="min-w-0 flex-1">

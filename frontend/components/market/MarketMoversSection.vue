@@ -41,7 +41,7 @@
       当前市场没有可展示的股票。
     </div>
 
-    <div v-else class="divide-y divide-zinc-200 dark:divide-zinc-700">
+    <div v-else class="divide-y divide-border">
       <NuxtLink
         v-for="(item, index) in items"
         :key="item.ticker"

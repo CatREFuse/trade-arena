@@ -16,7 +16,7 @@
           :disabled="isLoading"
           @click="manualRefresh"
         >
-          {{ isLoading ? 'LOADING...' : 'REFRESH' }}
+          {{ isLoading ? '加载中...' : '刷新数据' }}
         </button>
       </div>
     </section>
@@ -47,7 +47,7 @@
             {{ formatFxRate(pair.rate) }}
           </div>
           <div v-if="pair.history_source || pair.source" class="mt-2 font-mono text-caption text-disabled">
-            Source: {{ formatFxSource(pair.history_source || pair.source) }}
+            来源：{{ formatFxSource(pair.history_source || pair.source) }}
           </div>
         </div>
       </div>
@@ -97,28 +97,59 @@ useHead({
 
 const { isCN } = useColorConvention()
 
-const { data: overviewData, pending: isLoading } = useLazyFetch('/api/market/overview', {
+type MarketKey = 'us' | 'cn' | 'hk'
+
+interface IndexSnapshot {
+  symbol: string
+  name: string
+  price: number
+  change_pct: number
+  market: MarketKey
+}
+
+interface MarketSummary {
+  market: MarketKey
+  name: string
+  stock_count: number
+  up_count: number
+  down_count: number
+  flat_count: number
+  avg_change_pct: number
+  leader?: {
+    ticker: string
+    change_pct: number
+  } | null
+  laggard?: {
+    ticker: string
+    change_pct: number
+  } | null
+}
+
+interface MarketOverviewResponse {
+  indices: IndexSnapshot[]
+  markets: MarketSummary[]
+  updated_at?: string
+}
+
+const { data: overviewData, pending: isLoading } = useLazyFetch<MarketOverviewResponse>('/api/market/overview', {
   default: () => ({
-    us: { summary: {}, indices: [] },
-    cn: { summary: {}, indices: [] },
-    hk: { summary: {}, indices: [] },
+    indices: [],
+    markets: [],
     updated_at: null,
   }),
 })
 
-const { data: fxOverview } = useLazyFetch('/api/market/fx-overview', {
+const { data: fxOverview } = useLazyFetch('/api/market/fx', {
   default: () => ({ pairs: [], updated_at: null }),
 })
 
-const usSummary = computed(() => overviewData.value?.us?.summary || {})
-const cnSummary = computed(() => overviewData.value?.cn?.summary || {})
-const hkSummary = computed(() => overviewData.value?.hk?.summary || {})
+const usSummary = computed(() => getMarketSummary('us'))
+const cnSummary = computed(() => getMarketSummary('cn'))
+const hkSummary = computed(() => getMarketSummary('hk'))
 
 const usIndices = computed(() => getMarketIndices('us'))
 const cnIndices = computed(() => getMarketIndices('cn'))
 const hkIndices = computed(() => getMarketIndices('hk'))
-
-type MarketKey = 'us' | 'cn' | 'hk'
 
 const INDEX_META: Record<string, { shortLabel: string }> = {
   SPX: { shortLabel: 'S&P 500' },
@@ -137,26 +168,9 @@ const MARKET_INDEX_ORDER: Record<MarketKey, string[]> = {
   hk: ['HSI', 'HSCEI'],
 }
 
-interface IndexSnapshot {
-  symbol: string
-  name: string
-  price: number
-  change_pct: number
-  market: MarketKey
-}
-
-interface MarketOverviewResponse {
-  indices: IndexSnapshot[]
-  markets: Array<{
-    market: MarketKey
-    summary: any
-  }>
-  updated_at?: string
-}
-
 function getMarketIndices(market: MarketKey) {
   const marketIndexMap = new Map(
-    (overviewData.value.indices || [])
+    (overviewData.value?.indices || [])
       .filter((item: IndexSnapshot) => item.market === market)
       .map((item: IndexSnapshot) => [item.symbol, item]),
   )
@@ -171,6 +185,10 @@ function getMarketIndices(market: MarketKey) {
       changePct: item?.change_pct ?? null,
     }
   })
+}
+
+function getMarketSummary(market: MarketKey) {
+  return overviewData.value?.markets?.find(item => item.market === market) || {}
 }
 
 function manualRefresh() {

@@ -175,7 +175,7 @@
           <div class="text-2xl mb-2">📭</div>
           <div class="text-xs">暂无交易记录</div>
         </div>
-        <div v-else class="divide-y divide-zinc-200 dark:divide-zinc-700">
+        <div v-else class="divide-y divide-border">
           <div v-for="t in agentTrades" :key="t.id" class="flex items-center gap-4 py-3.5">
             <div
               :class="t.action === 'buy' ? 'bg-emerald-700' : 'bg-red-700'"
