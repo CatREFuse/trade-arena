@@ -97,18 +97,22 @@ useHead({
 
 const { isCN } = useColorConvention()
 
-const overviewData = ref({
-  us: { summary: {}, indices: [] },
-  cn: { summary: {}, indices: [] },
-  hk: { summary: {}, indices: [] },
-  updated_at: null,
+const { data: overviewData, pending: isLoading } = useLazyFetch('/api/market/overview', {
+  default: () => ({
+    us: { summary: {}, indices: [] },
+    cn: { summary: {}, indices: [] },
+    hk: { summary: {}, indices: [] },
+    updated_at: null,
+  }),
 })
-const fxOverview = ref({ pairs: [], updated_at: null })
-const isLoading = ref(false)
 
-const usSummary = computed(() => overviewData.value.us?.summary || {})
-const cnSummary = computed(() => overviewData.value.cn?.summary || {})
-const hkSummary = computed(() => overviewData.value.hk?.summary || {})
+const { data: fxOverview } = useLazyFetch('/api/market/fx-overview', {
+  default: () => ({ pairs: [], updated_at: null }),
+})
+
+const usSummary = computed(() => overviewData.value?.us?.summary || {})
+const cnSummary = computed(() => overviewData.value?.cn?.summary || {})
+const hkSummary = computed(() => overviewData.value?.hk?.summary || {})
 
 const usIndices = computed(() => getMarketIndices('us'))
 const cnIndices = computed(() => getMarketIndices('cn'))
@@ -169,22 +173,8 @@ function getMarketIndices(market: MarketKey) {
   })
 }
 
-async function fetchData() {
-  isLoading.value = true
-  try {
-    const [overviewRes, fxRes] = await Promise.all([
-      $fetch<MarketOverviewResponse>('/api/market/overview'),
-      $fetch('/api/market/fx-overview'),
-    ])
-    overviewData.value = overviewRes
-    fxOverview.value = fxRes as any
-  } finally {
-    isLoading.value = false
-  }
-}
-
 function manualRefresh() {
-  fetchData()
+  refreshNuxtData()
 }
 
 function formatFxRate(rate: number | undefined | null): string {
@@ -222,8 +212,4 @@ function formatIndexValue(value: number) {
     maximumFractionDigits: 2,
   })
 }
-
-onMounted(() => {
-  fetchData()
-})
 </script>

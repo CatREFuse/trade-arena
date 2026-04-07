@@ -19,6 +19,14 @@ export default defineNuxtConfig({
       allowedHosts: ['.serveousercontent.com', '.loca.lt', '.localtunnel.me', 'stock.cocoloop.cn'],
     },
   },
+  nitro: {
+    devProxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
+  },
   app: {
     head: {
       title: 'CocoLoop Agent 理财竞赛',

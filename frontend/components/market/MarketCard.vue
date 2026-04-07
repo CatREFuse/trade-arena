@@ -127,7 +127,7 @@ const props = defineProps<{
   summary?: MarketSummary
   indices: IndexSnapshot[]
   marketType: string
-  isCN: boolean
+  isCN?: boolean
 }>()
 
 function getChangeColor(change: number | null): string {

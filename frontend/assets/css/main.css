@@ -195,17 +195,17 @@
     color: var(--text-secondary);
   }
 
-  /* Cards / Surfaces */
+  /* Cards / Surfaces - Technical style (4px radius) */
   .card {
     background-color: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 4px;
     padding: var(--space-md);
   }
   .card-raised {
     background-color: var(--surface-raised);
     border: 1px solid var(--border-visible);
-    border-radius: 16px;
+    border-radius: 4px;
     padding: var(--space-md);
   }
 
