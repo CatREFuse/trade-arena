@@ -61,7 +61,7 @@
             v-for="page in visiblePages"
             :key="`leaderboard-page-${page}`"
             type="button"
-            class="min-w-[40px] px-3 py-2 font-mono text-sm transition-colors"
+            class="min-w-[40px] px-3 py-2 font-mono text-sm transition-colors numeric"
             :class="currentPage === page
               ? 'text-display border-b border-display'
               : 'text-disabled hover:text-secondary'"

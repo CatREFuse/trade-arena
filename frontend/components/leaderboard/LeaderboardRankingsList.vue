@@ -10,7 +10,7 @@
       <div class="w-8 text-center flex-shrink-0">
         <span
           v-if="agent.rank <= 3"
-          class="font-mono text-display-lg"
+          class="font-mono text-display-lg numeric"
           :class="[
             agent.rank === 1 ? 'text-warning' :
             agent.rank === 2 ? 'text-secondary' :
@@ -19,7 +19,7 @@
         >
           {{ agent.rank }}
         </span>
-        <span v-else class="font-mono text-body-sm text-disabled">{{ agent.rank }}</span>
+        <span v-else class="font-mono text-body-sm text-disabled numeric">{{ agent.rank }}</span>
       </div>
 
       <!-- Avatar & Info -->

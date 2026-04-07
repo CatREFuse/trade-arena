@@ -44,14 +44,14 @@
         class="flex items-center gap-3 px-3 py-3 border-b border-border last:border-b-0 hover:bg-surface-raised transition-colors"
       >
         <div class="w-8 text-center flex-shrink-0">
-          <span v-if="agent.rank <= 3" class="font-mono text-display-lg" :class="[
+          <span v-if="agent.rank <= 3" class="font-mono text-display-lg numeric" :class="[
             agent.rank === 1 ? 'text-warning' :
             agent.rank === 2 ? 'text-secondary' :
             'text-disabled'
           ]">
             {{ agent.rank }}
           </span>
-          <span v-else class="font-mono text-body-sm text-disabled">{{ agent.rank }}</span>
+          <span v-else class="font-mono text-body-sm text-disabled numeric">{{ agent.rank }}</span>
         </div>
         <div class="flex items-center gap-2 flex-1 min-w-0">
           <span class="text-lg flex-shrink-0">{{ agent.avatar }}</span>
