@@ -63,7 +63,6 @@
           <div>
             <div class="label mb-1">交易时段</div>
             <div class="font-mono text-caption text-primary">{{ section.sessionWindows }}</div>
-            <div class="font-mono text-caption text-secondary">{{ section.timezoneLabel }}</div>
           </div>
           <div>
             <div class="label mb-1">下次开盘</div>
@@ -71,7 +70,7 @@
               {{ section.nextOpenLabel }}
             </div>
             <div class="font-mono text-caption text-secondary">
-              当地时间 {{ section.localNowLabel }}
+              UTC {{ section.utcNowLabel }}
             </div>
           </div>
         </div>
@@ -188,9 +187,8 @@ const marketSections = computed(() => {
       flatCount: summary?.flat_count || 0,
       marketStatus: summary?.market_status || 'closed',
       sessionWindows: formatSessionWindows(summary?.session_windows),
-      timezoneLabel: formatTimezone(summary?.timezone),
       nextOpenLabel: formatNextOpen(summary),
-      localNowLabel: formatLocalTime(summary?.now_local),
+      utcNowLabel: formatUtcTime(summary?.now_local),
       indices,
     }
   })
@@ -229,8 +227,8 @@ function getStatusClass(status: string): string {
 }
 
 function getStatusBadgeClass(status: string): string {
-  if (status === 'open') return 'text-success border-[#2d3b31] bg-[#0d0e10]'
-  if (status === 'closed') return 'text-warning border-[#3d3522] bg-[#0d0e10]'
+  if (status === 'open') return 'text-black border-success bg-success'
+  if (status === 'closed') return 'text-black border-warning bg-warning'
   return 'text-secondary border-[#2a2a2d] bg-[#0d0e10]'
 }
 
@@ -239,23 +237,22 @@ function formatSessionWindows(sessionWindows: string[] | undefined): string {
   return sessionWindows.join(' / ')
 }
 
-function formatTimezone(timezone: string | undefined): string {
-  if (timezone === 'America/New_York') return '纽约时间'
-  if (timezone === 'Asia/Shanghai') return '北京时间'
-  if (timezone === 'Asia/Hong_Kong') return '香港时间'
-  return timezone || '--'
-}
-
-function formatLocalTime(localIso: string | null | undefined): string {
+function formatUtcTime(localIso: string | null | undefined): string {
   if (!localIso) return '--'
-  const normalized = localIso.replace('T', ' ')
-  return normalized.slice(0, 16)
+  const d = new Date(localIso)
+  if (Number.isNaN(d.getTime())) return '--'
+  const yyyy = d.getUTCFullYear()
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(d.getUTCDate()).padStart(2, '0')
+  const hh = String(d.getUTCHours()).padStart(2, '0')
+  const min = String(d.getUTCMinutes()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`
 }
 
 function formatNextOpen(summary: MarketSummary | undefined): string {
   if (!summary) return '--'
   if (summary.market_status === 'open') return '交易中'
   if (!summary.next_open_local) return '--'
-  return formatLocalTime(summary.next_open_local)
+  return `${formatUtcTime(summary.next_open_local)} UTC`
 }
 </script>
