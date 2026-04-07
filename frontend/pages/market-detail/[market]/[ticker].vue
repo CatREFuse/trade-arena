@@ -228,6 +228,7 @@ const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
 const route = useRoute()
 const cc = useColorConvention()
+const { isDark } = useAppearance()
 const rawMarket = String(route.params.market || '').toLowerCase()
 if (rawMarket !== 'us' && rawMarket !== 'cn' && rawMarket !== 'hk') {
   throw createError({ statusCode: 404, statusMessage: '市场不存在' })
@@ -352,6 +353,21 @@ const hasMeaningfulHistory = computed(() => {
   return closeSet.size >= 4
 })
 
+const chartTheme = computed(() => {
+  if (isDark.value) {
+    return {
+      axisLabelColor: '#A1A1AA',
+      axisLineColor: 'rgba(113, 113, 122, 0.26)',
+      splitLineColor: 'rgba(113, 113, 122, 0.14)',
+    }
+  }
+  return {
+    axisLabelColor: '#9CA3AF',
+    axisLineColor: '#E5E7EB',
+    splitLineColor: '#F1F5F9',
+  }
+})
+
 const stockChartOption = computed(() => {
   const isLine = chartMode.value === 'line'
   const linePoints = lineSeriesData.value
@@ -366,15 +382,15 @@ const stockChartOption = computed(() => {
     xAxis: {
       type: 'category',
       data: [],
-      axisLabel: { color: '#9CA3AF', fontSize: 11 },
-      axisLine: { lineStyle: { color: '#E5E7EB' } },
+      axisLabel: { color: chartTheme.value.axisLabelColor, fontSize: 11 },
+      axisLine: { lineStyle: { color: chartTheme.value.axisLineColor } },
       splitLine: { show: false },
     },
     yAxis: {
       type: 'value',
       scale: true,
-      axisLabel: { color: '#9CA3AF', fontSize: 11 },
-      splitLine: { lineStyle: { color: '#F1F5F9' } },
+      axisLabel: { color: chartTheme.value.axisLabelColor, fontSize: 11 },
+      splitLine: { lineStyle: { color: chartTheme.value.splitLineColor } },
     },
     series: [],
   }
@@ -403,8 +419,8 @@ const stockChartOption = computed(() => {
     xAxis: {
       type: 'category',
       data: categories,
-      axisLabel: { color: '#9CA3AF', fontSize: 11 },
-      axisLine: { lineStyle: { color: '#E5E7EB' } },
+      axisLabel: { color: chartTheme.value.axisLabelColor, fontSize: 11 },
+      axisLine: { lineStyle: { color: chartTheme.value.axisLineColor } },
       splitLine: { show: false },
       boundaryGap: isLine,
     },
@@ -412,10 +428,10 @@ const stockChartOption = computed(() => {
       type: 'value',
       scale: true,
       axisLabel: {
-        color: '#9CA3AF',
+        color: chartTheme.value.axisLabelColor,
         fontSize: 11,
       },
-      splitLine: { lineStyle: { color: '#F1F5F9' } },
+      splitLine: { lineStyle: { color: chartTheme.value.splitLineColor } },
     },
     series: isLine
       ? [
