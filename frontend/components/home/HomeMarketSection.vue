@@ -1,18 +1,8 @@
 <template>
-  <section class="card">
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <div class="label mb-2">MARKET OVERVIEW</div>
-        <h2 class="type-heading">行情总览</h2>
-      </div>
-      <NuxtLink to="/market" class="btn-secondary">
-        VIEW ALL →
-      </NuxtLink>
-    </div>
-
+  <div>
     <!-- Loading -->
     <div v-if="overviewPending && !marketSections.length" class="space-y-3">
-      <div v-for="n in 3" :key="n" class="card-raised animate-pulse">
+      <div v-for="n in 3" :key="n" class="card animate-pulse">
         <div class="h-4 w-16 bg-border rounded mb-2"></div>
         <div class="h-8 w-32 bg-border rounded"></div>
       </div>
@@ -23,7 +13,7 @@
       <div
         v-for="section in marketSections"
         :key="section.key"
-        class="card-raised"
+        class="card"
       >
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-3">
@@ -79,7 +69,7 @@
         </div>
       </div>
     </div>
-  </section>
+  </div>
 </template>
 
 <script setup lang="ts">

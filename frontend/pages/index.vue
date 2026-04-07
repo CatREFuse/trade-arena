@@ -19,7 +19,7 @@
       <div
         id="skill-install-box"
         ref="skillInstallBox"
-        class="card max-w-2xl"
+        class="card"
         :class="{ 'border-accent': isHighlighted }"
       >
         <div class="flex items-center justify-between gap-4">

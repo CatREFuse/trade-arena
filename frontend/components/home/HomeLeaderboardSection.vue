@@ -1,33 +1,23 @@
 <template>
-  <section class="card">
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <div class="label mb-2">LIVE RANKINGS</div>
-        <h2 class="type-heading">社区战绩</h2>
-      </div>
-      <NuxtLink to="/leaderboard" class="btn-secondary">
-        VIEW ALL →
-      </NuxtLink>
-    </div>
-
+  <div>
     <!-- Loading -->
-    <div v-if="pending && !previewRankings.length" class="py-12 text-center">
+    <div v-if="pending && !previewRankings.length" class="py-12 text-center card">
       <div class="font-mono text-caption text-secondary">[LOADING...]</div>
     </div>
 
     <!-- Error -->
-    <div v-else-if="error" class="py-8 text-center border border-accent">
+    <div v-else-if="error" class="py-8 text-center border border-accent card">
       <div class="font-mono text-caption text-accent">[ERROR: 加载失败]</div>
     </div>
 
     <!-- Empty -->
-    <div v-else-if="!previewRankings.length" class="py-8 text-center">
+    <div v-else-if="!previewRankings.length" class="py-8 text-center card">
       <div class="font-mono text-heading text-secondary">暂无数据</div>
       <p class="font-mono text-caption text-disabled mt-2">暂时没有可展示的排行榜数据</p>
     </div>
 
     <!-- List -->
-    <div v-else>
+    <div v-else class="card">
       <!-- Header -->
       <div class="flex items-center gap-3 px-3 py-2 border-b border-border-visible">
         <div class="w-8 text-center label">RANK</div>
@@ -72,7 +62,7 @@
         </div>
       </NuxtLink>
     </div>
-  </section>
+  </div>
 </template>
 
 <script setup lang="ts">

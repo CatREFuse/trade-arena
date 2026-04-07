@@ -22,18 +22,18 @@
           <span class="hidden sm:block label">TRADE ARENA</span>
         </NuxtLink>
 
-        <!-- Nav Links - Space Mono ALL CAPS, Bracket Style -->
-        <div class="flex items-center gap-1">
+        <!-- Nav Links - Fixed Width, Bracket Style -->
+        <div class="flex items-center">
           <NuxtLink
             v-for="link in navLinks"
             :key="link.to"
             :to="link.to"
-            class="font-mono text-sm tracking-wider uppercase px-4 py-2 transition-colors"
+            class="font-mono text-sm tracking-wider uppercase py-2 transition-colors text-center min-w-[72px]"
             :class="$route.path === link.to ? 'text-display' : 'text-disabled hover:text-secondary'"
           >
-            <span v-if="$route.path === link.to" class="text-secondary">[</span>
+            <span class="text-secondary opacity-0" :class="{ 'opacity-100': $route.path === link.to }">[</span>
             {{ link.label }}
-            <span v-if="$route.path === link.to" class="text-secondary">]</span>
+            <span class="text-secondary opacity-0" :class="{ 'opacity-100': $route.path === link.to }">]</span>
           </NuxtLink>
 
           <!-- Theme Toggle -->
