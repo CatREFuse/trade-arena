@@ -95,6 +95,30 @@
         </span>
       </div>
     </div>
+
+    <div class="mt-5 pt-4 border-t border-border">
+      <div class="label mb-3">TOP STOCKS</div>
+      <div v-if="boardItems.length" class="divide-y divide-border">
+        <NuxtLink
+          v-for="item in boardItems"
+          :key="item.ticker"
+          :to="`/market-detail/${marketType}/${item.ticker}`"
+          class="flex items-center justify-between gap-3 py-2.5 hover:bg-overlay-2 transition-colors"
+        >
+          <div class="min-w-0">
+            <div class="font-mono text-body-sm text-primary truncate">{{ item.ticker }}</div>
+            <div class="text-[11px] text-secondary truncate">{{ item.name }}</div>
+          </div>
+          <div class="text-right flex-shrink-0">
+            <div class="font-mono text-caption text-primary numeric">{{ formatPrice(item.price) }}</div>
+            <div class="font-mono text-caption numeric" :class="getChangeColor(item.change_pct)">
+              {{ formatPercent(item.change_pct) }}
+            </div>
+          </div>
+        </NuxtLink>
+      </div>
+      <div v-else class="font-mono text-caption text-disabled">暂无个股数据</div>
+    </div>
   </article>
 </template>
 
@@ -108,6 +132,8 @@ interface IndexSnapshot {
 
 interface BoardItem {
   ticker: string
+  name: string
+  price: number
   change_pct: number
 }
 
@@ -120,7 +146,7 @@ interface MarketSummary {
   laggard?: BoardItem | null
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   title: string
   emoji: string
   badge: string
@@ -128,7 +154,10 @@ const props = defineProps<{
   indices: IndexSnapshot[]
   marketType: string
   isCN?: boolean
-}>()
+  boardItems?: BoardItem[]
+}>(), {
+  boardItems: () => [],
+})
 
 function getChangeColor(change: number | null): string {
   if (change === null || change === undefined || Number.isNaN(change)) return 'text-disabled'
@@ -142,5 +171,13 @@ function formatPercent(value: number | undefined | null): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '--'
   const sign = value >= 0 ? '+' : ''
   return `${sign}${value.toFixed(2)}%`
+}
+
+function formatPrice(value: number): string {
+  if (!Number.isFinite(value)) return '--'
+  return Number(value).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
 }
 </script>

@@ -60,6 +60,7 @@
       badge="UNITED STATES"
       :summary="usSummary"
       :indices="usIndices"
+      :board-items="usBoardItems"
       market-type="us"
       :is-cn="isCN"
     />
@@ -71,6 +72,7 @@
       badge="CHINA MAINLAND"
       :summary="cnSummary"
       :indices="cnIndices"
+      :board-items="cnBoardItems"
       market-type="cn"
       :is-cn="isCN"
       class="mt-6"
@@ -83,6 +85,7 @@
       badge="HONG KONG"
       :summary="hkSummary"
       :indices="hkIndices"
+      :board-items="hkBoardItems"
       market-type="hk"
       :is-cn="isCN"
       class="mt-6"
@@ -125,8 +128,16 @@ interface MarketSummary {
   } | null
 }
 
+interface MarketBoardItem {
+  ticker: string
+  name: string
+  price: number
+  change_pct: number
+}
+
 interface MarketOverviewResponse {
   indices: IndexSnapshot[]
+  boards: Record<MarketKey, MarketBoardItem[]>
   markets: MarketSummary[]
   updated_at?: string
 }
@@ -134,6 +145,7 @@ interface MarketOverviewResponse {
 const { data: overviewData, pending: isLoading } = useLazyFetch<MarketOverviewResponse>('/api/market/overview', {
   default: () => ({
     indices: [],
+    boards: { us: [], cn: [], hk: [] },
     markets: [],
     updated_at: null,
   }),
@@ -150,6 +162,9 @@ const hkSummary = computed(() => getMarketSummary('hk'))
 const usIndices = computed(() => getMarketIndices('us'))
 const cnIndices = computed(() => getMarketIndices('cn'))
 const hkIndices = computed(() => getMarketIndices('hk'))
+const usBoardItems = computed(() => getMarketBoardItems('us'))
+const cnBoardItems = computed(() => getMarketBoardItems('cn'))
+const hkBoardItems = computed(() => getMarketBoardItems('hk'))
 
 const INDEX_META: Record<string, { shortLabel: string }> = {
   SPX: { shortLabel: 'S&P 500' },
@@ -189,6 +204,13 @@ function getMarketIndices(market: MarketKey) {
 
 function getMarketSummary(market: MarketKey) {
   return overviewData.value?.markets?.find(item => item.market === market) || {}
+}
+
+function getMarketBoardItems(market: MarketKey) {
+  const items = overviewData.value?.boards?.[market] || []
+  return [...items]
+    .sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct))
+    .slice(0, 8)
 }
 
 function manualRefresh() {
