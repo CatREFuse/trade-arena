@@ -9,12 +9,20 @@
           <div class="font-body text-body-sm text-primary">{{ title }}</div>
         </div>
       </div>
-      <NuxtLink
-        :to="`/market-detail/${marketType}`"
-        class="font-mono text-caption text-secondary hover:text-primary transition-colors"
-      >
-        VIEW →
-      </NuxtLink>
+      <div class="flex items-center gap-4">
+        <div class="text-right">
+          <div class="label">STATUS</div>
+          <div class="font-mono text-caption" :class="getMarketStatusClass(summary?.market_status)">
+            {{ formatMarketStatus(summary?.market_status) }}
+          </div>
+        </div>
+        <NuxtLink
+          :to="`/market-detail/${marketType}`"
+          class="font-mono text-caption text-secondary hover:text-primary transition-colors"
+        >
+          VIEW →
+        </NuxtLink>
+      </div>
     </div>
 
     <!-- Stats Grid -->
@@ -38,6 +46,27 @@
       <div>
         <div class="label mb-1">FLAT</div>
         <div class="font-mono type-subheading numeric text-primary">{{ summary?.flat_count || 0 }}</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 pt-4 border-t border-border">
+      <div>
+        <div class="label mb-1">TRADING HOURS</div>
+        <div class="font-mono text-caption text-primary">
+          {{ formatSessionWindows(summary?.session_windows) }}
+        </div>
+        <div class="font-mono text-caption text-secondary">
+          {{ formatTimezone(summary?.timezone) }}
+        </div>
+      </div>
+      <div>
+        <div class="label mb-1">NEXT OPEN</div>
+        <div class="font-mono text-caption" :class="getMarketStatusClass(summary?.market_status)">
+          {{ formatNextOpen(summary) }}
+        </div>
+        <div class="font-mono text-caption text-secondary">
+          LOCAL NOW {{ formatLocalTime(summary?.now_local) }}
+        </div>
       </div>
     </div>
 
@@ -138,6 +167,11 @@ interface BoardItem {
 }
 
 interface MarketSummary {
+  market_status?: string
+  timezone?: string
+  session_windows?: string[]
+  now_local?: string | null
+  next_open_local?: string | null
   stock_count: number
   up_count: number
   down_count: number
@@ -180,5 +214,42 @@ function formatPrice(value: number | string): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
+}
+
+function formatMarketStatus(status: string | undefined): string {
+  if (status === 'open') return 'OPEN'
+  if (status === 'closed') return 'CLOSED'
+  return '--'
+}
+
+function getMarketStatusClass(status: string | undefined): string {
+  if (status === 'open') return 'text-success'
+  if (status === 'closed') return 'text-warning'
+  return 'text-disabled'
+}
+
+function formatSessionWindows(sessionWindows: string[] | undefined): string {
+  if (!sessionWindows?.length) return '--'
+  return sessionWindows.join(' / ')
+}
+
+function formatTimezone(timezone: string | undefined): string {
+  if (timezone === 'America/New_York') return 'NEW YORK TIME'
+  if (timezone === 'Asia/Shanghai') return 'BEIJING TIME'
+  if (timezone === 'Asia/Hong_Kong') return 'HONG KONG TIME'
+  return timezone || '--'
+}
+
+function formatLocalTime(localIso: string | null | undefined): string {
+  if (!localIso) return '--'
+  const normalized = localIso.replace('T', ' ')
+  return normalized.slice(0, 16)
+}
+
+function formatNextOpen(summary: MarketSummary | undefined): string {
+  if (!summary) return '--'
+  if (summary.market_status === 'open') return 'TRADING NOW'
+  if (!summary.next_open_local) return '--'
+  return formatLocalTime(summary.next_open_local)
 }
 </script>

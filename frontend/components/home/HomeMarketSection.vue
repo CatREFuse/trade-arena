@@ -23,12 +23,20 @@
               <div class="font-body text-body-sm text-primary">{{ section.title }}</div>
             </div>
           </div>
-          <NuxtLink
-            :to="`/market-detail/${section.key}`"
-            class="font-mono text-caption text-secondary hover:text-primary transition-colors"
-          >
-            VIEW →
-          </NuxtLink>
+          <div class="flex items-center gap-4">
+            <div class="text-right">
+              <div class="label">STATUS</div>
+              <div class="font-mono text-caption" :class="getStatusClass(section.marketStatus)">
+                {{ formatStatus(section.marketStatus) }}
+              </div>
+            </div>
+            <NuxtLink
+              :to="`/market-detail/${section.key}`"
+              class="font-mono text-caption text-secondary hover:text-primary transition-colors"
+            >
+              VIEW →
+            </NuxtLink>
+          </div>
         </div>
 
         <!-- Stats -->
@@ -48,6 +56,23 @@
           <div>
             <div class="label mb-1">FLAT</div>
             <div class="font-mono type-subheading numeric">{{ section.flatCount }}</div>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-border grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <div class="label mb-1">TRADING HOURS</div>
+            <div class="font-mono text-caption text-primary">{{ section.sessionWindows }}</div>
+            <div class="font-mono text-caption text-secondary">{{ section.timezoneLabel }}</div>
+          </div>
+          <div>
+            <div class="label mb-1">NEXT OPEN</div>
+            <div class="font-mono text-caption" :class="getStatusClass(section.marketStatus)">
+              {{ section.nextOpenLabel }}
+            </div>
+            <div class="font-mono text-caption text-secondary">
+              LOCAL NOW {{ section.localNowLabel }}
+            </div>
           </div>
         </div>
 
@@ -86,6 +111,11 @@ interface IndexSnapshot {
 interface MarketSummary {
   market: MarketKey
   name: string
+  market_status?: string
+  timezone?: string
+  session_windows?: string[]
+  now_local?: string | null
+  next_open_local?: string | null
   stock_count: number
   up_count: number
   down_count: number
@@ -156,6 +186,11 @@ const marketSections = computed(() => {
       upCount: summary?.up_count || 0,
       downCount: summary?.down_count || 0,
       flatCount: summary?.flat_count || 0,
+      marketStatus: summary?.market_status || 'closed',
+      sessionWindows: formatSessionWindows(summary?.session_windows),
+      timezoneLabel: formatTimezone(summary?.timezone),
+      nextOpenLabel: formatNextOpen(summary),
+      localNowLabel: formatLocalTime(summary?.now_local),
       indices,
     }
   })
@@ -179,5 +214,42 @@ function formatIndexValue(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
+}
+
+function formatStatus(status: string): string {
+  if (status === 'open') return 'OPEN'
+  if (status === 'closed') return 'CLOSED'
+  return '--'
+}
+
+function getStatusClass(status: string): string {
+  if (status === 'open') return 'text-success'
+  if (status === 'closed') return 'text-warning'
+  return 'text-disabled'
+}
+
+function formatSessionWindows(sessionWindows: string[] | undefined): string {
+  if (!sessionWindows?.length) return '--'
+  return sessionWindows.join(' / ')
+}
+
+function formatTimezone(timezone: string | undefined): string {
+  if (timezone === 'America/New_York') return 'NEW YORK TIME'
+  if (timezone === 'Asia/Shanghai') return 'BEIJING TIME'
+  if (timezone === 'Asia/Hong_Kong') return 'HONG KONG TIME'
+  return timezone || '--'
+}
+
+function formatLocalTime(localIso: string | null | undefined): string {
+  if (!localIso) return '--'
+  const normalized = localIso.replace('T', ' ')
+  return normalized.slice(0, 16)
+}
+
+function formatNextOpen(summary: MarketSummary | undefined): string {
+  if (!summary) return '--'
+  if (summary.market_status === 'open') return 'TRADING NOW'
+  if (!summary.next_open_local) return '--'
+  return formatLocalTime(summary.next_open_local)
 }
 </script>

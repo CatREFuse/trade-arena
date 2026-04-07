@@ -127,6 +127,18 @@ class MarketCalendarService:
             return None
         return next_open.astimezone(rule.timezone).isoformat(timespec="seconds")
 
+    def timezone_name(self, market: str) -> str | None:
+        rule = self._rule(market.lower())
+        if rule is None:
+            return None
+        return rule.timezone_name
+
+    def session_windows(self, market: str) -> list[str]:
+        rule = self._rule(market.lower())
+        if rule is None:
+            return []
+        return [f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}" for start, end in rule.sessions]
+
     def _calendar(self, market: str):
         if xcals is None:
             return None

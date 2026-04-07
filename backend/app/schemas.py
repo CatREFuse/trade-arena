@@ -154,6 +154,11 @@ class MarketBoardSnapshotOut(APIModel):
 class MarketSummaryOut(APIModel):
     market: str
     name: str
+    market_status: str
+    timezone: str
+    session_windows: list[str]
+    now_local: Optional[str] = None
+    next_open_local: Optional[str] = None
     stock_count: int
     up_count: int
     down_count: int

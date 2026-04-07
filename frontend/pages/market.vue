@@ -113,6 +113,11 @@ interface IndexSnapshot {
 interface MarketSummary {
   market: MarketKey
   name: string
+  market_status?: string
+  timezone?: string
+  session_windows?: string[]
+  now_local?: string | null
+  next_open_local?: string | null
   stock_count: number
   up_count: number
   down_count: number

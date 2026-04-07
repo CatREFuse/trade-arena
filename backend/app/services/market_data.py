@@ -2270,6 +2270,7 @@ class MarketDataService:
         return snapshot
 
     async def _build_market_overview(self, refresh: bool = False) -> MarketOverviewOut:
+        now_utc = datetime.now(timezone.utc)
         indices, us_board, cn_board, hk_board = await asyncio.gather(
             self.get_all_indices(refresh=refresh),
             self.get_market_board("us", refresh=refresh),
@@ -2280,9 +2281,9 @@ class MarketDataService:
             indices=indices,
             boards={"us": us_board.items, "cn": cn_board.items, "hk": hk_board.items},
             markets=[
-                self._build_market_summary("us", "美股", us_board.items),
-                self._build_market_summary("cn", "A 股", cn_board.items),
-                self._build_market_summary("hk", "港股", hk_board.items),
+                self._build_market_summary("us", "美股", us_board.items, now_utc=now_utc),
+                self._build_market_summary("cn", "A 股", cn_board.items, now_utc=now_utc),
+                self._build_market_summary("hk", "港股", hk_board.items, now_utc=now_utc),
             ],
             updated_at=max(us_board.updated_at, cn_board.updated_at, hk_board.updated_at),
         )
@@ -2433,6 +2434,8 @@ class MarketDataService:
         market: str,
         name: str,
         board: list[MarketBoardItemOut],
+        *,
+        now_utc: datetime | None = None,
     ) -> MarketSummaryOut:
         sorted_board = sorted(board, key=lambda item: item.change_pct, reverse=True)
         up_count = sum(1 for item in board if item.change_pct > 0)
@@ -2442,9 +2445,15 @@ class MarketDataService:
             sum(item.change_pct for item in board) / len(board),
             2,
         ) if board else 0.0
+        market_status = board[0].market_status if board else self.market_calendar.status(market, now_utc=now_utc)
         return MarketSummaryOut(
             market=market,
             name=name,
+            market_status=market_status,
+            timezone=self.market_calendar.timezone_name(market) or "UTC",
+            session_windows=self.market_calendar.session_windows(market),
+            now_local=self.market_calendar.now_local_iso(market, now_utc=now_utc),
+            next_open_local=self.market_calendar.next_open_local_iso(market, now_utc=now_utc),
             stock_count=len(board),
             up_count=up_count,
             down_count=down_count,
