@@ -75,6 +75,7 @@ async def _redis_setex_safe(
 CACHE_TTL = 60  # 个股行情缓存60秒
 INDEX_CACHE_TTL = 300  # 大盘指数缓存5分钟
 BOARD_CACHE_TTL = 120  # 市场看盘榜单缓存2分钟，兼顾新鲜度和负载
+BOARD_LAST_GOOD_TTL = 86400 * 7  # 市场看盘榜单最后有效记录保留7天
 OVERVIEW_CACHE_TTL = 120  # 市场总览缓存2分钟，和看盘榜单保持一致
 TREND_CACHE_TTL = 300  # 市场代表指数曲线缓存5分钟
 STOCK_HISTORY_CACHE_TTL = 300  # 个股历史行情缓存5分钟
@@ -2211,6 +2212,7 @@ class MarketDataService:
 
     async def _build_and_store_market_board(self, cache_key: str, market: str) -> MarketBoardSnapshotOut:
         entries = MARKET_BOARD.get(market, [])
+        last_good_cache_key = f"market:board:last-good:{MARKET_CACHE_VERSION}:{market}"
         if not entries:
             return MarketBoardSnapshotOut(items=[], updated_at=datetime.now(timezone.utc))
 
@@ -2237,12 +2239,34 @@ class MarketDataService:
                 )
             )
         snapshot = MarketBoardSnapshotOut(items=board, updated_at=datetime.now(timezone.utc))
+        if not snapshot.items:
+            last_good_snapshot = await self._load_cached_model_safe(last_good_cache_key, MarketBoardSnapshotOut)
+            if last_good_snapshot is not None and last_good_snapshot.items:
+                logger.warning(
+                    "market board upstream returned empty, fallback to last-good snapshot: market=%s",
+                    market,
+                )
+                await _redis_setex_safe(
+                    self.redis,
+                    cache_key,
+                    BOARD_CACHE_TTL,
+                    json.dumps(last_good_snapshot.model_dump(mode="json")),
+                )
+                return last_good_snapshot
+
         await _redis_setex_safe(
             self.redis,
             cache_key,
             BOARD_CACHE_TTL,
             json.dumps(snapshot.model_dump(mode="json")),
         )
+        if snapshot.items:
+            await _redis_setex_safe(
+                self.redis,
+                last_good_cache_key,
+                BOARD_LAST_GOOD_TTL,
+                json.dumps(snapshot.model_dump(mode="json")),
+            )
         return snapshot
 
     async def _build_market_overview(self, refresh: bool = False) -> MarketOverviewOut:

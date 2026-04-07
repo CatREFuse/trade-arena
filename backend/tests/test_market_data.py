@@ -260,9 +260,46 @@ async def test_get_market_board_batches_large_universe_and_falls_back(fake_redis
     assert batch_calls
     assert len(batch_calls) == (len(md.MARKET_BOARD["us"]) + 3) // 4
     assert len(fallback_calls) == len(batch_calls)
-    assert fake_redis.set_calls[-1][0] == "market:board:v3:us"
+    written_keys = [call[0] for call in fake_redis.set_calls]
+    assert "market:board:v3:us" in written_keys
+    assert "market:board:last-good:v3:us" in written_keys
     assert board.items[0].price == Decimal("88.8")
     assert board.updated_at is not None
+
+
+@pytest.mark.asyncio
+async def test_get_market_board_uses_last_good_snapshot_when_upstream_returns_empty(fake_redis, monkeypatch):
+    service = md.MarketDataService(fake_redis, enable_mock_fallback=False)
+    market = "us"
+    cache_key = f"market:board:{md.MARKET_CACHE_VERSION}:{market}"
+    last_good_key = f"market:board:last-good:{md.MARKET_CACHE_VERSION}:{market}"
+    last_good_snapshot = md.MarketBoardSnapshotOut(
+        items=[
+            md.MarketBoardItemOut(
+                ticker="AAPL",
+                name="Apple",
+                market=market,
+                price=Decimal("199.10"),
+                change_pct=1.11,
+                volume=12345,
+                market_status="open",
+            )
+        ],
+        updated_at=datetime.now(timezone.utc),
+    )
+    fake_redis.store[last_good_key] = json.dumps(last_good_snapshot.model_dump(mode="json")).encode("utf-8")
+
+    async def empty_batch_quotes(_tickers: list[str], *, status_cache=None):
+        return {}
+
+    monkeypatch.setattr(service, "_get_quotes_batch", empty_batch_quotes)
+
+    board = await service.get_market_board(market, refresh=True)
+
+    assert len(board.items) == 1
+    assert board.items[0].ticker == "AAPL"
+    assert board.items[0].price == Decimal("199.10")
+    assert any(call[0] == cache_key for call in fake_redis.set_calls)
 
 
 @pytest.mark.asyncio

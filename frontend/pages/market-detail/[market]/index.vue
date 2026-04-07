@@ -6,10 +6,10 @@
           ← 返回市场总览
         </NuxtLink>
         <h1 class="mt-2 text-2xl md:text-3xl font-bold text-main tracking-tight">
-          {{ detail.meta.label }}
+          {{ marketMeta.label }}
         </h1>
         <p class="mt-1 text-sm text-secondary">
-          {{ detail.meta.subtitle }}
+          {{ marketMeta.subtitle }}
         </p>
         <div class="mt-2">
           <MarketDataTimestamp :timestamp="detail.updatedAt.value" />
@@ -18,7 +18,7 @@
       <div class="hidden sm:block text-right">
         <div>
           <span class="inline-flex items-center rounded-full border border-white/40 bg-white/30 px-2 py-0.5 text-[10px] uppercase tracking-[0.3em] text-zinc-700 backdrop-blur-md dark:border-zinc-700/60 dark:bg-zinc-900/35 dark:text-zinc-200">
-            {{ detail.meta.badge }}
+            {{ marketMeta.badge }}
           </span>
         </div>
         <div class="mt-1 text-sm font-semibold text-main">{{ stockCount }} 只股票</div>
@@ -196,11 +196,12 @@ if (rawMarket !== 'us' && rawMarket !== 'cn' && rawMarket !== 'hk') {
 
 const marketKey = rawMarket as MarketKey
 const detail = await useMarketDetail(marketKey)
+const marketMeta = computed(() => detail.meta.value)
 const PAGE_SIZE = 20
 const currentPage = ref(1)
 
 useHead(() => ({
-  title: `${detail.meta.value.title} · 市场详情 - CocoLoop Agent 理财竞赛`,
+  title: `${marketMeta.value.title} · 市场详情 - CocoLoop Agent 理财竞赛`,
 }))
 
 const stockCount = computed(() => detail.items.value.length)
