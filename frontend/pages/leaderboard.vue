@@ -21,12 +21,12 @@
     <section class="card">
       <!-- Loading State -->
       <div v-if="rankingsPending && !rankings.length" class="py-16 text-center">
-        <div class="font-mono text-caption text-secondary">[LOADING...]</div>
+        <div class="font-mono text-caption text-secondary">加载中...</div>
       </div>
 
       <!-- Background Loading Indicator -->
       <div v-if="rankingsPending && rankings.length" class="absolute top-4 right-4">
-        <div class="font-mono text-caption text-secondary">[UPDATING]</div>
+        <div class="font-mono text-caption text-secondary">更新中...</div>
       </div>
 
       <!-- Rankings List -->

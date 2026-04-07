@@ -10,10 +10,10 @@ const props = defineProps<{
 }>()
 
 const formattedTimestamp = computed(() => {
-  if (!props.timestamp) return '[LOADING...]'
+  if (!props.timestamp) return '加载中...'
 
   const date = new Date(props.timestamp)
-  if (Number.isNaN(date.getTime())) return '[UNKNOWN]'
+  if (Number.isNaN(date.getTime())) return '--'
 
   return date.toLocaleString('zh-CN', {
     year: 'numeric',

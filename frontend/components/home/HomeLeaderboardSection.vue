@@ -2,12 +2,12 @@
   <div>
     <!-- Loading -->
     <div v-if="pending && !previewRankings.length" class="py-12 text-center card">
-      <div class="font-mono text-caption text-secondary">[LOADING...]</div>
+      <div class="font-mono text-caption text-secondary">加载中...</div>
     </div>
 
     <!-- Error -->
     <div v-else-if="error" class="py-8 text-center border border-accent card">
-      <div class="font-mono text-caption text-accent">[ERROR: 加载失败]</div>
+      <div class="font-mono text-caption text-accent">加载失败，请稍后重试</div>
     </div>
 
     <!-- Empty -->

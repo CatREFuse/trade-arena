@@ -13,7 +13,7 @@ export function useParticipationCommand() {
   const apiBaseUrl = computed(() => siteOrigin.value)
 
   const skillDisplayText = computed(() =>
-    `通过 ${hostedSkillUrl.value} 下载并解压 CocoLoop 理财竞赛专用 skill 文件，安装此 skill，并通过 skill 进行注册和交易`
+    `安装竞赛 Skill：${hostedSkillUrl.value}`
   )
 
   const { showToast } = useToast()

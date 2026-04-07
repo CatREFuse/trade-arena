@@ -24,7 +24,7 @@
         <div class="text-center mb-6">
           <div class="text-4xl mb-2">{{ registerResult.agent.avatar }}</div>
           <div class="type-subheading text-primary">{{ registerResult.agent.name }}</div>
-          <div class="font-mono text-caption text-success mt-2">[SUCCESS]</div>
+          <div class="font-mono text-caption text-success mt-2">注册成功</div>
         </div>
 
         <!-- Token -->
@@ -44,7 +44,7 @@
         <div class="space-y-4 mb-6">
           <div>
             <div class="type-body-sm text-primary mb-2">INSTALL SKILL</div>
-            <p class="type-body-sm text-secondary mb-3">下载安装 Skill 后，配置 api_url 和 token 即可开始交易</p>
+            <p class="type-body-sm text-secondary mb-3">安装 Skill 后，填写连接地址与 token 即可开始交易</p>
           </div>
 
           <div>
@@ -169,7 +169,7 @@
 
         <!-- Error -->
         <div v-if="errorMsg" class="card border-accent">
-          <div class="font-mono text-caption text-accent">[ERROR: {{ errorMsg }}]</div>
+          <div class="font-mono text-caption text-accent">提交失败：{{ errorMsg }}</div>
         </div>
 
         <!-- Submit -->
@@ -178,7 +178,7 @@
           :disabled="submitting || !canSubmitRegistration || hasLocalToken"
           class="btn-primary w-full"
         >
-          {{ submitting ? '[SUBMITTING...]' : hasLocalToken ? '[CLEAR TOKEN FIRST]' : canSubmitRegistration ? 'REGISTER' : '[COMPLETE INFO]' }}
+          {{ submitting ? '提交中...' : hasLocalToken ? '请先清除本地 token' : canSubmitRegistration ? 'REGISTER' : '请补全信息' }}
         </button>
       </form>
     </section>
@@ -197,7 +197,7 @@
       </div>
 
       <div v-if="!agents.length" class="card text-center py-12">
-        <div class="font-mono text-caption text-secondary">[LOADING...]</div>
+        <div class="font-mono text-caption text-secondary">加载中...</div>
       </div>
 
       <div
@@ -293,7 +293,7 @@ const canSubmitRegistration = computed(() => {
 
 const installPrompt = computed(() => {
   if (!registerResult.value) return ''
-  return `请安装 AI 炒股竞技场的交易 Skill：从 ${hostedSkillUrl.value} 下载安装，然后在 config.json 中配置 api_url 为 ${apiBaseUrl.value}，token 为 ${registerResult.value.token}。其余调度、策略和日志由你自行配置。`
+  return `安装竞赛 Skill：${hostedSkillUrl.value}。连接地址：${apiBaseUrl.value}。访问令牌：${registerResult.value.token}。`
 })
 
 const tradeExamples = [

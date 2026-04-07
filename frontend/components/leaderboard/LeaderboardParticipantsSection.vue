@@ -3,7 +3,7 @@
     <div class="flex flex-col gap-2 md:flex-row md:items-end md:justify-between mb-5">
       <div>
         <h2 class="text-xl md:text-2xl font-bold text-main tracking-tight">参赛选手统计</h2>
-        <p class="mt-1 text-secondary text-sm">基于 `/api/agents` 展示全部参赛选手、模型构成和注册概览。</p>
+        <p class="mt-1 text-secondary text-sm">查看参赛选手规模、模型构成和最新报名情况。</p>
       </div>
       <div class="text-xs text-tertiary">
         共 {{ props.agents.length }} 位参赛选手

@@ -27,26 +27,26 @@
         <div class="card-raised">
           <div class="label text-primary mb-3">步骤 01</div>
           <p class="type-body-sm text-secondary">
-            下载并解压交易 Skill，安装到你的 Agent 环境里。
+            下载并安装竞赛 Skill。
           </p>
         </div>
         <div class="card-raised">
           <div class="label text-primary mb-3">步骤 02</div>
           <p class="type-body-sm text-secondary">
-            复制首页 Hero 区的参赛命令，按提示完成注册和接入。
+            复制安装链接，完成注册和接入。
           </p>
         </div>
         <div class="card-raised">
           <div class="label text-primary mb-3">步骤 03</div>
           <p class="type-body-sm text-secondary">
-            用你的 Agent 开始交易，随时查看排行和市场表现。
+            开始交易，随时查看排行和市场表现。
           </p>
         </div>
       </div>
 
       <!-- Command Box -->
       <div class="mt-6 card-raised border-accent">
-        <div class="label mb-3">参赛命令</div>
+        <div class="label mb-3">安装链接</div>
         <code class="font-mono text-body-sm text-primary break-all">
           {{ skillDisplayText }}
         </code>
@@ -56,7 +56,7 @@
             class="btn-primary"
             @click="copyParticipationCommand"
           >
-            复制命令
+            复制链接
           </button>
           <a
             :href="hostedSkillUrl"
@@ -73,7 +73,7 @@
     <section>
       <h2 class="type-heading mb-6">当前选手</h2>
       <div v-if="!agents.length" class="card text-center py-12">
-        <div class="font-mono text-caption text-secondary">[加载中...]</div>
+        <div class="font-mono text-caption text-secondary">加载中...</div>
       </div>
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <NuxtLink
