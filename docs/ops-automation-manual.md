@@ -52,7 +52,7 @@ bash scripts/ops_http.sh status
 
 ## 3. Webhook 与 HTTP 入口
 
-- GitHub push：`POST /hooks/github/push`
+- GitHub push：`POST /hooks/github/push`（旧地址 `POST /webhook` 仅临时兼容，需尽快切换）
 - 健康检查：`GET /health`
 - 日志读取：`GET /ops/logs`（需要 `Authorization: Bearer <OPS_API_KEY>`）
 

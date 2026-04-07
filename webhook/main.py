@@ -368,14 +368,18 @@ async def _handle_github_push(
     )
 
 
+@app.post("/webhook", include_in_schema=False)
 @app.post("/hooks/github/push")
 async def webhook_push(
     request: Request,
     x_hub_signature_256: str = Header(default=""),
     x_github_event: str = Header(default=""),
 ):
-    """Preferred GitHub push webhook endpoint."""
-    return await _handle_github_push(request, x_hub_signature_256, x_github_event)
+    """GitHub push webhook endpoint (keeps legacy `/webhook` for migration)."""
+    response = await _handle_github_push(request, x_hub_signature_256, x_github_event)
+    if request.url.path == "/webhook":
+        response.headers["X-Trade-Arena-Webhook-Deprecated"] = "Use /hooks/github/push"
+    return response
 
 
 @app.post("/ops/jobs/deploy")

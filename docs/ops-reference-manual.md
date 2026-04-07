@@ -43,7 +43,7 @@
 
 ### 2.1 触发链路
 
-1. GitHub `push` 请求到 `/hooks/github/push`
+1. GitHub `push` 请求到 `/hooks/github/push`（旧地址 `/webhook` 仅保留迁移兼容）
 2. `webhook/main.py` 使用 `X-Hub-Signature-256` + `WEBHOOK_SECRET` 验签
    若分支不在 `OPS_ALLOWED_BRANCHES`（默认 `main`），请求会被忽略
    Webhook 请求体兼容 `application/json` 与 `application/x-www-form-urlencoded`（`payload=<json>`）
