@@ -223,8 +223,8 @@ function getStatusClass(status: string): string {
 }
 
 function getStatusBadgeClass(status: string): string {
-  if (status === 'open') return 'text-black border-success bg-success'
-  if (status === 'closed') return 'text-black border-warning bg-warning'
+  if (status === 'open') return 'text-white border-success bg-success'
+  if (status === 'closed') return 'text-[#7a7a7a] border-[#d9d9d9] bg-[#efefef]'
   return 'text-secondary border-[#2a2a2d] bg-[#0d0e10]'
 }
 
