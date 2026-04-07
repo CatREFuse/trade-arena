@@ -1,22 +1,22 @@
 <template>
-  <div v-if="props.rankings.length" class="grid grid-cols-2 md:grid-cols-4 gap-3">
-    <div class="rounded-2xl bg-overlay-2 px-4 py-3">
-      <div class="text-[10px] uppercase tracking-widest text-tertiary">选手数</div>
-      <div class="mt-1 text-xl font-bold text-main tabular-nums">{{ props.rankings.length }}</div>
+  <div v-if="props.rankings.length" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="card-raised">
+      <div class="label mb-2">PARTICIPANTS</div>
+      <div class="font-mono type-display-lg numeric text-display">{{ props.rankings.length }}</div>
     </div>
-    <div class="rounded-2xl bg-overlay-2 px-4 py-3">
-      <div class="text-[10px] uppercase tracking-widest text-tertiary">正收益</div>
-      <div class="mt-1 text-xl font-bold text-main tabular-nums">{{ positiveCount }}</div>
+    <div class="card-raised">
+      <div class="label mb-2">POSITIVE</div>
+      <div class="font-mono type-display-lg numeric text-success">{{ positiveCount }}</div>
     </div>
-    <div class="rounded-2xl bg-overlay-2 px-4 py-3">
-      <div class="text-[10px] uppercase tracking-widest text-tertiary">平均收益</div>
-      <div class="mt-1 text-xl font-bold tabular-nums" :class="cc.textClass(avgReturn)">
+    <div class="card-raised">
+      <div class="label mb-2">AVG RETURN</div>
+      <div class="font-mono type-display-lg numeric" :class="getReturnColor(avgReturn)">
         {{ avgReturn >= 0 ? '+' : '' }}{{ avgReturn.toFixed(2) }}%
       </div>
     </div>
-    <div class="rounded-2xl bg-overlay-2 px-4 py-3">
-      <div class="text-[10px] uppercase tracking-widest text-tertiary">最高收益</div>
-      <div class="mt-1 text-xl font-bold tabular-nums" :class="cc.textClass(topReturn)">
+    <div class="card-raised">
+      <div class="label mb-2">TOP RETURN</div>
+      <div class="font-mono type-display-lg numeric" :class="getReturnColor(topReturn)">
         {{ topReturn >= 0 ? '+' : '' }}{{ topReturn.toFixed(2) }}%
       </div>
     </div>
@@ -34,18 +34,13 @@ interface LeaderboardRanking {
   total_asset_usd?: number | string | null
   return_pct: number
   rank: number
-  us_asset_cny?: number | string | null
-  cn_asset_cny?: number | string | null
-  hk_asset_cny?: number | string | null
-  us_asset?: number | string | null
-  cn_asset_usd?: number | string | null
 }
 
 const props = defineProps<{
   rankings: LeaderboardRanking[]
 }>()
 
-const cc = useColorConvention()
+const { isCN } = useColorConvention()
 
 const positiveCount = computed(() => props.rankings.filter(r => r.return_pct >= 0).length)
 const avgReturn = computed(() => {
@@ -56,4 +51,11 @@ const topReturn = computed(() => {
   if (!props.rankings.length) return 0
   return Math.max(...props.rankings.map(r => r.return_pct))
 })
+
+function getReturnColor(value: number): string {
+  if (isCN.value) {
+    return value >= 0 ? 'text-success' : 'text-accent'
+  }
+  return value >= 0 ? 'text-accent' : 'text-success'
+}
 </script>

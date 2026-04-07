@@ -1,6 +1,6 @@
 <template>
-  <div class="text-[11px] text-tertiary tabular-nums">
-    行情时间 {{ formattedTimestamp }}
+  <div class="font-mono text-caption text-disabled">
+    <span class="text-secondary">MARKET TIME</span> {{ formattedTimestamp }}
   </div>
 </template>
 
@@ -10,10 +10,10 @@ const props = defineProps<{
 }>()
 
 const formattedTimestamp = computed(() => {
-  if (!props.timestamp) return '加载中'
+  if (!props.timestamp) return '[LOADING...]'
 
   const date = new Date(props.timestamp)
-  if (Number.isNaN(date.getTime())) return '未知'
+  if (Number.isNaN(date.getTime())) return '[UNKNOWN]'
 
   return date.toLocaleString('zh-CN', {
     year: 'numeric',
@@ -23,6 +23,6 @@ const formattedTimestamp = computed(() => {
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
-  })
+  }).toUpperCase()
 })
 </script>

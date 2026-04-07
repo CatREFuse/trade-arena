@@ -4,46 +4,55 @@
       v-for="agent in rankings"
       :key="agent.agent_id"
       :to="`/agent/${agent.agent_id}`"
-      class="flex items-center gap-3 px-3 py-3 rounded-2xl border border-transparent md:transition-[transform,border-color,background-color] md:hover:-translate-y-0.5 md:hover:border-zinc-200 dark:md:hover:border-zinc-700 cursor-pointer group"
+      class="flex items-center gap-3 px-3 py-3 border-b border-border last:border-b-0 hover:bg-surface-raised transition-colors cursor-pointer group"
     >
-      <div class="w-7 text-center flex-shrink-0">
-        <span v-if="agent.rank <= 3" class="text-base">{{ ['🥇', '🥈', '🥉'][agent.rank - 1] }}</span>
-        <span v-else class="text-xs font-bold text-tertiary">{{ agent.rank }}</span>
+      <!-- Rank -->
+      <div class="w-8 text-center flex-shrink-0">
+        <span
+          v-if="agent.rank <= 3"
+          class="font-mono text-display-lg"
+          :class="[
+            agent.rank === 1 ? 'text-warning' :
+            agent.rank === 2 ? 'text-secondary' :
+            'text-disabled'
+          ]"
+        >
+          {{ agent.rank }}
+        </span>
+        <span v-else class="font-mono text-body-sm text-disabled">{{ agent.rank }}</span>
       </div>
+
+      <!-- Avatar & Info -->
       <div class="flex items-center gap-3 flex-1 min-w-0">
         <span class="text-2xl flex-shrink-0">{{ agent.avatar }}</span>
         <div class="min-w-0">
-          <div class="font-bold text-main text-sm">{{ agent.name }}</div>
-          <div class="text-[11px] text-secondary font-mono truncate">{{ agent.model }}</div>
+          <div class="font-body text-body-sm text-primary truncate">{{ agent.name }}</div>
+          <div class="font-mono text-caption text-secondary truncate">{{ agent.model }}</div>
         </div>
       </div>
+
+      <!-- Sparkline -->
       <svg class="w-[56px] h-[24px] flex-shrink-0 hidden sm:block" viewBox="0 0 56 24" preserveAspectRatio="none">
-        <defs>
-          <filter :id="'leaderboard-glow-' + agent.agent_id" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-        <path :d="getAgentSparkline(agent).area" :fill="cc.hex(agent.return_pct)" opacity="0.1" />
+        <path :d="getAgentSparkline(agent).area" :fill="getSparklineColor(agent.return_pct)" opacity="0.1" />
         <path
           :d="getAgentSparkline(agent).line"
           fill="none"
-          :stroke="cc.hex(agent.return_pct)"
+          :stroke="getSparklineColor(agent.return_pct)"
           stroke-width="1.5"
           stroke-linecap="round"
           stroke-linejoin="round"
-          opacity="0.5"
-          :filter="'url(#leaderboard-glow-' + agent.agent_id + ')'"
+          opacity="0.6"
         />
       </svg>
+
+      <!-- Return & Assets -->
       <div class="text-right flex-shrink-0">
-        <div class="font-bold tabular-nums text-sm" :class="cc.textClass(agent.return_pct)">
+        <div class="font-mono text-body-sm numeric" :class="getReturnColor(agent.return_pct)">
           {{ agent.return_pct >= 0 ? '+' : '' }}{{ agent.return_pct.toFixed(2) }}%
         </div>
-        <div class="text-[11px] text-tertiary font-mono tabular-nums">{{ formatCny(agent.total_asset_cny ?? agent.total_asset_usd, { compact: true }) }}</div>
+        <div class="font-mono text-caption text-secondary numeric">
+          {{ formatCny(agent.total_asset_cny ?? agent.total_asset_usd, { compact: true }) }}
+        </div>
       </div>
     </NuxtLink>
   </div>
@@ -67,7 +76,21 @@ defineProps<{
   rankings: LeaderboardRanking[]
 }>()
 
-const cc = useColorConvention()
+const { isCN } = useColorConvention()
+
+function getReturnColor(value: number): string {
+  if (isCN.value) {
+    return value >= 0 ? 'text-success' : 'text-accent'
+  }
+  return value >= 0 ? 'text-accent' : 'text-success'
+}
+
+function getSparklineColor(value: number): string {
+  if (isCN.value) {
+    return value >= 0 ? '#4A9E5C' : '#D71921'
+  }
+  return value >= 0 ? '#D71921' : '#4A9E5C'
+}
 
 function getAgentSparkline(agent: LeaderboardRanking) {
   const rawValues = (agent.sparkline_3d || []).map(point => Number(point.value))
@@ -87,5 +110,16 @@ function getAgentSparkline(agent: LeaderboardRanking) {
   const line = 'M' + linePoints.join(' L')
   const area = `${line} L56,24 L0,24 Z`
   return { line, area }
+}
+
+function formatCny(value: number | string | null | undefined, options: { compact?: boolean } = {}): string {
+  const num = typeof value === 'string' ? parseFloat(value) : (value || 0)
+  if (options.compact && num >= 1000000) {
+    return `¥${(num / 1000000).toFixed(1)}M`
+  }
+  if (options.compact && num >= 1000) {
+    return `¥${(num / 1000).toFixed(1)}K`
+  }
+  return `¥${num.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
 }
 </script>

@@ -1,72 +1,76 @@
 <template>
-  <section class="card bg-overlay overflow-hidden">
-    <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+  <section class="card">
+    <div class="flex items-center justify-between mb-6">
       <div>
-        <div class="text-[11px] uppercase tracking-[0.2em] text-tertiary">排行榜预览</div>
-        <h2 class="mt-2 text-2xl font-bold text-main tracking-tight">社区实时战绩</h2>
-        <p class="mt-2 text-sm leading-7 text-secondary">
-          综合榜单与头部选手表现。
-        </p>
+        <div class="label mb-2">LIVE RANKINGS</div>
+        <h2 class="type-heading">社区战绩</h2>
       </div>
-
-      <NuxtLink
-        to="/leaderboard"
-        class="inline-flex items-center justify-center rounded-2xl bg-overlay-2 px-4 py-3 text-sm font-semibold text-main transition hover:-translate-y-0.5"
-      >
-        进入排行榜
+      <NuxtLink to="/leaderboard" class="btn-secondary">
+        VIEW ALL →
       </NuxtLink>
     </div>
 
-    <div class="mt-6">
-      <div v-if="pending && !previewRankings.length" class="py-12 text-center text-sm text-tertiary">
-        排行榜加载中...
+    <!-- Loading -->
+    <div v-if="pending && !previewRankings.length" class="py-12 text-center">
+      <div class="font-mono text-caption text-secondary">[LOADING...]</div>
+    </div>
+
+    <!-- Error -->
+    <div v-else-if="error" class="py-8 text-center border border-accent">
+      <div class="font-mono text-caption text-accent">[ERROR: 加载失败]</div>
+    </div>
+
+    <!-- Empty -->
+    <div v-else-if="!previewRankings.length" class="py-8 text-center">
+      <div class="font-mono text-heading text-secondary">暂无数据</div>
+      <p class="font-mono text-caption text-disabled mt-2">暂时没有可展示的排行榜数据</p>
+    </div>
+
+    <!-- List -->
+    <div v-else>
+      <!-- Header -->
+      <div class="flex items-center gap-3 px-3 py-2 border-b border-border-visible">
+        <div class="w-8 text-center label">RANK</div>
+        <div class="flex-1 label">AGENT / MODEL</div>
+        <div class="w-20 text-right label">RETURN</div>
+        <div class="w-24 text-right label">ASSETS</div>
       </div>
 
-      <div v-else-if="error" class="mt-4 rounded-2xl bg-red-50 px-4 py-4 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">
-        排行榜加载失败，请稍后重试。
-      </div>
-
-      <div v-else-if="!previewRankings.length" class="mt-4 rounded-2xl bg-overlay-2 px-4 py-6 text-center text-sm text-tertiary">
-        暂时没有可展示的排行榜数据。
-      </div>
-
-      <div v-else class="mt-4">
-        <!-- Simple list header -->
-        <div class="flex items-center gap-3 px-3 py-2 text-[11px] uppercase tracking-widest text-tertiary border-b border-zinc-200 dark:border-zinc-700">
-          <div class="w-8 text-center">排名</div>
-          <div class="flex-1">选手 / 模型</div>
-          <div class="w-20 text-right">收益率</div>
-          <div class="w-24 text-right">总资产</div>
+      <!-- Rows -->
+      <NuxtLink
+        v-for="agent in previewRankings"
+        :key="agent.agent_id"
+        :to="`/agent/${agent.agent_id}`"
+        class="flex items-center gap-3 px-3 py-3 border-b border-border last:border-b-0 hover:bg-surface-raised transition-colors"
+      >
+        <div class="w-8 text-center flex-shrink-0">
+          <span v-if="agent.rank <= 3" class="font-mono text-display-lg" :class="[
+            agent.rank === 1 ? 'text-warning' :
+            agent.rank === 2 ? 'text-secondary' :
+            'text-disabled'
+          ]">
+            {{ agent.rank }}
+          </span>
+          <span v-else class="font-mono text-body-sm text-disabled">{{ agent.rank }}</span>
         </div>
-
-        <!-- Simple list rows -->
-        <NuxtLink
-          v-for="agent in previewRankings"
-          :key="agent.agent_id"
-          :to="`/agent/${agent.agent_id}`"
-          class="flex items-center gap-3 px-3 py-3 border-b border-zinc-100 dark:border-zinc-800 last:border-b-0 hover:bg-overlay-2/50 transition-colors cursor-pointer group"
-        >
-          <div class="w-8 text-center flex-shrink-0">
-            <span v-if="agent.rank <= 3" class="text-base">{{ ['🥇', '🥈', '🥉'][agent.rank - 1] }}</span>
-            <span v-else class="text-xs font-bold text-tertiary">{{ agent.rank }}</span>
+        <div class="flex items-center gap-2 flex-1 min-w-0">
+          <span class="text-lg flex-shrink-0">{{ agent.avatar }}</span>
+          <div class="min-w-0">
+            <div class="font-body text-body-sm text-primary truncate">{{ agent.name }}</div>
+            <div class="font-mono text-caption text-secondary truncate">{{ agent.model }}</div>
           </div>
-          <div class="flex items-center gap-2 flex-1 min-w-0">
-            <span class="text-lg flex-shrink-0">{{ agent.avatar }}</span>
-            <div class="min-w-0">
-              <div class="font-medium text-main text-sm truncate">{{ agent.name }}</div>
-              <div class="text-[11px] text-secondary font-mono truncate">{{ agent.model }}</div>
-            </div>
+        </div>
+        <div class="w-20 text-right flex-shrink-0">
+          <div class="font-mono text-body-sm numeric" :class="getReturnColor(agent.return_pct)">
+            {{ agent.return_pct >= 0 ? '+' : '' }}{{ agent.return_pct.toFixed(2) }}%
           </div>
-          <div class="w-20 text-right flex-shrink-0">
-            <div class="font-semibold tabular-nums text-sm" :class="cc.textClass(agent.return_pct)">
-              {{ agent.return_pct >= 0 ? '+' : '' }}{{ agent.return_pct.toFixed(2) }}%
-            </div>
+        </div>
+        <div class="w-24 text-right flex-shrink-0">
+          <div class="font-mono text-caption text-secondary numeric">
+            {{ formatCny(agent.total_asset_cny ?? agent.total_asset_usd, { compact: true }) }}
           </div>
-          <div class="w-24 text-right flex-shrink-0">
-            <div class="text-[11px] text-tertiary font-mono tabular-nums">{{ formatCny(agent.total_asset_cny ?? agent.total_asset_usd, { compact: true }) }}</div>
-          </div>
-        </NuxtLink>
-      </div>
+        </div>
+      </NuxtLink>
     </div>
   </section>
 </template>
@@ -88,7 +92,7 @@ interface LeaderboardResponse {
   rankings?: LeaderboardRanking[]
 }
 
-const cc = useColorConvention()
+const { isCN } = useColorConvention()
 
 const { data, pending, error } = useLazyFetch<LeaderboardResponse>('/api/leaderboard?market=overall', {
   key: 'home-leaderboard-overall',
@@ -98,4 +102,22 @@ const { data, pending, error } = useLazyFetch<LeaderboardResponse>('/api/leaderb
 
 const rankings = computed(() => data.value?.rankings || [])
 const previewRankings = computed(() => rankings.value.slice(0, 5))
+
+function getReturnColor(value: number): string {
+  if (isCN.value) {
+    return value >= 0 ? 'text-success' : 'text-accent'
+  }
+  return value >= 0 ? 'text-accent' : 'text-success'
+}
+
+function formatCny(value: number | string | null | undefined, options: { compact?: boolean } = {}): string {
+  const num = typeof value === 'string' ? parseFloat(value) : (value || 0)
+  if (options.compact && num >= 1000000) {
+    return `¥${(num / 1000000).toFixed(1)}M`
+  }
+  if (options.compact && num >= 1000) {
+    return `¥${(num / 1000).toFixed(1)}K`
+  }
+  return `¥${num.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
+}
 </script>

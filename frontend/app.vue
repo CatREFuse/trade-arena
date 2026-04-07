@@ -1,62 +1,82 @@
 <template>
   <div class="min-h-screen flex flex-col bg-base">
-    <!-- Toast 容器 -->
+    <!-- Toast - Inline Status Style (No popups) -->
     <div class="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 pointer-events-none">
       <TransitionGroup name="toast">
         <div
           v-for="toast in toasts"
           :key="toast.id"
-          class="pointer-events-auto px-4 py-2.5 rounded-xl bg-zinc-900/90 dark:bg-zinc-800/90 text-white text-sm font-medium shadow-lg shadow-zinc-900/20 backdrop-blur-sm border border-zinc-700/50"
+          class="pointer-events-auto px-4 py-2 bg-surface border border-border-visible"
         >
-          {{ toast.message }}
+          <span class="font-mono text-caption text-primary">[{{ toast.message }}]</span>
         </div>
       </TransitionGroup>
     </div>
 
-    <!-- 导航栏 -->
-    <nav class="sticky top-0 z-50 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md">
-      <div class="max-w-3xl mx-auto px-5 h-14 flex items-center justify-between">
-        <NuxtLink to="/" class="text-base font-bold text-main hover:opacity-70 transition">
-          CocoLoop Agent 理财竞赛
+    <!-- Navigation - Nothing Design Style -->
+    <nav class="sticky top-0 z-50 bg-base border-b border-border">
+      <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        <!-- Logo / Brand -->
+        <NuxtLink to="/" class="flex items-center gap-3 group">
+          <span class="font-display text-2xl tracking-tight text-display">CocoLoop</span>
+          <span class="hidden sm:block label">TRADE ARENA</span>
         </NuxtLink>
+
+        <!-- Nav Links - Space Mono ALL CAPS, Bracket Style -->
         <div class="flex items-center gap-1">
-          <NuxtLink v-for="link in navLinks" :key="link.to" :to="link.to"
-            class="transition-all"
-            :class="$route.path === link.to
-              ? 'px-3 py-1.5 rounded-xl text-sm font-bold text-main'
-              : 'px-3 py-1.5 rounded-xl text-sm font-medium text-secondary hover:text-main'">
+          <NuxtLink
+            v-for="link in navLinks"
+            :key="link.to"
+            :to="link.to"
+            class="font-mono text-sm tracking-wider uppercase px-4 py-2 transition-colors"
+            :class="$route.path === link.to ? 'text-display' : 'text-disabled hover:text-secondary'"
+          >
+            <span v-if="$route.path === link.to" class="text-secondary">[</span>
             {{ link.label }}
+            <span v-if="$route.path === link.to" class="text-secondary">]</span>
           </NuxtLink>
-          <!-- 涨跌色切换 -->
-          <button @click="toggleColor"
-            class="ml-2 w-8 h-8 rounded-xl flex items-center justify-center text-tertiary hover:text-main transition"
-            :title="isCN ? '当前：红涨绿跌，点击切换' : '当前：绿涨红跌，点击切换'">
-            <span class="text-xs font-bold">{{ isCN ? '🇨🇳' : '🇺🇸' }}</span>
-          </button>
-          <!-- 主题切换 -->
-          <button @click="toggle"
-            class="w-8 h-8 rounded-xl flex items-center justify-center text-tertiary hover:text-main transition"
-            :title="isDark ? '切换到浅色' : '切换到深色'">
-            <svg v-if="isDark" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+
+          <!-- Theme Toggle -->
+          <button
+            @click="toggle"
+            class="ml-4 w-10 h-10 flex items-center justify-center text-disabled hover:text-secondary transition-colors"
+            :title="isDark ? 'Switch to Light' : 'Switch to Dark'"
+          >
+            <svg v-if="isDark" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+              <circle cx="12" cy="12" r="4"/>
+              <path d="M12 2v2m0 16v2m9-9h-2M5 12H3m14.071-7.071l-1.414 1.414M6.343 17.657l-1.414 1.414m14.142 0l-1.414-1.414M6.343 6.343L4.929 4.929"/>
             </svg>
-            <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+            <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+              <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
             </svg>
           </button>
-          <!-- Live -->
-          <div class="ml-1 flex items-center gap-1.5">
-            <span class="w-1.5 h-1.5 rounded-full" :class="sseConnected ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300 dark:bg-zinc-600'"></span>
-            <span class="text-[10px] font-medium" :class="sseConnected ? 'text-emerald-600 dark:text-emerald-400' : 'text-tertiary'">
+
+          <!-- Color Convention Toggle -->
+          <button
+            @click="toggleColor"
+            class="w-10 h-10 flex items-center justify-center text-disabled hover:text-secondary transition-colors"
+            :title="isCN ? 'Red Up Green Down (CN)' : 'Green Up Red Down (US)'"
+          >
+            <span class="font-mono text-xs">{{ isCN ? 'CN' : 'US' }}</span>
+          </button>
+
+          <!-- Live Indicator -->
+          <div class="ml-4 flex items-center gap-2">
+            <span class="w-1.5 h-1.5 rounded-full" :class="sseConnected ? 'bg-success' : 'text-disabled bg-current'">
+              <span v-if="sseConnected" class="animate-pulse"></span>
+            </span>
+            <span class="font-mono text-caption" :class="sseConnected ? 'text-success' : 'text-disabled'">
               {{ sseConnected ? 'LIVE' : 'OFF' }}
             </span>
           </div>
+
+          <!-- CTA Button -->
           <button
             type="button"
             @click="handleJoinNow"
-            class="ml-2 px-4 py-2 rounded-2xl text-sm font-semibold bg-blue-600 text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 hover:shadow-blue-600/30 transition-all"
+            class="btn-primary ml-6"
           >
-            立刻参赛
+            JOIN NOW
           </button>
         </div>
       </div>
@@ -66,19 +86,28 @@
       <NuxtPage />
     </main>
 
-    <footer class="px-6 py-8 text-center text-xs text-tertiary">
-      本站纯属娱乐，不构成任何投资建议。
+    <!-- Footer - Minimal -->
+    <footer class="px-6 py-8 border-t border-border">
+      <div class="max-w-6xl mx-auto flex items-center justify-between">
+        <span class="font-mono text-caption text-disabled">
+          本站纯属娱乐，不构成任何投资建议
+        </span>
+        <span class="font-mono text-caption text-disabled">
+          COCOLOOP 2024
+        </span>
+      </div>
     </footer>
   </div>
 </template>
 
 <script setup>
 const navLinks = [
-  { to: '/', label: '首页' },
-  { to: '/leaderboard', label: '排行榜' },
-  { to: '/market', label: '行情' },
-  { to: '/about', label: '关于' },
+  { to: '/', label: 'HOME' },
+  { to: '/leaderboard', label: 'RANK' },
+  { to: '/market', label: 'MARKET' },
+  { to: '/about', label: 'ABOUT' },
 ]
+
 const route = useRoute()
 const { connected: sseConnected } = useTradeEvents()
 const { isDark, toggle } = useAppearance()
@@ -95,16 +124,11 @@ async function handleJoinNow() {
 <style>
 .toast-enter-active,
 .toast-leave-active {
-  transition: all 0.3s ease;
+  transition: opacity 200ms ease;
 }
 
-.toast-enter-from {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
+.toast-enter-from,
 .toast-leave-to {
   opacity: 0;
-  transform: translateY(-10px);
 }
 </style>

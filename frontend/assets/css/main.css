@@ -1,48 +1,493 @@
+@import url('https://fonts.googleapis.com/css2?family=Doto:wght@400;700&family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Nothing Design System - Colors */
+  --black: #000000;
+  --surface: #111111;
+  --surface-raised: #1A1A1A;
+  --border: #222222;
+  --border-visible: #333333;
+  --text-disabled: #666666;
+  --text-secondary: #999999;
+  --text-primary: #E8E8E8;
+  --text-display: #FFFFFF;
+  --accent: #D71921;
+  --accent-subtle: rgba(215, 25, 33, 0.15);
+  --success: #4A9E5C;
+  --warning: #D4A843;
+  --interactive: #5B9BF6;
+
+  /* Spacing Scale (8px base) */
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+  --space-4xl: 96px;
+
+  /* Typography Scale */
+  --display-xl: 72px;
+  --display-lg: 48px;
+  --display-md: 36px;
+  --heading: 24px;
+  --subheading: 18px;
+  --body: 16px;
+  --body-sm: 14px;
+  --caption: 12px;
+  --label: 11px;
+}
+
+/* Light Mode Overrides */
+.light-mode, html:not(.dark) {
+  --black: #F5F5F5;
+  --surface: #FFFFFF;
+  --surface-raised: #F0F0F0;
+  --border: #E8E8E8;
+  --border-visible: #CCCCCC;
+  --text-disabled: #999999;
+  --text-secondary: #666666;
+  --text-primary: #1A1A1A;
+  --text-display: #000000;
+  --interactive: #007AFF;
+}
+
 @layer base {
   body {
-    @apply bg-zinc-100 dark:bg-zinc-900 text-zinc-800 dark:text-white antialiased;
-    font-family: Avenir, "Pingfang SC", Helvetica, sans-serif;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    background-color: var(--black);
+    color: var(--text-primary);
+    font-family: 'Space Grotesk', 'DM Sans', system-ui, sans-serif;
+    font-weight: 400;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   * {
-    @apply selection:text-white selection:bg-zinc-800 dark:selection:text-zinc-800 dark:selection:bg-zinc-200;
+    selection: {
+      background-color: var(--text-display);
+      color: var(--black);
+    }
   }
 }
 
 @layer components {
+  /* Background Layers */
   .bg-base {
-    @apply bg-zinc-100 dark:bg-zinc-900;
+    background-color: var(--black);
   }
-  .bg-overlay {
-    @apply bg-white dark:bg-zinc-800;
+  .bg-surface {
+    background-color: var(--surface);
   }
-  .bg-overlay-2 {
-    @apply bg-zinc-100 dark:bg-zinc-700;
+  .bg-surface-raised {
+    background-color: var(--surface-raised);
   }
-  .text-main {
-    @apply text-zinc-800 dark:text-white;
+
+  /* Typography Classes */
+  .text-display {
+    color: var(--text-display);
+  }
+  .text-primary {
+    color: var(--text-primary);
   }
   .text-secondary {
-    @apply text-zinc-500 dark:text-zinc-400;
+    color: var(--text-secondary);
   }
-  .text-tertiary {
-    @apply text-zinc-400 dark:text-zinc-400;
+  .text-disabled {
+    color: var(--text-disabled);
   }
+  .text-accent {
+    color: var(--accent);
+  }
+  .text-success {
+    color: var(--success);
+  }
+  .text-warning {
+    color: var(--warning);
+  }
+
+  /* Font Families */
+  .font-display {
+    font-family: 'Doto', 'Space Mono', monospace;
+  }
+  .font-body {
+    font-family: 'Space Grotesk', 'DM Sans', system-ui, sans-serif;
+  }
+  .font-mono {
+    font-family: 'Space Mono', 'JetBrains Mono', 'SF Mono', monospace;
+  }
+
+  /* Typography Hierarchy */
+  .type-display-xl {
+    font-family: 'Doto', 'Space Mono', monospace;
+    font-size: var(--display-xl);
+    line-height: 1.0;
+    letter-spacing: -0.03em;
+    color: var(--text-display);
+  }
+  .type-display-lg {
+    font-family: 'Doto', 'Space Mono', monospace;
+    font-size: var(--display-lg);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    color: var(--text-display);
+  }
+  .type-display-md {
+    font-family: 'Doto', 'Space Mono', monospace;
+    font-size: var(--display-md);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    color: var(--text-display);
+  }
+  .type-heading {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: var(--heading);
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+  }
+  .type-subheading {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: var(--subheading);
+    line-height: 1.3;
+    color: var(--text-primary);
+  }
+  .type-body {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: var(--body);
+    line-height: 1.5;
+    color: var(--text-primary);
+  }
+  .type-body-sm {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: var(--body-sm);
+    line-height: 1.5;
+    letter-spacing: 0.01em;
+    color: var(--text-primary);
+  }
+  .type-caption {
+    font-family: 'Space Mono', monospace;
+    font-size: var(--caption);
+    line-height: 1.4;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+  }
+  .type-label {
+    font-family: 'Space Mono', monospace;
+    font-size: var(--label);
+    line-height: 1.2;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  /* Labels - Space Mono, ALL CAPS */
+  .label {
+    font-family: 'Space Mono', monospace;
+    font-size: var(--label);
+    line-height: 1.2;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  /* Cards / Surfaces */
   .card {
-    @apply bg-overlay rounded-[1.5rem] border border-zinc-200/70 dark:border-zinc-700/80 p-5 sm:p-6 md:p-8 transition-colors;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: var(--space-md);
   }
-  .card-item {
-    @apply bg-overlay rounded-2xl border border-zinc-200/70 dark:border-zinc-700/80 px-4 py-3 md:transition-[transform,border-color,background-color] md:hover:-translate-y-0.5 md:hover:border-zinc-300 dark:md:hover:border-zinc-600;
+  .card-raised {
+    background-color: var(--surface-raised);
+    border: 1px solid var(--border-visible);
+    border-radius: 16px;
+    padding: var(--space-md);
+  }
+
+  /* Buttons */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 12px 24px;
+    background-color: var(--text-display);
+    color: var(--black);
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: opacity 150ms ease;
+  }
+  .btn-primary:hover {
+    opacity: 0.85;
+  }
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 12px 24px;
+    background-color: transparent;
+    color: var(--text-primary);
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1px solid var(--border-visible);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: border-color 150ms ease, color 150ms ease;
+  }
+  .btn-secondary:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-display);
+  }
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 12px 16px;
+    background-color: transparent;
+    color: var(--text-secondary);
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: none;
+    cursor: pointer;
+    transition: color 150ms ease;
+  }
+  .btn-ghost:hover {
+    color: var(--text-display);
+  }
+  .btn-destructive {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 12px 24px;
+    background-color: transparent;
+    color: var(--accent);
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background-color 150ms ease;
+  }
+  .btn-destructive:hover {
+    background-color: var(--accent-subtle);
+  }
+
+  /* Inputs */
+  .input {
+    width: 100%;
+    min-height: 44px;
+    padding: 12px 0;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border-visible);
+    color: var(--text-primary);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: var(--body);
+    outline: none;
+    transition: border-color 150ms ease;
+  }
+  .input:focus {
+    border-color: var(--text-primary);
+  }
+  .input::placeholder {
+    color: var(--text-disabled);
+  }
+
+  /* Tags / Chips */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    background: transparent;
+    border: 1px solid var(--border-visible);
+    border-radius: 999px;
+    font-family: 'Space Mono', monospace;
+    font-size: var(--caption);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+  .tag-active {
+    border-color: var(--text-display);
+    color: var(--text-display);
+  }
+
+  /* Dividers */
+  .divider {
+    height: 1px;
+    background-color: var(--border);
+    width: 100%;
+  }
+  .divider-visible {
+    height: 1px;
+    background-color: var(--border-visible);
+    width: 100%;
+  }
+
+  /* Dot Grid Background */
+  .dot-grid {
+    background-image: radial-gradient(circle, var(--border-visible) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+  .dot-grid-subtle {
+    background-image: radial-gradient(circle, var(--border) 0.5px, transparent 0.5px);
+    background-size: 12px 12px;
+  }
+
+  /* Segmented Progress Bar */
+  .progress-segmented {
+    display: flex;
+    gap: 2px;
+    height: 8px;
+  }
+  .progress-segment {
+    flex: 1;
+    background-color: var(--border);
+    transition: background-color 150ms ease;
+  }
+  .progress-segment.filled {
+    background-color: var(--text-display);
+  }
+  .progress-segment.filled-accent {
+    background-color: var(--accent);
+  }
+  .progress-segment.filled-success {
+    background-color: var(--success);
+  }
+  .progress-segment.filled-warning {
+    background-color: var(--warning);
+  }
+
+  /* Tables */
+  .table-header {
+    font-family: 'Space Mono', monospace;
+    font-size: var(--label);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-visible);
+    text-align: left;
+  }
+  .table-cell {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Navigation */
+  .nav-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-disabled);
+    text-decoration: none;
+    transition: color 150ms ease;
+  }
+  .nav-link:hover {
+    color: var(--text-secondary);
+  }
+  .nav-link-active {
+    color: var(--text-display);
+  }
+
+  /* Status Indicators */
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .status-dot-active {
+    background-color: var(--success);
+  }
+  .status-dot-inactive {
+    background-color: var(--text-disabled);
+  }
+  .status-dot-accent {
+    background-color: var(--accent);
+  }
+
+  /* Numeric Display */
+  .numeric {
+    font-family: 'Space Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Row / List Item */
+  .list-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .list-row:last-child {
+    border-bottom: none;
+  }
+
+  /* Stat Row */
+  .stat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+  }
+  .stat-label {
+    font-family: 'Space Mono', monospace;
+    font-size: var(--label);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+  .stat-value {
+    font-family: 'Space Mono', monospace;
+    font-size: var(--body);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
   }
 }
 
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { border-radius: 2px; }
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--border-visible);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-disabled);
+}
 
-.tabular-nums { font-variant-numeric: tabular-nums; }
+/* Tabular Numbers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

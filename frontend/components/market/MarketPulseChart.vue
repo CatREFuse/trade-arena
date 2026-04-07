@@ -1,108 +1,74 @@
 <template>
-  <div ref="chartEl" class="h-[96px] w-full"></div>
+  <ClientOnly>
+    <VChart :option="chartOption" autoresize class="h-[96px] w-full" />
+  </ClientOnly>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { AreaData, IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts'
+import { computed, defineAsyncComponent } from 'vue'
+import { use as useECharts } from 'echarts/core'
+import { LineChart } from 'echarts/charts'
+import { CanvasRenderer } from 'echarts/renderers'
+import { GridComponent } from 'echarts/components'
+
+const VChart = defineAsyncComponent(() => import('vue-echarts'))
+
+useECharts([LineChart, GridComponent, CanvasRenderer])
 
 const props = defineProps<{
   values: number[]
 }>()
 
-const chartEl = ref<HTMLElement | null>(null)
-let chart: IChartApi | null = null
-let series: ISeriesApi<'Area'> | null = null
-let resizeObserver: ResizeObserver | null = null
-
-const seriesData = computed<AreaData[]>(() => {
-  const source = props.values.length >= 2 ? props.values : [0, 0]
-  const min = Math.min(...source)
-  const max = Math.max(...source)
-  const range = Math.max(max - min, 0.0001)
-  const baseTs = Math.floor(Date.now() / 1000) - source.length * 300
-
-  return source.map((value, index) => ({
-    time: (baseTs + index * 300) as UTCTimestamp,
-    value: Number(((value - min) / range).toFixed(6)),
-  }))
+const normalizedValues = computed(() => {
+  if (props.values.length >= 2) {
+    return props.values.map(value => Number(value))
+  }
+  const baseline = Number(props.values[0] ?? 0)
+  return Array.from({ length: 24 }, () => baseline)
 })
 
-function applyData() {
-  if (!series) return
-  series.setData(seriesData.value)
-}
-
-async function initChart() {
-  if (!chartEl.value || chart) return
-  const lightweight = await import('lightweight-charts')
-  const initialWidth = Math.max(1, Math.floor(chartEl.value.getBoundingClientRect().width || chartEl.value.clientWidth || 320))
-  chart = lightweight.createChart(chartEl.value, {
-    width: initialWidth,
-    height: 96,
-    layout: {
-      textColor: '#9CA3AF',
-      background: { type: lightweight.ColorType.Solid, color: 'transparent' },
-    },
+const chartOption = computed(() => {
+  return {
+    animation: false,
     grid: {
-      vertLines: { visible: false },
-      horzLines: { color: '#F1F5F9' },
+      left: 0,
+      right: 0,
+      top: 6,
+      bottom: 6,
+      containLabel: false,
     },
-    rightPriceScale: {
-      visible: false,
-      borderVisible: false,
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: normalizedValues.value.map((_, index) => String(index)),
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { show: false },
+      splitLine: { show: false },
     },
-    leftPriceScale: {
-      visible: false,
-      borderVisible: false,
+    yAxis: {
+      type: 'value',
+      scale: true,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { show: false },
+      splitLine: { show: false },
     },
-    timeScale: {
-      visible: false,
-      borderVisible: false,
-      fixLeftEdge: true,
-      fixRightEdge: true,
-    },
-    crosshair: { mode: lightweight.CrosshairMode.Hidden },
-    handleScroll: false,
-    handleScale: false,
-  })
-
-  series = chart.addAreaSeries({
-    lineColor: '#2563EB',
-    topColor: 'rgba(37, 99, 235, 0.28)',
-    bottomColor: 'rgba(37, 99, 235, 0.02)',
-    lineWidth: 2,
-    priceLineVisible: false,
-    lastValueVisible: false,
-    crosshairMarkerVisible: false,
-  })
-  applyData()
-  chart.timeScale().fitContent()
-
-  resizeObserver = new ResizeObserver((entries) => {
-    const width = entries[0]?.contentRect.width
-    if (chart && width) {
-      chart.applyOptions({ width })
-      chart.timeScale().fitContent()
-    }
-  })
-  resizeObserver.observe(chartEl.value)
-}
-
-watch(seriesData, () => {
-  applyData()
-  chart?.timeScale().fitContent()
-})
-
-onMounted(() => {
-  void initChart()
-})
-
-onBeforeUnmount(() => {
-  resizeObserver?.disconnect()
-  resizeObserver = null
-  chart?.remove()
-  chart = null
-  series = null
+    series: [
+      {
+        type: 'line',
+        smooth: 0.2,
+        showSymbol: false,
+        data: normalizedValues.value,
+        lineStyle: {
+          width: 2,
+          color: '#2563EB',
+        },
+        areaStyle: {
+          color: 'rgba(37, 99, 235, 0.18)',
+        },
+      },
+    ],
+  }
 })
 </script>
