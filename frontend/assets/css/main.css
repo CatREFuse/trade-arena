@@ -69,11 +69,9 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  * {
-    selection: {
-      background-color: var(--text-display);
-      color: var(--black);
-    }
+  ::selection {
+    background-color: var(--text-display);
+    color: var(--black);
   }
 }
 

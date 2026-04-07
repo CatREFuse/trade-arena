@@ -55,32 +55,35 @@
 
     <!-- US Market -->
     <MarketCard
-      title="US MARKET"
+      title="美股市场"
       emoji="🇺🇸"
+      badge="UNITED STATES"
       :summary="usSummary"
       :indices="usIndices"
-      :market-type="'us'"
+      market-type="us"
       :is-cn="isCN"
     />
 
     <!-- CN Market -->
     <MarketCard
-      title="A-SHARE MARKET"
+      title="A 股市场"
       emoji="🇨🇳"
+      badge="CHINA MAINLAND"
       :summary="cnSummary"
       :indices="cnIndices"
-      :market-type="'cn'"
+      market-type="cn"
       :is-cn="isCN"
       class="mt-6"
     />
 
     <!-- HK Market -->
     <MarketCard
-      title="HK MARKET"
+      title="港股市场"
       emoji="🇭🇰"
+      badge="HONG KONG"
       :summary="hkSummary"
       :indices="hkIndices"
-      :market-type="'hk'"
+      market-type="hk"
       :is-cn="isCN"
       class="mt-6"
     />
@@ -93,6 +96,7 @@ useHead({
 })
 
 const { isCN } = useColorConvention()
+
 const overviewData = ref({
   us: { summary: {}, indices: [] },
   cn: { summary: {}, indices: [] },
@@ -106,19 +110,74 @@ const usSummary = computed(() => overviewData.value.us?.summary || {})
 const cnSummary = computed(() => overviewData.value.cn?.summary || {})
 const hkSummary = computed(() => overviewData.value.hk?.summary || {})
 
-const usIndices = computed(() => overviewData.value.us?.indices || [])
-const cnIndices = computed(() => overviewData.value.cn?.indices || [])
-const hkIndices = computed(() => overviewData.value.hk?.indices || [])
+const usIndices = computed(() => getMarketIndices('us'))
+const cnIndices = computed(() => getMarketIndices('cn'))
+const hkIndices = computed(() => getMarketIndices('hk'))
+
+type MarketKey = 'us' | 'cn' | 'hk'
+
+const INDEX_META: Record<string, { shortLabel: string }> = {
+  SPX: { shortLabel: 'S&P 500' },
+  NDX: { shortLabel: 'NASDAQ' },
+  DJI: { shortLabel: 'DOW JONES' },
+  SH: { shortLabel: 'SHANGHAI' },
+  SZ: { shortLabel: 'SHENZHEN' },
+  CY: { shortLabel: 'CHINEXT' },
+  HSI: { shortLabel: 'HANG SENG' },
+  HSCEI: { shortLabel: 'HSCEI' },
+}
+
+const MARKET_INDEX_ORDER: Record<MarketKey, string[]> = {
+  us: ['SPX', 'NDX', 'DJI'],
+  cn: ['SH', 'SZ', 'CY'],
+  hk: ['HSI', 'HSCEI'],
+}
+
+interface IndexSnapshot {
+  symbol: string
+  name: string
+  price: number
+  change_pct: number
+  market: MarketKey
+}
+
+interface MarketOverviewResponse {
+  indices: IndexSnapshot[]
+  markets: Array<{
+    market: MarketKey
+    summary: any
+  }>
+  updated_at?: string
+}
+
+function getMarketIndices(market: MarketKey) {
+  const marketIndexMap = new Map(
+    (overviewData.value.indices || [])
+      .filter((item: IndexSnapshot) => item.market === market)
+      .map((item: IndexSnapshot) => [item.symbol, item]),
+  )
+
+  const fallbackSymbols = MARKET_INDEX_ORDER[market] || []
+  return fallbackSymbols.map((symbol) => {
+    const item = marketIndexMap.get(symbol)
+    return {
+      symbol,
+      shortLabel: INDEX_META[symbol]?.shortLabel || symbol,
+      value: item ? formatIndexValue(item.price) : '--',
+      changePct: item?.change_pct ?? null,
+    }
+  })
+}
 
 async function fetchData() {
   isLoading.value = true
   try {
     const [overviewRes, fxRes] = await Promise.all([
-      $fetch('/api/market/overview'),
+      $fetch<MarketOverviewResponse>('/api/market/overview'),
       $fetch('/api/market/fx-overview'),
     ])
     overviewData.value = overviewRes
-    fxOverview.value = fxRes
+    fxOverview.value = fxRes as any
   } finally {
     isLoading.value = false
   }
@@ -128,13 +187,13 @@ function manualRefresh() {
   fetchData()
 }
 
-function formatFxRate(rate: number | undefined): string {
-  if (rate === undefined) return '--'
+function formatFxRate(rate: number | undefined | null): string {
+  if (rate == null || Number.isNaN(rate)) return '--'
   return rate.toFixed(4)
 }
 
-function formatPercent(value: number | undefined): string {
-  if (value === undefined) return '--'
+function formatPercent(value: number | undefined | null): string {
+  if (value == null || Number.isNaN(value)) return '--'
   const sign = value >= 0 ? '+' : ''
   return `${sign}${value.toFixed(2)}%`
 }
@@ -149,123 +208,22 @@ function formatFxSource(source: string): string {
   return sourceMap[source] || source
 }
 
-function getChangeColor(change: number | undefined): string {
-  if (change === undefined) return 'text-disabled'
+function getChangeColor(change: number | undefined | null): string {
+  if (change == null || Number.isNaN(change)) return 'text-disabled'
   if (isCN.value) {
     return change >= 0 ? 'text-success' : 'text-accent'
   }
   return change >= 0 ? 'text-accent' : 'text-success'
 }
 
+function formatIndexValue(value: number) {
+  return Number(value).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
 onMounted(() => {
   fetchData()
-})
-</script>
-
-<script lang="ts">
-// Market Card Component
-export const MarketCard = defineComponent({
-  props: {
-    title: { type: String, required: true },
-    emoji: { type: String, required: true },
-    summary: { type: Object, default: () => ({}) },
-    indices: { type: Array, default: () => [] },
-    marketType: { type: String, required: true },
-    isCN: { type: Boolean, default: false },
-  },
-  setup(props) {
-    const { formatPercent } = useMoneyDisplay()
-
-    function getChangeColor(change: number | undefined): string {
-      if (change === undefined) return 'text-disabled'
-      if (props.isCN) {
-        return change >= 0 ? 'text-success' : 'text-accent'
-      }
-      return change >= 0 ? 'text-accent' : 'text-success'
-    }
-
-    return () => h('article', { class: 'card' }, [
-      // Header
-      h('div', { class: 'flex items-center justify-between mb-6' }, [
-        h('div', { class: 'flex items-center gap-3' }, [
-          h('span', { class: 'text-2xl' }, props.emoji),
-          h('h2', { class: 'type-heading' }, props.title),
-        ]),
-        h(NuxtLink, {
-          to: `/market-detail/${props.marketType}`,
-          class: 'btn-secondary',
-        }, () => 'VIEW →'),
-      ]),
-
-      // Stats Grid
-      h('div', { class: 'grid grid-cols-2 md:grid-cols-4 gap-4 mb-6' }, [
-        h('div', null, [
-          h('div', { class: 'label mb-1' }, 'STOCKS'),
-          h('div', { class: 'numeric font-mono type-subheading' }, props.summary?.stock_count || 0),
-        ]),
-        h('div', null, [
-          h('div', { class: 'label mb-1' }, 'UP'),
-          h('div', { class: `numeric font-mono type-subheading ${props.isCN ? 'text-success' : 'text-accent'}` },
-            props.summary?.up_count || 0),
-        ]),
-        h('div', null, [
-          h('div', { class: 'label mb-1' }, 'DOWN'),
-          h('div', { class: `numeric font-mono type-subheading ${props.isCN ? 'text-accent' : 'text-success'}` },
-            props.summary?.down_count || 0),
-        ]),
-        h('div', null, [
-          h('div', { class: 'label mb-1' }, 'FLAT'),
-          h('div', { class: 'numeric font-mono type-subheading' }, props.summary?.flat_count || 0),
-        ]),
-      ]),
-
-      // Indices
-      h('div', { class: 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-6' },
-        props.indices.map((index: any) =>
-          h('div', {
-            key: index.symbol,
-            class: 'flex items-center justify-between py-2 px-3 border border-border rounded',
-          }, [
-            h('span', { class: 'label' }, index.shortLabel),
-            h('span', { class: 'numeric font-mono text-body-sm' }, index.value),
-            h('span', { class: `numeric font-mono text-caption ${getChangeColor(index.changePct)}` },
-              formatPercent(index.changePct)),
-          ])
-        )
-      ),
-
-      // Leader / Laggard
-      h('div', { class: 'grid grid-cols-2 gap-4 pt-4 border-t border-border' }, [
-        // Leader
-        h('div', { class: 'flex items-center justify-between' }, [
-          h('div', { class: 'flex items-center gap-2' }, [
-            h('span', { class: `label ${props.isCN ? 'text-success' : 'text-accent'}` }, 'LEADER'),
-            props.summary?.leader?.ticker
-              ? h(NuxtLink, {
-                  to: `/market-detail/${props.marketType}/${props.summary.leader.ticker}`,
-                  class: 'font-mono text-body-sm text-primary hover:text-display',
-                }, () => props.summary?.leader?.ticker)
-              : h('span', { class: 'font-mono text-body-sm text-disabled' }, '--'),
-          ]),
-          h('span', { class: `numeric font-mono text-caption ${props.isCN ? 'text-success' : 'text-accent'}` },
-            props.summary?.leader ? formatPercent(props.summary.leader.change_pct) : '--'),
-        ]),
-        // Laggard
-        h('div', { class: 'flex items-center justify-between' }, [
-          h('div', { class: 'flex items-center gap-2' }, [
-            h('span', { class: `label ${props.isCN ? 'text-accent' : 'text-success'}` }, 'LAGGARD'),
-            props.summary?.laggard?.ticker
-              ? h(NuxtLink, {
-                  to: `/market-detail/${props.marketType}/${props.summary.laggard.ticker}`,
-                  class: 'font-mono text-body-sm text-primary hover:text-display',
-                }, () => props.summary?.laggard?.ticker)
-              : h('span', { class: 'font-mono text-body-sm text-disabled' }, '--'),
-          ]),
-          h('span', { class: `numeric font-mono text-caption ${props.isCN ? 'text-accent' : 'text-success'}` },
-            props.summary?.laggard ? formatPercent(props.summary.laggard.change_pct) : '--'),
-        ]),
-      ]),
-    ])
-  },
 })
 </script>
