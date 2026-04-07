@@ -35,43 +35,43 @@
             :to="`/market-detail/${section.key}`"
             class="font-mono text-caption text-secondary hover:text-primary transition-colors"
           >
-            VIEW →
+            查看 →
           </NuxtLink>
         </div>
 
         <!-- Stats -->
         <div class="grid grid-cols-4 gap-4 mb-4">
           <div>
-            <div class="label mb-1">STOCKS</div>
+            <div class="label mb-1">股票数</div>
             <div class="font-mono type-subheading numeric">{{ section.stockCount }}</div>
           </div>
           <div>
-            <div class="label mb-1">UP</div>
+            <div class="label mb-1">上涨</div>
             <div class="font-mono type-subheading numeric text-success">{{ section.upCount }}</div>
           </div>
           <div>
-            <div class="label mb-1">DOWN</div>
+            <div class="label mb-1">下跌</div>
             <div class="font-mono type-subheading numeric text-accent">{{ section.downCount }}</div>
           </div>
           <div>
-            <div class="label mb-1">FLAT</div>
+            <div class="label mb-1">平盘</div>
             <div class="font-mono type-subheading numeric">{{ section.flatCount }}</div>
           </div>
         </div>
 
         <div class="mt-4 pt-4 border-t border-border grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <div class="label mb-1">TRADING HOURS</div>
+            <div class="label mb-1">交易时段</div>
             <div class="font-mono text-caption text-primary">{{ section.sessionWindows }}</div>
             <div class="font-mono text-caption text-secondary">{{ section.timezoneLabel }}</div>
           </div>
           <div>
-            <div class="label mb-1">NEXT OPEN</div>
+            <div class="label mb-1">下次开盘</div>
             <div class="font-mono text-caption" :class="getStatusClass(section.marketStatus)">
               {{ section.nextOpenLabel }}
             </div>
             <div class="font-mono text-caption text-secondary">
-              LOCAL NOW {{ section.localNowLabel }}
+              当地时间 {{ section.localNowLabel }}
             </div>
           </div>
         </div>
@@ -131,9 +131,9 @@ interface MarketOverviewResponse {
 const { isCN } = useColorConvention()
 
 const MARKET_META: Record<MarketKey, { badge: string; title: string; emoji: string }> = {
-  us: { badge: 'UNITED STATES', title: '美股市场', emoji: '🇺🇸' },
-  cn: { badge: 'CHINA MAINLAND', title: 'A 股市场', emoji: '🇨🇳' },
-  hk: { badge: 'HONG KONG', title: '港股市场', emoji: '🇭🇰' },
+  us: { badge: '美国', title: '美股市场', emoji: '🇺🇸' },
+  cn: { badge: '中国内地', title: 'A 股市场', emoji: '🇨🇳' },
+  hk: { badge: '中国香港', title: '港股市场', emoji: '🇭🇰' },
 }
 
 const INDEX_META: Record<string, { shortLabel: string }> = {
@@ -217,8 +217,8 @@ function formatIndexValue(value: number) {
 }
 
 function formatStatus(status: string): string {
-  if (status === 'open') return 'OPEN'
-  if (status === 'closed') return 'CLOSED'
+  if (status === 'open') return '开盘'
+  if (status === 'closed') return '休市'
   return '--'
 }
 
@@ -229,9 +229,9 @@ function getStatusClass(status: string): string {
 }
 
 function getStatusBadgeClass(status: string): string {
-  if (status === 'open') return 'text-success border-success/40 bg-success/10'
-  if (status === 'closed') return 'text-warning border-warning/40 bg-warning/10'
-  return 'text-disabled border-border-visible bg-transparent'
+  if (status === 'open') return 'text-success border-[#2d3b31] bg-[#0d0e10]'
+  if (status === 'closed') return 'text-warning border-[#3d3522] bg-[#0d0e10]'
+  return 'text-secondary border-[#2a2a2d] bg-[#0d0e10]'
 }
 
 function formatSessionWindows(sessionWindows: string[] | undefined): string {
@@ -240,9 +240,9 @@ function formatSessionWindows(sessionWindows: string[] | undefined): string {
 }
 
 function formatTimezone(timezone: string | undefined): string {
-  if (timezone === 'America/New_York') return 'NEW YORK TIME'
-  if (timezone === 'Asia/Shanghai') return 'BEIJING TIME'
-  if (timezone === 'Asia/Hong_Kong') return 'HONG KONG TIME'
+  if (timezone === 'America/New_York') return '纽约时间'
+  if (timezone === 'Asia/Shanghai') return '北京时间'
+  if (timezone === 'Asia/Hong_Kong') return '香港时间'
   return timezone || '--'
 }
 
@@ -254,7 +254,7 @@ function formatLocalTime(localIso: string | null | undefined): string {
 
 function formatNextOpen(summary: MarketSummary | undefined): string {
   if (!summary) return '--'
-  if (summary.market_status === 'open') return 'TRADING NOW'
+  if (summary.market_status === 'open') return '交易中'
   if (!summary.next_open_local) return '--'
   return formatLocalTime(summary.next_open_local)
 }

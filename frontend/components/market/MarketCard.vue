@@ -21,37 +21,37 @@
         :to="`/market-detail/${marketType}`"
         class="font-mono text-caption text-secondary hover:text-primary transition-colors"
       >
-        VIEW →
+        查看 →
       </NuxtLink>
     </div>
 
     <!-- Stats Grid -->
     <div class="grid grid-cols-4 gap-4 mb-6">
       <div>
-        <div class="label mb-1">STOCKS</div>
+        <div class="label mb-1">股票数</div>
         <div class="font-mono type-subheading numeric text-primary">{{ summary?.stock_count || 0 }}</div>
       </div>
       <div>
-        <div class="label mb-1">UP</div>
+        <div class="label mb-1">上涨</div>
         <div class="font-mono type-subheading numeric" :class="isCN ? 'text-success' : 'text-accent'">
           {{ summary?.up_count || 0 }}
         </div>
       </div>
       <div>
-        <div class="label mb-1">DOWN</div>
+        <div class="label mb-1">下跌</div>
         <div class="font-mono type-subheading numeric" :class="isCN ? 'text-accent' : 'text-success'">
           {{ summary?.down_count || 0 }}
         </div>
       </div>
       <div>
-        <div class="label mb-1">FLAT</div>
+        <div class="label mb-1">平盘</div>
         <div class="font-mono type-subheading numeric text-primary">{{ summary?.flat_count || 0 }}</div>
       </div>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 pt-4 border-t border-border">
       <div>
-        <div class="label mb-1">TRADING HOURS</div>
+        <div class="label mb-1">交易时段</div>
         <div class="font-mono text-caption text-primary">
           {{ formatSessionWindows(summary?.session_windows) }}
         </div>
@@ -60,12 +60,12 @@
         </div>
       </div>
       <div>
-        <div class="label mb-1">NEXT OPEN</div>
+        <div class="label mb-1">下次开盘</div>
         <div class="font-mono text-caption" :class="getMarketStatusClass(summary?.market_status)">
           {{ formatNextOpen(summary) }}
         </div>
         <div class="font-mono text-caption text-secondary">
-          LOCAL NOW {{ formatLocalTime(summary?.now_local) }}
+          当地时间 {{ formatLocalTime(summary?.now_local) }}
         </div>
       </div>
     </div>
@@ -92,7 +92,7 @@
       <!-- Leader -->
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <span class="label" :class="isCN ? 'text-success' : 'text-accent'">LEADER</span>
+          <span class="label" :class="isCN ? 'text-success' : 'text-accent'">领涨</span>
           <NuxtLink
             v-if="summary?.leader?.ticker"
             :to="`/market-detail/${marketType}/${summary.leader.ticker}`"
@@ -109,7 +109,7 @@
       <!-- Laggard -->
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <span class="label" :class="isCN ? 'text-accent' : 'text-success'">LAGGARD</span>
+          <span class="label" :class="isCN ? 'text-accent' : 'text-success'">领跌</span>
           <NuxtLink
             v-if="summary?.laggard?.ticker"
             :to="`/market-detail/${marketType}/${summary.laggard.ticker}`"
@@ -126,7 +126,7 @@
     </div>
 
     <div class="mt-5 pt-4 border-t border-border">
-      <div class="label mb-3">TOP STOCKS</div>
+      <div class="label mb-3">热门个股</div>
       <div v-if="boardItems.length" class="divide-y divide-border">
         <NuxtLink
           v-for="item in boardItems"
@@ -217,8 +217,8 @@ function formatPrice(value: number | string): string {
 }
 
 function formatMarketStatus(status: string | undefined): string {
-  if (status === 'open') return 'OPEN'
-  if (status === 'closed') return 'CLOSED'
+  if (status === 'open') return '开盘'
+  if (status === 'closed') return '休市'
   return '--'
 }
 
@@ -229,9 +229,9 @@ function getMarketStatusClass(status: string | undefined): string {
 }
 
 function getMarketStatusBadgeClass(status: string | undefined): string {
-  if (status === 'open') return 'text-success border-success/40 bg-success/10'
-  if (status === 'closed') return 'text-warning border-warning/40 bg-warning/10'
-  return 'text-disabled border-border-visible bg-transparent'
+  if (status === 'open') return 'text-success border-[#2d3b31] bg-[#0d0e10]'
+  if (status === 'closed') return 'text-warning border-[#3d3522] bg-[#0d0e10]'
+  return 'text-secondary border-[#2a2a2d] bg-[#0d0e10]'
 }
 
 function formatSessionWindows(sessionWindows: string[] | undefined): string {
@@ -240,9 +240,9 @@ function formatSessionWindows(sessionWindows: string[] | undefined): string {
 }
 
 function formatTimezone(timezone: string | undefined): string {
-  if (timezone === 'America/New_York') return 'NEW YORK TIME'
-  if (timezone === 'Asia/Shanghai') return 'BEIJING TIME'
-  if (timezone === 'Asia/Hong_Kong') return 'HONG KONG TIME'
+  if (timezone === 'America/New_York') return '纽约时间'
+  if (timezone === 'Asia/Shanghai') return '北京时间'
+  if (timezone === 'Asia/Hong_Kong') return '香港时间'
   return timezone || '--'
 }
 
@@ -254,7 +254,7 @@ function formatLocalTime(localIso: string | null | undefined): string {
 
 function formatNextOpen(summary: MarketSummary | undefined): string {
   if (!summary) return '--'
-  if (summary.market_status === 'open') return 'TRADING NOW'
+  if (summary.market_status === 'open') return '交易中'
   if (!summary.next_open_local) return '--'
   return formatLocalTime(summary.next_open_local)
 }
