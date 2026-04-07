@@ -5,6 +5,8 @@
 </template>
 
 <script setup lang="ts">
+import { parseApiDate } from '~/utils/date'
+
 const props = defineProps<{
   timestamp?: string | null
 }>()
@@ -12,7 +14,7 @@ const props = defineProps<{
 const formattedTimestamp = computed(() => {
   if (!props.timestamp) return '加载中...'
 
-  const date = new Date(props.timestamp)
+  const date = parseApiDate(props.timestamp)
   if (Number.isNaN(date.getTime())) return '--'
 
   return date.toLocaleString('zh-CN', {

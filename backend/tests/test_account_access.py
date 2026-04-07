@@ -131,6 +131,7 @@ async def test_shared_token_can_access_primary_account_routes(
     assert len(trades_payload) == 1
     assert trades_payload[0]["ticker"] == "AAPL"
     assert trades_payload[0]["action"] == "buy"
+    assert trades_payload[0]["created_at"].endswith("+00:00")
 
 
 @pytest.mark.asyncio
@@ -188,6 +189,7 @@ async def test_shared_token_can_access_secondary_account_routes(
     assert len(trades_payload) == 1
     assert trades_payload[0]["ticker"] == "600519.SH"
     assert trades_payload[0]["action"] == "buy"
+    assert trades_payload[0]["created_at"].endswith("+00:00")
 
 
 @pytest.mark.asyncio

@@ -56,13 +56,14 @@
 
 <script setup lang="ts">
 import type { AdminLogItem } from '~/composables/useAdminDashboard'
+import { parseApiDate } from '~/utils/date'
 
 defineProps<{
   items: AdminLogItem[]
 }>()
 
 function formatDate(value: string) {
-  const date = new Date(value)
+  const date = parseApiDate(value)
   if (Number.isNaN(date.getTime()))
     return '未知'
 

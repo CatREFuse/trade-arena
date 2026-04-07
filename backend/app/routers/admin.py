@@ -15,6 +15,7 @@ from app.database import get_db
 from app.models import Account, Agent, Position, Trade, Wallet
 from app.services.fx import FXService
 from app.services.market_data import MARKET_CACHE_VERSION, MarketDataService
+from app.utils.datetime import ensure_utc_datetime, normalize_iso_datetime
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -142,7 +143,7 @@ async def _collect_users(
                 "avatar": agent.avatar,
                 "model": agent.model,
                 "style": agent.style,
-                "created_at": agent.created_at,
+                "created_at": ensure_utc_datetime(agent.created_at),
                 "account_count": len(owned_accounts),
                 "trade_count": trade_count,
                 "asset_cny": round(float(total_asset_cny), 2),
@@ -174,7 +175,7 @@ async def _collect_logs(db: AsyncSession, limit: int, offset: int) -> dict:
         items.append(
             {
                 "id": trade.id,
-                "created_at": trade.created_at,
+                "created_at": ensure_utc_datetime(trade.created_at),
                 "action": trade.action,
                 "ticker": trade.ticker,
                 "shares": _as_float(trade.shares),
@@ -256,7 +257,7 @@ async def _collect_cache_status(redis) -> dict:
         try:
             payload = json.loads(decoded)
             if isinstance(payload, dict):
-                updated_at = payload.get("updated_at", "") or ""
+                updated_at = normalize_iso_datetime(payload.get("updated_at", "") or "")
         except Exception:
             updated_at = ""
         result[label] = {"present": True, "updated_at": updated_at}
@@ -296,7 +297,7 @@ async def _collect_market_snapshot(request: Request, live: bool = False) -> dict
         cn_board = await _load_cache_json(redis, f"market:board:{MARKET_CACHE_VERSION}:cn")
         hk_board = await _load_cache_json(redis, f"market:board:{MARKET_CACHE_VERSION}:hk")
         return {
-            "updated_at": overview.get("updated_at", ""),
+            "updated_at": normalize_iso_datetime(overview.get("updated_at", "")),
             "indices": overview.get("indices", []),
             "market_summary": overview.get("markets", []),
             "boards": {
@@ -312,7 +313,7 @@ async def _collect_market_snapshot(request: Request, live: bool = False) -> dict
     cn_board = await service.get_market_board("cn", refresh=False)
     hk_board = await service.get_market_board("hk", refresh=False)
     return {
-        "updated_at": overview.updated_at,
+        "updated_at": ensure_utc_datetime(overview.updated_at),
         "indices": [item.model_dump(mode="json") for item in overview.indices],
         "market_summary": [item.model_dump(mode="json") for item in overview.markets],
         "boards": {

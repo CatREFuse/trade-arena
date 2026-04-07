@@ -219,6 +219,7 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
+import { parseApiDate } from '~/utils/date'
 
 interface AgentRanking {
   agent_id: string
@@ -427,7 +428,7 @@ const equityChartOption = computed(() => {
       formatter: (params: any[]) => {
         const item = params?.[0]
         if (!item) return ''
-        const dateLabel = new Date(item.data[0]).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+        const dateLabel = parseApiDate(item.data[0]).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
         const valueLabel = formatCny(item.data[1])
         return `${dateLabel}<br/>${valueLabel}`
       },
@@ -481,7 +482,7 @@ function resolveTickerMarket(ticker: string): 'us' | 'cn' | 'hk' {
 
 function formatTime(ts?: string) {
   if (!ts) return ''
-  const d = new Date(ts)
+  const d = parseApiDate(ts)
   const now = new Date()
   const diff = (now.getTime() - d.getTime()) / 1000
   if (diff < 60) return '刚刚'

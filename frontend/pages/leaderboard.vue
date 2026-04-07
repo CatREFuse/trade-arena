@@ -85,6 +85,8 @@
 </template>
 
 <script setup lang="ts">
+import { parseApiDate } from '~/utils/date'
+
 useHead({
   title: 'RANK - CocoLoop Trade Arena',
 })
@@ -127,7 +129,7 @@ watch(rankings, () => {
 
 const lastUpdated = computed(() => {
   const ts = leaderboardData.value?.timestamp || Date.now()
-  return new Date(ts).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+  return parseApiDate(ts).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
 })
 
 let refreshTimer: number | null = null

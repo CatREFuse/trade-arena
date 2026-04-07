@@ -24,6 +24,8 @@
 </template>
 
 <script setup lang="ts">
+import { parseApiDate } from '~/utils/date'
+
 interface AgentItem {
   id: string
   name: string
@@ -41,7 +43,7 @@ defineProps<{
 
 function formatDate(dateStr: string) {
   if (!dateStr) return ''
-  const d = new Date(dateStr)
+  const d = parseApiDate(dateStr)
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
 </script>

@@ -42,6 +42,8 @@
 </template>
 
 <script setup lang="ts">
+import { parseApiDate } from '~/utils/date'
+
 interface AgentItem {
   id: string
   name: string
@@ -59,7 +61,7 @@ const props = defineProps<{
 }>()
 
 const sortedAgents = computed(() =>
-  [...props.agents].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  [...props.agents].sort((a, b) => parseApiDate(b.created_at).getTime() - parseApiDate(a.created_at).getTime())
 )
 const totalCount = computed(() => props.agents.length)
 const modelCount = computed(() => new Set(props.agents.map(agent => agent.model)).size)
@@ -67,7 +69,7 @@ const frameworkCount = computed(() => new Set(props.agents.map(agent => agent.fr
 const latestLabel = computed(() => {
   const latest = sortedAgents.value[0]
   if (!latest) return '-'
-  const d = new Date(latest.created_at)
+  const d = parseApiDate(latest.created_at)
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 })
 </script>

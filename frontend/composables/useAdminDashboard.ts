@@ -1,3 +1,5 @@
+import { parseApiDate } from '~/utils/date'
+
 export interface AdminUserItem {
   id: string
   name: string
@@ -168,7 +170,7 @@ export function useAdminDashboard() {
     if (!data.value?.generated_at)
       return '未知'
 
-    const date = new Date(data.value.generated_at)
+    const date = parseApiDate(data.value.generated_at)
     if (Number.isNaN(date.getTime()))
       return '未知'
 

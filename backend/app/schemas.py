@@ -1,19 +1,31 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+
+
+class APIModel(BaseModel):
+    model_config = ConfigDict()
+
+    @field_serializer("*", when_used="json", check_fields=False)
+    def serialize_datetimes_as_utc(self, value):
+        if isinstance(value, datetime):
+            if value.tzinfo is None or value.utcoffset() is None:
+                return value.replace(tzinfo=timezone.utc).isoformat()
+            return value.astimezone(timezone.utc).isoformat()
+        return value
 
 
 # --- Account ---
-class AccountCreate(BaseModel):
+class AccountCreate(APIModel):
     agent_id: str
     market: str
 
 
-class AccountOut(BaseModel):
+class AccountOut(APIModel):
     id: str
     agent_id: str
     market: str
@@ -23,7 +35,7 @@ class AccountOut(BaseModel):
     available_cash_cny: Decimal
 
 
-class PositionOut(BaseModel):
+class PositionOut(APIModel):
     ticker: str
     shares: Decimal
     avg_cost: Decimal
@@ -33,7 +45,7 @@ class PositionOut(BaseModel):
     weight: Optional[float] = None
 
 
-class PortfolioOut(BaseModel):
+class PortfolioOut(APIModel):
     cash: Decimal
     cash_currency: str = "CNY"
     fx_pair: Optional[str] = None
@@ -42,7 +54,7 @@ class PortfolioOut(BaseModel):
     positions: list[PositionOut]
 
 
-class PublicPositionOut(BaseModel):
+class PublicPositionOut(APIModel):
     ticker: str
     shares: Decimal
     avg_cost_cny: Decimal
@@ -51,7 +63,7 @@ class PublicPositionOut(BaseModel):
     market_value_cny: Decimal
 
 
-class AgentMarketPortfolioOut(BaseModel):
+class AgentMarketPortfolioOut(APIModel):
     market: str
     account_id: Optional[str] = None
     holdings_count: int
@@ -59,7 +71,7 @@ class AgentMarketPortfolioOut(BaseModel):
     positions: list[PublicPositionOut]
 
 
-class AgentPortfolioSummaryOut(BaseModel):
+class AgentPortfolioSummaryOut(APIModel):
     agent_id: str
     wallet_cash_cny: Decimal
     total_asset_cny: Decimal
@@ -68,7 +80,7 @@ class AgentPortfolioSummaryOut(BaseModel):
 
 
 # --- Trade ---
-class BuyRequest(BaseModel):
+class BuyRequest(APIModel):
     account_id: Optional[str] = None
     market: Optional[str] = None  # "us" | "cn"，与 token 配合自动解析 account_id
     ticker: str
@@ -78,7 +90,7 @@ class BuyRequest(BaseModel):
     idempotency_key: Optional[str] = None
 
 
-class SellRequest(BaseModel):
+class SellRequest(APIModel):
     account_id: Optional[str] = None
     market: Optional[str] = None
     ticker: str
@@ -88,7 +100,7 @@ class SellRequest(BaseModel):
     idempotency_key: Optional[str] = None
 
 
-class TradeOut(BaseModel):
+class TradeOut(APIModel):
     trade_id: int
     ticker: str
     action: str
@@ -106,7 +118,7 @@ class TradeOut(BaseModel):
 
 
 # --- Market ---
-class QuoteOut(BaseModel):
+class QuoteOut(APIModel):
     ticker: str
     price: Decimal
     change_pct: float
@@ -115,7 +127,7 @@ class QuoteOut(BaseModel):
     market_status: str
 
 
-class IndexQuoteOut(BaseModel):
+class IndexQuoteOut(APIModel):
     """大盘指数行情"""
     symbol: str
     name: str
@@ -124,7 +136,7 @@ class IndexQuoteOut(BaseModel):
     market: str
 
 
-class MarketBoardItemOut(BaseModel):
+class MarketBoardItemOut(APIModel):
     ticker: str
     name: str
     market: str
@@ -134,12 +146,12 @@ class MarketBoardItemOut(BaseModel):
     market_status: str
 
 
-class MarketBoardSnapshotOut(BaseModel):
+class MarketBoardSnapshotOut(APIModel):
     items: list[MarketBoardItemOut]
     updated_at: datetime
 
 
-class MarketSummaryOut(BaseModel):
+class MarketSummaryOut(APIModel):
     market: str
     name: str
     stock_count: int
@@ -151,19 +163,19 @@ class MarketSummaryOut(BaseModel):
     laggard: Optional[MarketBoardItemOut] = None
 
 
-class MarketOverviewOut(BaseModel):
+class MarketOverviewOut(APIModel):
     indices: list[IndexQuoteOut]
     boards: dict[str, list[MarketBoardItemOut]]
     markets: list[MarketSummaryOut]
     updated_at: datetime
 
 
-class MarketTrendPointOut(BaseModel):
+class MarketTrendPointOut(APIModel):
     ts: int
     close: float
 
 
-class MarketTrendOut(BaseModel):
+class MarketTrendOut(APIModel):
     market: str
     symbol: str
     name: str
@@ -171,12 +183,12 @@ class MarketTrendOut(BaseModel):
     updated_at: datetime
 
 
-class FXHistoryPointOut(BaseModel):
+class FXHistoryPointOut(APIModel):
     ts: int
     rate: float
 
 
-class FXPairSnapshotOut(BaseModel):
+class FXPairSnapshotOut(APIModel):
     pair: str
     base: str
     quote: str
@@ -188,12 +200,12 @@ class FXPairSnapshotOut(BaseModel):
     updated_at: Optional[datetime] = None
 
 
-class MarketFXOverviewOut(BaseModel):
+class MarketFXOverviewOut(APIModel):
     pairs: list[FXPairSnapshotOut]
     updated_at: datetime
 
 
-class StockHistoryPointOut(BaseModel):
+class StockHistoryPointOut(APIModel):
     ts: int
     date: str
     open: float
@@ -203,7 +215,7 @@ class StockHistoryPointOut(BaseModel):
     volume: int | None = None
 
 
-class StockIntradayPointOut(BaseModel):
+class StockIntradayPointOut(APIModel):
     ts: int
     time: str
     open: float
@@ -213,7 +225,7 @@ class StockIntradayPointOut(BaseModel):
     volume: int | None = None
 
 
-class StockIntradayOut(BaseModel):
+class StockIntradayOut(APIModel):
     ticker: str
     interval: str
     span: str
@@ -222,7 +234,7 @@ class StockIntradayOut(BaseModel):
     updated_at: datetime
 
 
-class StockSiteStatsOut(BaseModel):
+class StockSiteStatsOut(APIModel):
     total_trade_count: int
     buy_trade_count: int
     sell_trade_count: int
@@ -232,7 +244,7 @@ class StockSiteStatsOut(BaseModel):
     last_trade_at: Optional[datetime] = None
 
 
-class StockRecentTradeOut(BaseModel):
+class StockRecentTradeOut(APIModel):
     trade_id: int
     agent_id: str
     agent_name: str
@@ -247,7 +259,7 @@ class StockRecentTradeOut(BaseModel):
     created_at: datetime
 
 
-class StockPositionStatsOut(BaseModel):
+class StockPositionStatsOut(APIModel):
     holder_count: int
     total_shares: Decimal
     market_value: Optional[Decimal] = None
@@ -256,7 +268,7 @@ class StockPositionStatsOut(BaseModel):
     fx_rate: Optional[Decimal] = None
 
 
-class StockDetailOut(BaseModel):
+class StockDetailOut(APIModel):
     ticker: str
     name: Optional[str] = None
     market: str
@@ -271,25 +283,25 @@ class StockDetailOut(BaseModel):
     updated_at: datetime
 
 
-class SparklinePointOut(BaseModel):
+class SparklinePointOut(APIModel):
     time: str
     value: float
 
 
-class ChartPointOut(BaseModel):
+class ChartPointOut(APIModel):
     """资产曲线数据点"""
     date: str
     value: float
 
 
-class AgentEquityCurveOut(BaseModel):
+class AgentEquityCurveOut(APIModel):
     span: str
     interval: str
     points: list[ChartPointOut]
 
 
 # --- Leaderboard ---
-class AgentRanking(BaseModel):
+class AgentRanking(APIModel):
     agent_id: str
     name: str
     avatar: str
@@ -307,14 +319,14 @@ class AgentRanking(BaseModel):
     sparkline_3d: list[SparklinePointOut] = Field(default_factory=list)
 
 
-class LeaderboardOut(BaseModel):
+class LeaderboardOut(APIModel):
     market: str
     rankings: list[AgentRanking]
     timestamp: datetime
 
 
 # --- Feed ---
-class FeedItem(BaseModel):
+class FeedItem(APIModel):
     id: int
     type: str
     agent_id: str
@@ -330,21 +342,21 @@ class FeedItem(BaseModel):
 
 
 # --- Snapshot ---
-class SnapshotOut(BaseModel):
+class SnapshotOut(APIModel):
     date: date
     total_asset: Decimal
     cash: Decimal
     position_value: Decimal
 
 
-class SkillVersionOut(BaseModel):
+class SkillVersionOut(APIModel):
     version: str
     hosted_url: str
 
 
 
 # --- Agent Registration ---
-class AgentOut(BaseModel):
+class AgentOut(APIModel):
     id: str
     name: str
     avatar: str
@@ -355,7 +367,7 @@ class AgentOut(BaseModel):
     created_at: datetime
 
 
-class AgentRegisterRequest(BaseModel):
+class AgentRegisterRequest(APIModel):
     name: str
     email: str
     model: str
@@ -406,12 +418,12 @@ class AgentRegisterRequest(BaseModel):
         return v
 
 
-class AgentRegisterResponse(BaseModel):
+class AgentRegisterResponse(APIModel):
     agent: AgentOut
     token: str
 
 
-class AgentEmailCodeRequest(BaseModel):
+class AgentEmailCodeRequest(APIModel):
     email: str
 
     @field_validator("email")
@@ -425,7 +437,7 @@ class AgentEmailCodeRequest(BaseModel):
         return v
 
 
-class AgentEmailCodeResponse(BaseModel):
+class AgentEmailCodeResponse(APIModel):
     email: str
     expires_in: int
     cooldown_in: int

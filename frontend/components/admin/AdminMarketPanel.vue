@@ -54,13 +54,14 @@
 
 <script setup lang="ts">
 import type { AdminMarketSnapshot } from '~/composables/useAdminDashboard'
+import { parseApiDate } from '~/utils/date'
 
 defineProps<{
   snapshot: AdminMarketSnapshot
 }>()
 
 function formatDate(value: string) {
-  const date = new Date(value)
+  const date = parseApiDate(value)
   if (Number.isNaN(date.getTime()))
     return '未知'
 

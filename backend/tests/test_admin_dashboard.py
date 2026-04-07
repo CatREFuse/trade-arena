@@ -11,6 +11,7 @@ async def test_admin_users_endpoint_returns_seeded_user(client, seeded_accounts)
     payload = response.json()
     assert payload["total"] >= 1
     assert any(item["id"] == seeded_accounts.agent_id for item in payload["items"])
+    assert all(item["created_at"].endswith("+00:00") for item in payload["items"] if item.get("created_at"))
 
 
 @pytest.mark.asyncio
@@ -22,6 +23,7 @@ async def test_admin_logs_endpoint_returns_trade_logs(client):
     assert len(payload["items"]) >= 1
     assert "ticker" in payload["items"][0]
     assert "action" in payload["items"][0]
+    assert all(item["created_at"].endswith("+00:00") for item in payload["items"] if item.get("created_at"))
 
 
 @pytest.mark.asyncio
@@ -58,3 +60,4 @@ async def test_admin_dashboard_endpoint_returns_all_modules(client):
     assert "data_sources" in payload
     assert "market" in payload
     assert "trade_stats" in payload
+    assert payload["generated_at"].endswith("+00:00")

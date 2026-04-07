@@ -13,6 +13,7 @@ from app.models import Account, Position, Trade, Wallet
 from app.schemas import AccountOut, PortfolioOut, PositionOut, TradeOut
 from app.services.fx import FXService
 from app.services.market_data import MarketDataService
+from app.utils.datetime import ensure_utc_datetime
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
@@ -153,7 +154,7 @@ async def get_trades(
             "fee_cny": t.fee_cny,
             "cash_after_cny": t.cash_after_cny,
             "reasoning": t.reasoning,
-            "created_at": t.created_at,
+            "created_at": ensure_utc_datetime(t.created_at),
         }
         for t in trades
     ]

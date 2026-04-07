@@ -147,6 +147,7 @@ import { CandlestickChart, LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import MarketDataTimestamp from '~/components/market/MarketDataTimestamp.vue'
+import { parseApiDate } from '~/utils/date'
 
 const VChart = defineAsyncComponent(() => import('vue-echarts'))
 useECharts([LineChart, CandlestickChart, GridComponent, TooltipComponent, CanvasRenderer])
@@ -507,7 +508,7 @@ function resolveReturnClass(value: number | null) {
 }
 
 function formatTime(value: string) {
-  return new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+  return parseApiDate(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
 }
 
 function setChartMode(mode: 'line' | 'candlestick') {

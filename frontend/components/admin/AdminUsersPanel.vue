@@ -49,6 +49,7 @@
 
 <script setup lang="ts">
 import type { AdminUserItem } from '~/composables/useAdminDashboard'
+import { parseApiDate } from '~/utils/date'
 
 defineProps<{
   total: number
@@ -56,7 +57,7 @@ defineProps<{
 }>()
 
 function formatDate(value: string) {
-  const date = new Date(value)
+  const date = parseApiDate(value)
   if (Number.isNaN(date.getTime()))
     return '未知'
 
