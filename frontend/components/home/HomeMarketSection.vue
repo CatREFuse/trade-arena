@@ -69,9 +69,6 @@
             <div class="font-mono text-caption" :class="getStatusClass(section.marketStatus)">
               {{ section.nextOpenLabel }}
             </div>
-            <div class="font-mono text-caption text-secondary">
-              UTC {{ section.utcNowLabel }}
-            </div>
           </div>
         </div>
 
@@ -188,7 +185,6 @@ const marketSections = computed(() => {
       marketStatus: summary?.market_status || 'closed',
       sessionWindows: formatSessionWindows(summary?.session_windows),
       nextOpenLabel: formatNextOpen(summary),
-      utcNowLabel: formatUtcTime(summary?.now_local),
       indices,
     }
   })

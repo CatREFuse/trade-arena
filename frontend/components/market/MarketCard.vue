@@ -61,9 +61,6 @@
         <div class="font-mono text-caption" :class="getMarketStatusClass(summary?.market_status)">
           {{ formatNextOpen(summary) }}
         </div>
-        <div class="font-mono text-caption text-secondary">
-          UTC {{ formatUtcTime(summary?.now_local) }}
-        </div>
       </div>
     </div>
 
