@@ -133,7 +133,7 @@ interface IndexSnapshot {
 interface BoardItem {
   ticker: string
   name: string
-  price: number
+  price: number | string
   change_pct: number
 }
 
@@ -173,9 +173,10 @@ function formatPercent(value: number | undefined | null): string {
   return `${sign}${value.toFixed(2)}%`
 }
 
-function formatPrice(value: number): string {
-  if (!Number.isFinite(value)) return '--'
-  return Number(value).toLocaleString('en-US', {
+function formatPrice(value: number | string): string {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '--'
+  return num.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
