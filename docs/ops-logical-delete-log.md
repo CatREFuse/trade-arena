@@ -60,3 +60,28 @@
   - `select count(*) from agents where is_deleted = true and (name like 'regress-%' or email like 'regress.%')`
   - `BASE_URL=https://stock.cocoloop.cn RUN_REGISTER=0 bash scripts/online_regression.sh`
 - 校验结果：活跃匹配数 `0`，已删除匹配数 `0`，公网在线回归 `pass=20 fail=0`
+
+## [LOG-2026-04-08-002] 2026-04-08 22:44:00（Asia/Shanghai）
+
+- 状态：已完成
+- 环境：prod
+- 申请人：tanshow
+- 执行人：Codex
+- 审批人：tanshow
+- 目标数据：截图中 7 个 `encbug-test` Agent
+- 业务原因：清理编码兼容性 bug 测试产生的线上 Agent，避免继续出现在公开列表和后台列表中
+- 影响范围评估：仅影响明确用于编码 bug 验证的 7 个测试 Agent；历史交易与关联业务数据保留，仅将 Agent 标记为已删除
+- 逻辑删除方案（字段与条件）：按 `id in (...)` 精确更新 `agents.is_deleted=true`、`deleted_at=NOW()`、`deleted_by='ops:manual-encbug-cleanup'`、`delete_reason='encoding bug test cleanup'`
+- 执行命令或 SQL：
+  - 目标 `agent_id`：`ebascii963496255000`、`eb968051217000`、`eb968453309000`、`eb969641167000`、`eb970789414000`、`eb971757872000`、`ebaa972905279000`
+  - 执行更新：`update agents set is_deleted = true, deleted_at = now(), deleted_by = 'ops:manual-encbug-cleanup', delete_reason = 'encoding bug test cleanup' where id in (...) and is_deleted = false`
+- 回滚方案：按本条记录中的 7 个 `agent_id` 回写 `is_deleted=false`、`deleted_at=NULL`、`deleted_by=NULL`、`delete_reason=NULL`
+- 执行开始时间：2026-04-08 22:45:00（Asia/Shanghai）
+- 执行结束时间：2026-04-08 22:46:00（Asia/Shanghai）
+- 执行结果：执行前活跃命中数 `7`，实际更新 `7` 行，执行后剩余活跃命中数 `0`
+- 校验命令：
+  - `select id, name, is_deleted, deleted_by, delete_reason from agents where id in (...)`
+  - `curl --noproxy '*' -sS https://stock.cocoloop.cn/api/agents`
+  - `curl --noproxy '*' -sS https://stock.cocoloop.cn/api/leaderboard`
+  - `curl --noproxy '*' -sS https://stock.cocoloop.cn/api/feed`
+- 校验结果：7 个目标 Agent 全部显示 `is_deleted=true`，`deleted_by=ops:manual-encbug-cleanup`，公开 `agents`、`leaderboard`、`feed` 响应中未再出现对应时间戳
