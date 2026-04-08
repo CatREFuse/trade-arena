@@ -1,12 +1,12 @@
-# Trade Arena Skill 安装落地与参赛设置流实现计划
+# Trade Arena Skill Landing 与参赛设置流实现计划
 
-> For agentic workers: follow this plan incrementally. Keep edits focused, preserve existing registration and trading behavior, and do not skip docs or tests.
+> For agentic workers: follow this plan incrementally. Keep edits focused, preserve existing registration and trading behavior, and do not reintroduce landing logic into Python scripts.
 
-**Goal:** 为 `trade-arena` Skill 实现统一启动守门流程、安装与升级 landing、投资策略沉淀、宿主环境探测与定时任务建议，让用户在首次安装、版本升级和后续任意时刻都能完成或重进参赛设置。
+**Goal:** 为 `trade-arena` Skill 落地新的 Agent 驱动式 landing 结构：由 `SKILL.md` 负责启动规则，由 `references/landing-outline.md` 负责问答大纲，由 Agent 在自然语言对话中完成策略整理、`strategy.md` 写入和定时任务建议。
 
-**Architecture:** 以 Skill 自然语言说明和宿主对话为用户主入口，以 `cocoloop-trade-arena/scripts/quickstart.py` 作为包内辅助入口，扩展启动守门逻辑、策略文件读写、landing 与 setup flow 编排；同步更新 `cocoloop-trade-arena/SKILL.md`、托管 runtime 副本 `skill-runtime/cocoloop-trade-arena/` 和相关说明页。
+**Architecture:** 以 `cocoloop-trade-arena/SKILL.md` 作为规则入口，以 `cocoloop-trade-arena/references/landing-outline.md` 作为 landing 唯一问答大纲；`cocoloop-trade-arena/scripts/quickstart.py` 仅保留手动辅助能力；同步更新 runtime 副本 `skill-runtime/cocoloop-trade-arena/`。
 
-**Tech Stack:** Python 3, markdown docs, JSON config, hosted skill ZIP packaging, existing Nuxt about page copy sync
+**Tech Stack:** markdown docs, JSON config, Python 3 helper script, hosted skill ZIP packaging
 
 **Spec:** [2026-04-08-trade-arena-setup-flow-design.md](/Users/tanshow/Developer/trade-arena/docs/superpowers/specs/2026-04-08-trade-arena-setup-flow-design.md)
 
@@ -14,297 +14,234 @@
 
 ## 实现原则
 
-- 先收口启动守门逻辑，再加对话式 setup flow，避免入口分裂
+- landing 过程完全不写进 Python 脚本
+- 启动守门由 Skill 规则层描述，不在辅助脚本里实现并行主入口
+- `landing-outline.md` 是 landing 的唯一问答大纲来源
 - `strategy.md` 是唯一策略正文文件，位置与 `config.json` 同级
 - `config.json` 只存轻量状态，不存长文本策略
-- landing 文案先讲能力，再进入设置流
-- 用户主入口始终是 Skill 自然语言，不要求用户具备直接运行 Python 脚本的能力
-- 向导和自定义模式都必须能用，且任意节点都能切换
-- 定时任务建议只生成建议表达，不直接创建宿主调度实体
+- 用户主入口始终是 Skill 自然语言，不要求用户直接运行 Python 脚本
+- 定时任务建议只生成建议，并把创建决定交回给用户
 - `cocoloop-trade-arena/` 与 `skill-runtime/cocoloop-trade-arena/` 必须保持一致
 
 ---
 
-## Task 1: 启动守门与状态模型收口
-
-**Files:**
-- Update: `cocoloop-trade-arena/scripts/quickstart.py`
-- Update: `cocoloop-trade-arena/config.json`
-- Update: `skill-runtime/cocoloop-trade-arena/scripts/quickstart.py`
-- Update: `skill-runtime/cocoloop-trade-arena/config.json`
-
-- [ ] **Step 1: 增加 setup 状态结构**
-
-在默认配置和保存逻辑中加入轻量 `setup_state`，至少覆盖：
-
-- `landing_last_seen_version`
-- `landing_last_completed_version`
-- `strategy_last_updated_at`
-- `strategy_capture_mode`
-- `schedule_last_generated_at`
-- `runtime_capability`
-- `last_update_error`
-
-- [ ] **Step 2: 统一版本读取与迁移标记**
-
-补一个“当前版本是否需要 landing 迁移”的判断入口。建议由代码内常量或轻量配置声明，不要把规则散落在分支里。
-
-- [ ] **Step 3: 重写更新检查逻辑**
-
-把“每天最多一次自动检查”改成“每次主动运行都静默检查”。要求：
-
-- 检查到新版本时直接自动更新
-- 更新成功后继续后续守门流程
-- 更新失败不阻断使用
-- 更新成功时只输出简短提示，不再打印旧版整段使用说明
-
-- [ ] **Step 4: 增加策略文件守门**
-
-实现 Skill 根目录下 `strategy.md` / `strategy.MD` 的检测、加载和损坏判断。要求：
-
-- 无文件时返回“必须启动 landing”
-- 有文件时返回策略正文
-- 文件损坏时返回“修复或重建策略”
-
-- [ ] **Step 5: 统一守门入口函数**
-
-在 `quickstart.py` 里抽一个单一入口，例如：
-
-`run_startup_gate() -> StartupGateResult`
-
-统一给出：
-
-- 是否更新成功
-- 当前本地版本
-- 是否需要 landing
-- 是否缺失策略
-- 是否策略损坏
-- 当前策略正文
-- 是否命中版本迁移 landing
-
-- [ ] **Step 6: 保护更新覆盖边界**
-
-确认自更新逻辑继续保留 `config.json`，同时显式保护 `strategy.md` 不被更新包覆盖。
-
----
-
-## Task 2: Landing 与 setup flow 主干实现
-
-**Files:**
-- Update: `cocoloop-trade-arena/scripts/quickstart.py`
-- Update: `skill-runtime/cocoloop-trade-arena/scripts/quickstart.py`
-
-- [ ] **Step 1: 新增 landing 能力介绍输出**
-
-安装后或版本迁移触发时，landing 第一屏要清楚说明 Trade Arena Skill 能做什么：
-
-- 看账户和三地持仓
-- 看个股、指数和市场
-- 买入卖出
-- 看排行榜和资产变化
-- 保存投资策略
-- 生成定时任务建议
-
-- [ ] **Step 2: 区分首次安装与升级用户开场**
-
-实现两种开场语义：
-
-- 首次安装：强调已经可以参赛，建议补齐策略和自动运行准备
-- 升级用户：强调本版本新增策略与定时任务设置能力
-
-- [ ] **Step 3: 增加三路入口**
-
-landing 统一提供三路入口：
-
-- 开始引导
-- 我自己定义
-- 稍后再说
-
-并为“稍后再说”提供统一召回语句。
-
-- [ ] **Step 4: 实现 setup flow 状态机**
-
-至少支持以下主状态：
-
-- `entry_confirm`
-- `strategy_capture`
-- `strategy_confirm`
-- `schedule_generation`
-- `done`
-
-要求状态之间可以中断、恢复和重进。
-
-- [ ] **Step 5: 任意节点支持逃逸**
-
-在策略采集和定时任务建议阶段都允许用户切到自定义模式。自定义模式必须回到统一的“解析 -> 回显 -> 确认”闭环。
-
----
-
-## Task 3: `strategy.md` 读写与策略整理
-
-**Files:**
-- Update: `cocoloop-trade-arena/scripts/quickstart.py`
-- Update: `skill-runtime/cocoloop-trade-arena/scripts/quickstart.py`
-- Create if needed: `cocoloop-trade-arena/templates/strategy.md.tmpl`
-- Create if needed: `skill-runtime/cocoloop-trade-arena/templates/strategy.md.tmpl`
-
-- [ ] **Step 1: 设计策略采集的最小字段**
-
-为轻量模板模式定义最少问题集。建议包含：
-
-- 主要关注市场
-- 投资风格
-- 仓位偏好
-- 建仓 / 减仓规则
-- 风险控制
-- 观察触发条件
-- 调度偏好
-
-- [ ] **Step 2: 实现半结构化整理**
-
-支持用户先给自然语言描述，再由系统补最少缺口，最后整理成策略草稿。
-
-- [ ] **Step 3: 统一策略草稿输出**
-
-无论来源是模板、向导还是自定义输入，都整理成同一种连续正文，不输出工程注释式文本。
-
-- [ ] **Step 4: 写入 `strategy.md`**
-
-确认后落盘到 Skill 根目录 `strategy.md`，并回写：
-
-- `strategy_last_updated_at`
-- `strategy_capture_mode`
-
-- [ ] **Step 5: 支持重载与微调**
-
-已有 `strategy.md` 时，允许：
-
-- 先总结当前策略
-- 选择微调
-- 选择整体重写
-- 跳过策略阶段直接重生成定时建议
-
----
-
-## Task 4: 宿主环境探测与定时任务建议
-
-**Files:**
-- Update: `cocoloop-trade-arena/scripts/quickstart.py`
-- Update: `skill-runtime/cocoloop-trade-arena/scripts/quickstart.py`
-- Update if needed: `cocoloop-trade-arena/SKILL.md`
-- Update if needed: `skill-runtime/cocoloop-trade-arena/SKILL.md`
-
-- [ ] **Step 1: 定义能力层级**
-
-先实现稳定的能力层级判断，而不是平台品牌判断。至少输出：
-
-- `automation`
-- `external_schedule`
-- `unknown`
-
-- [ ] **Step 2: 设计基础版建议**
-
-输出一套低负担的统一运行节奏，适合作为首次配置默认建议。
-
-- [ ] **Step 3: 设计市场增强版建议**
-
-按 A 股、港股、美股给增强建议，但不强迫三个市场一起开启。建议生成要参考 `strategy.md` 的风格和用户偏好。
-
-- [ ] **Step 4: 输出宿主可执行表达**
-
-每次生成结果都包含：
-
-- 识别到的环境类型
-- 推荐节奏
-- 一段当前用户可以直接采用的设置语句或配置草案
-
-- [ ] **Step 5: 支持自定义调度输入**
-
-如果用户直接给自己的运行节奏，就不要继续强推系统建议，而是整理、确认并输出适合宿主的表达版本。
-
-- [ ] **Step 6: 回写调度状态**
-
-生成建议后更新：
-
-- `schedule_last_generated_at`
-- `runtime_capability`
-
----
-
-## Task 5: Skill 文案与说明同步
+## Task 1: 规则入口收口到 `SKILL.md`
 
 **Files:**
 - Update: `cocoloop-trade-arena/SKILL.md`
 - Update: `skill-runtime/cocoloop-trade-arena/SKILL.md`
-- Update: `frontend/pages/about.vue`
-- Update if needed: `frontend/composables/useParticipationCommand.ts`
 
-- [ ] **Step 1: 更新 SKILL 顶部说明**
+- [ ] **Step 1: 明确启动守门规则**
 
-把当前“参赛流程及操作说明”改成新版结构，要求：
+在 `SKILL.md` 顶部写清楚：
 
-- 先介绍 Skill 能做什么
-- 再介绍策略和定时任务设置能力
-- 再给出安装后和升级后的下一步
+- 每次主动运行 Skill 都先静默检查更新
+- 每次主动运行都检查 `strategy.md`
+- 缺失或损坏时必须进入 landing
+- 命中版本迁移时必须进入 landing
 
-- [ ] **Step 2: 删除与新版行为冲突的旧说明**
+- [ ] **Step 2: 增加 landing 大纲引用**
 
-例如“每天最多自动检查一次更新”等旧规则，必须同步改掉。
+明确声明：
 
-- [ ] **Step 3: 同步 about 页面**
+- 一旦进入 landing，Agent 必须读取 `references/landing-outline.md`
+- `landing-outline.md` 是 landing 的唯一问答大纲来源
+- 它提供推荐问法、三个常见选项、推荐逻辑和自由输入处理规则
 
-`frontend/pages/about.vue` 的“参赛流程及操作说明”要与新版 Skill 逻辑一致，但文案仍然面向用户，不出现工程式解释。
+- [ ] **Step 3: 收紧脚本边界说明**
 
-- [ ] **Step 4: 校准 copy 内容**
+在 `SKILL.md` 中明确写出：
 
-复查所有新增文案，确保：
-
-- 不把功能说明写进用户最终文案
-- 不出现工程 comment 风格的句子
-- 不使用被项目约束拒绝的表达方式
+- `scripts/quickstart.py` 只是手动辅助入口
+- 不再用它承载 landing、策略整理、定时任务建议和启动守门
 
 ---
 
-## Task 6: 测试覆盖与回归
+## Task 2: 新增 landing 大纲文件
 
 **Files:**
-- Create or Update: `backend/tests/` only if server API affected
-- Create: `cocoloop-trade-arena/tests/` if skill test layout is introduced
-- Or create lightweight verification script under `cocoloop-trade-arena/scripts/`
-- Update docs if test command changes
+- Create: `cocoloop-trade-arena/references/landing-outline.md`
+- Create: `skill-runtime/cocoloop-trade-arena/references/landing-outline.md`
 
-- [ ] **Step 1: 设计启动守门测试样例**
+- [ ] **Step 1: 写开场规则**
 
-覆盖：
+包含：
 
-- 无更新 + 无策略文件
-- 无更新 + 有策略文件
-- 有更新 + 更新成功
-- 有更新 + 更新失败
-- 旧版升级命中 landing 迁移
+- landing 要先介绍什么能力
+- 首次安装和升级迁移如何区分开场
+- 三个入口如何给出
 
-- [ ] **Step 2: 设计策略文件测试样例**
+- [ ] **Step 2: 写策略采集主线**
 
-覆盖：
+为每个问题定义：
 
-- `strategy.md` 缺失
-- `strategy.md` 可读
-- `strategy.md` 损坏
-- `strategy.MD` 兼容读取
+- 为什么要问
+- 三个常见选项
+- 推荐逻辑
+- 自由输入如何处理
 
-- [ ] **Step 3: 设计 flow 测试样例**
+最少覆盖：
 
-覆盖：
+- 总体目标
+- 关注市场
+- 出手条件
+- 加减仓方式
+- 风险底线
+- 观察重点
+- 调度偏好
 
-- 向导模式
-- 自定义模式
-- 中途逃逸
-- 只改策略
-- 只重生成调度建议
+- [ ] **Step 3: 写策略确认与写入规则**
 
-- [ ] **Step 4: 跑项目要求的回归命令**
+明确：
 
-执行前先按要求阅读测试手册，然后至少计划运行：
+- 用户确认前不写文件
+- 用户确认后写入 `strategy.md`
+- 若存在 `strategy.MD`，统一迁为小写
+- 不把策略正文写入 `config.json`
+
+- [ ] **Step 4: 写定时任务建议规则**
+
+明确：
+
+- 先结合当前策略和宿主环境给出建议
+- 先给基础版，再给相关市场增强版
+- 给出“可以直接拿去创建任务的描述”
+- 是否创建必须由用户自己决定
+
+- [ ] **Step 5: 写逃逸与重入规则**
+
+明确：
+
+- 任意节点都允许“我自己定义”
+- 已有 `strategy.md` 时先总结当前策略，再决定微调、重写或只重生成定时任务建议
+- 文件损坏时进入修复或重建分支
+
+---
+
+## Task 3: 收缩 `quickstart.py` 为手动辅助脚本
+
+**Files:**
+- Update: `cocoloop-trade-arena/scripts/quickstart.py`
+- Update: `skill-runtime/cocoloop-trade-arena/scripts/quickstart.py`
+
+- [ ] **Step 1: 移除 landing 主流程**
+
+删除或下线：
+
+- landing 入口判断
+- landing 提问流程
+- 策略采集状态机
+- 定时任务建议状态机
+- landing 专用 CLI 参数
+
+- [ ] **Step 2: 保留辅助能力**
+
+保留：
+
+- 手动检查更新
+- 托管包覆盖更新
+- 手动辅助注册
+- 刷新账户信息
+- 查看单只股票行情
+- 查看三地持仓汇总
+
+- [ ] **Step 3: 输出正确 handoff 提示**
+
+默认运行脚本时要明确告诉用户：
+
+- landing 和设置流在 Skill 对话里完成
+- 普通使用者应回到宿主说“配置 trade arena”之类的话
+- 脚本只适合做手动辅助动作
+
+- [ ] **Step 4: 继续保护更新覆盖边界**
+
+确认更新包覆盖时继续保护：
+
+- `config.json`
+- `strategy.md`
+- `strategy.MD`
+
+---
+
+## Task 4: 轻量状态与配置模板同步
+
+**Files:**
+- Update: `cocoloop-trade-arena/config.json`
+- Update if needed: `skill-runtime/cocoloop-trade-arena/config.json`
+
+- [ ] **Step 1: 收口 `setup_state` 字段**
+
+配置模板中保留最少状态：
+
+- `landing_last_seen_version`
+- `landing_last_completed_version`
+- `strategy_last_updated_at`
+- `schedule_last_generated_at`
+- `runtime_capability`
+- `last_update_error`
+
+- [ ] **Step 2: 移除已不再需要的脚本侧字段**
+
+例如脚本实现遗留的：
+
+- `strategy_capture_mode`
+
+若字段仍有业务意义，再在 Skill 规则层重新定义；否则从模板中移除。
+
+---
+
+## Task 5: 参考文档与版本示例同步
+
+**Files:**
+- Update: `cocoloop-trade-arena/references/api.md`
+- Update if needed: `cocoloop-trade-arena/references/errors.md`
+- Update runtime mirrors accordingly
+
+- [ ] **Step 1: 同步版本示例**
+
+把 API 示例里的 Skill 版本号同步到当前版本。
+
+- [ ] **Step 2: 保持 runtime 镜像一致**
+
+确认源码包和 runtime 副本的下列文件一致：
+
+- `SKILL.md`
+- `references/landing-outline.md`
+- `references/api.md`
+- `scripts/quickstart.py`
+
+---
+
+## Task 6: 测试与回归
+
+**Files:**
+- Update: `cocoloop-trade-arena/tests/test_quickstart.py`
+- Update docs only if test commands change materially
+
+- [ ] **Step 1: 以新边界重写 helper 测试**
+
+测试重点改成：
+
+- 配置模板兼容读取
+- 更新覆盖时保护 `config.json` 和 `strategy.md`
+- 手动更新检查能返回远端版本信息
+- 遗留 `strategy.MD` 可兼容读取
+- helper 启动会正确把用户引导回 Skill 对话
+
+- [ ] **Step 2: 跑 focused 验证**
+
+至少执行：
+
+```bash
+python3 -m py_compile cocoloop-trade-arena/scripts/quickstart.py skill-runtime/cocoloop-trade-arena/scripts/quickstart.py cocoloop-trade-arena/tests/test_quickstart.py
+pytest -q cocoloop-trade-arena/tests/test_quickstart.py
+python3 skill-runtime/cocoloop-trade-arena/scripts/quickstart.py
+```
+
+- [ ] **Step 3: 保留项目级回归边界**
+
+如果本轮没有改后端和前端业务逻辑，不强制重跑整套网站回归。  
+如果后续又改到站内文案或服务端接口，再补：
 
 ```bash
 cd /Users/tanshow/Developer/trade-arena/backend && pytest -q
@@ -312,53 +249,49 @@ cd /Users/tanshow/Developer/trade-arena && bash scripts/dev_self_check.sh
 cd /Users/tanshow/Developer/trade-arena && BASE_URL=http://localhost:3000 bash scripts/online_regression.sh
 ```
 
-若本轮实现主要在 Skill 包内部，还应补一组本地脚本级 smoke 验证，确保安装、更新、landing、策略写入、定时建议生成路径通畅。
-
 ---
 
-## Task 7: 文档与托管副本收尾
+## Task 7: 交付与收尾
 
 **Files:**
-- Update: `docs/developer-handbook.md` if file map changes materially
-- Update: `docs/testing-process-manual.md` if testing flow changes
-- Update: `docs/testing-checklist.md` if regression checklist changes
-- Update any hosted runtime mirror files affected
+- Update: `docs/superpowers/specs/2026-04-08-trade-arena-setup-flow-design.md` only if needed
+- Update: this plan file
+- Update any runtime mirror files affected
 
-- [ ] **Step 1: 同步文档入口**
+- [ ] **Step 1: 检查工作区残留**
 
-如果启动方式、验证方式或关键文件地图变化明显，更新开发与测试文档。
+提交前只纳入实现文件，不要误带：
 
-- [ ] **Step 2: 检查托管 Skill 包一致性**
+- runtime 本地运行态 `config.json`
+- 临时产物目录
+- 用户本地策略文件
 
-确认 `cocoloop-trade-arena/` 与 `skill-runtime/cocoloop-trade-arena/` 的关键文件一致，避免下载包与源码行为不一致。
+- [ ] **Step 2: 记录验证结果**
 
-- [ ] **Step 3: 记录验证结果**
-
-整理实现交付记录，包含：
+交付说明中固定包含：
 
 - 修改文件
 - 验证命令
 - 结果摘要
-- 风险与后续
+- 未提交的本地状态文件
 
 ---
 
 ## 推荐实施顺序
 
-- [ ] Phase A: Task 1 启动守门与状态模型
-- [ ] Phase B: Task 2 Landing 与 setup flow 主干
-- [ ] Phase C: Task 3 `strategy.md` 读写与策略整理
-- [ ] Phase D: Task 4 宿主环境探测与定时任务建议
-- [ ] Phase E: Task 5 Skill 文案与说明同步
-- [ ] Phase F: Task 6 测试覆盖与回归
-- [ ] Phase G: Task 7 文档与托管副本收尾
+- [ ] Phase A: Task 1 规则入口收口到 `SKILL.md`
+- [ ] Phase B: Task 2 新增 landing 大纲文件
+- [ ] Phase C: Task 3 收缩 `quickstart.py`
+- [ ] Phase D: Task 4 轻量状态与配置模板同步
+- [ ] Phase E: Task 5 参考文档与版本示例同步
+- [ ] Phase F: Task 6 测试与回归
+- [ ] Phase G: Task 7 交付与收尾
 
 ---
 
 ## 风险与注意事项
 
-- 现有自更新逻辑会在更新后打印旧版使用说明，实现时要避免旧逻辑残留造成重复或冲突
-- 更新包覆盖逻辑当前只保护 `config.json`，实现时必须把 `strategy.md` 也纳入保护范围
-- 如果 setup flow 直接堆在 `quickstart.py` 顶层函数里，文件会继续膨胀；实现时应尽量拆出清晰的辅助函数
-- about 页面和 Skill 文案必须同步，不然用户会遇到站内说明和实际行为不一致
-- 宿主能力探测只需做到稳定可用，不要在第一版过度追求覆盖所有平台
+- 旧脚本式 landing 逻辑如果没有完全移除，后续维护者很容易再次沿脚本路径迭代
+- runtime 镜像如果不同步，用户本地体验会和源码包设计不一致
+- `strategy.md` 与 `strategy.MD` 在大小写不敏感文件系统上可能映射到同一文件，测试时要避免写死断言
+- about 页面和站内说明如果后续再提 landing，需要继续保持和 `SKILL.md` 的边界一致
