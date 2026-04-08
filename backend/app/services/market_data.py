@@ -525,13 +525,13 @@ class MarketDataService:
         # quote chain
         self.register_provider("quote", "cn", self.akshare, priority=0)
         self.register_provider("quote", "cn", self.tencent, priority=1)
-        self.register_provider("quote", "cn", self.tushare, priority=2)
-        self.register_provider("quote", "cn", self.sina, priority=3)
+        self.register_provider("quote", "cn", self.sina, priority=2)
+        self.register_provider("quote", "cn", self.tushare, priority=3)
 
         self.register_provider("quote", "hk", self.akshare, priority=0)
         self.register_provider("quote", "hk", self.tencent, priority=1)
-        self.register_provider("quote", "hk", self.tushare, priority=2)
-        self.register_provider("quote", "hk", self.yahoo, priority=3)
+        self.register_provider("quote", "hk", self.yahoo, priority=2)
+        self.register_provider("quote", "hk", self.tushare, priority=3)
 
         self.register_provider("quote", "us", self.yahoo, priority=0)
         self.register_provider("quote", "us", self.tencent, priority=1)

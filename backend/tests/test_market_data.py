@@ -104,8 +104,8 @@ def test_provider_chain_includes_tushare_for_cn_and_hk(fake_redis):
 
     assert len(cn_chain) >= 4
     assert len(hk_chain) >= 4
-    assert isinstance(cn_chain[2], TushareProvider)
-    assert isinstance(hk_chain[2], TushareProvider)
+    assert isinstance(cn_chain[-1], TushareProvider)
+    assert isinstance(hk_chain[-1], TushareProvider)
 
 
 def test_provider_chain_includes_tencent_as_us_fallback(fake_redis):
