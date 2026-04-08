@@ -1184,6 +1184,235 @@ class TencentProvider(BaseProvider):
             return None
 
 
+class TushareProvider(BaseProvider):
+    """Tushare 实时行情提供商 - 覆盖 A/HK 行情，需 token"""
+
+    API_URL = "https://api.tushare.pro"
+    CN_API_NAME = "rt_k"
+    HK_API_NAME = "rt_hk_k"
+    CN_FIELDS = "ts_code,name,pre_close,high,open,low,close,vol"
+    HK_FIELDS = "ts_code,pre_close,high,open,low,close,vol"
+    BATCH_CHUNK_SIZE = 60
+    HEADERS = {
+        "Content-Type": "application/json",
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
+    }
+
+    def __init__(self, token: str | None = None):
+        self.token = (token or "").strip()
+
+    def _enabled(self) -> bool:
+        return bool(self.token)
+
+    async def get_quote(self, ticker: str) -> QuoteData | None:
+        if not self._enabled():
+            return None
+
+        canonical = self._canonical_ticker(ticker)
+        market = self._ticker_market(canonical)
+        if market not in {"cn", "hk"}:
+            return None
+
+        api_name = self.CN_API_NAME if market == "cn" else self.HK_API_NAME
+        fields = self.CN_FIELDS if market == "cn" else self.HK_FIELDS
+        request_ticker = self._to_request_ticker(canonical)
+        rows = await self._request_rows(api_name, request_ticker, fields)
+        if not rows:
+            return None
+        parsed = self._parse_quote_rows(rows)
+        return parsed.get(canonical)
+
+    async def get_index(self, symbol: str) -> QuoteData | None:
+        return None
+
+    async def get_quotes_batch(self, tickers: list[str]) -> dict[str, QuoteData | None]:
+        if not tickers:
+            return {}
+        if not self._enabled():
+            return {ticker: None for ticker in tickers}
+
+        results: dict[str, QuoteData | None] = {ticker: None for ticker in tickers}
+        groups: dict[str, dict[str, list[str]]] = {"cn": {}, "hk": {}}
+
+        for ticker in tickers:
+            canonical = self._canonical_ticker(ticker)
+            market = self._ticker_market(canonical)
+            if market not in {"cn", "hk"}:
+                continue
+            groups[market].setdefault(canonical, []).append(ticker)
+
+        for market in ("cn", "hk"):
+            canonical_tickers = list(groups[market].keys())
+            if not canonical_tickers:
+                continue
+            api_name = self.CN_API_NAME if market == "cn" else self.HK_API_NAME
+            fields = self.CN_FIELDS if market == "cn" else self.HK_FIELDS
+            request_tickers = [self._to_request_ticker(item) for item in canonical_tickers]
+
+            parsed_quotes: dict[str, QuoteData] = {}
+            for i in range(0, len(request_tickers), self.BATCH_CHUNK_SIZE):
+                chunk = request_tickers[i:i + self.BATCH_CHUNK_SIZE]
+                rows = await self._request_rows(api_name, ",".join(chunk), fields)
+                parsed_quotes.update(self._parse_quote_rows(rows))
+
+            for canonical, originals in groups[market].items():
+                quote = parsed_quotes.get(canonical)
+                if not quote:
+                    continue
+                for original in originals:
+                    results[original] = self._clone_quote(quote, original)
+
+        return results
+
+    async def _request_rows(self, api_name: str, ts_code: str, fields: str) -> list[dict]:
+        payload = {
+            "api_name": api_name,
+            "token": self.token,
+            "params": {"ts_code": ts_code},
+            "fields": fields,
+        }
+        try:
+            resp = await _limited_post(
+                "tushare",
+                self.API_URL,
+                json=payload,
+                headers=self.HEADERS,
+            )
+            resp.raise_for_status()
+            body = resp.json()
+        except Exception as e:
+            _warning_throttled(
+                f"tushare_request:{api_name}",
+                "Tushare request failed for api=%s ts_code=%s: %s",
+                api_name,
+                ts_code,
+                e,
+            )
+            return []
+
+        code = int(body.get("code", -1)) if isinstance(body, dict) else -1
+        if code != 0:
+            _warning_throttled(
+                f"tushare_response:{api_name}:{code}",
+                "Tushare response error code=%s api=%s ts_code=%s msg=%s",
+                code,
+                api_name,
+                ts_code,
+                body.get("msg") if isinstance(body, dict) else "",
+            )
+            return []
+        return self._rows_from_response(body)
+
+    @classmethod
+    def _rows_from_response(cls, payload: dict) -> list[dict]:
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return []
+        fields = data.get("fields")
+        items = data.get("items")
+        if not isinstance(fields, list) or not isinstance(items, list):
+            return []
+
+        rows: list[dict] = []
+        for item in items:
+            if not isinstance(item, list):
+                continue
+            rows.append(dict(zip(fields, item)))
+        return rows
+
+    @classmethod
+    def _parse_quote_rows(cls, rows: list[dict]) -> dict[str, QuoteData]:
+        quotes: dict[str, QuoteData] = {}
+        for row in rows:
+            ticker = cls._canonical_ticker(str(row.get("ts_code") or ""))
+            if not ticker:
+                continue
+            close = cls._coerce_number(row.get("close"))
+            if close is None:
+                continue
+            previous_close = cls._coerce_number(row.get("pre_close"))
+            if previous_close is None:
+                previous_close = close
+            change_pct = ((close - previous_close) / previous_close * 100) if previous_close else 0.0
+            volume = cls._coerce_number(row.get("vol")) or 0.0
+            name = str(row.get("name") or ticker).strip() or ticker
+            quotes[ticker] = QuoteData(
+                ticker=ticker,
+                price=round(close, 2),
+                change_pct=round(change_pct, 2),
+                volume=int(volume),
+                market_status="open",
+                name=name,
+                previous_close=round(previous_close, 2),
+            )
+        return quotes
+
+    @classmethod
+    def _clone_quote(cls, quote: QuoteData, ticker: str) -> QuoteData:
+        return QuoteData(
+            ticker=ticker,
+            price=quote.price,
+            change_pct=quote.change_pct,
+            volume=quote.volume,
+            market_status=quote.market_status,
+            name=quote.name,
+            previous_close=quote.previous_close,
+        )
+
+    @classmethod
+    def _ticker_market(cls, ticker: str) -> str:
+        upper = ticker.upper()
+        if upper.endswith(".SH") or upper.endswith(".SZ"):
+            return "cn"
+        if upper.endswith(".HK"):
+            return "hk"
+        return "us"
+
+    @classmethod
+    def _to_request_ticker(cls, ticker: str) -> str:
+        upper = cls._canonical_ticker(ticker)
+        if upper.endswith(".HK"):
+            code = upper.removesuffix(".HK")
+            return f"{code.zfill(5)}.HK"
+        return upper
+
+    @classmethod
+    def _canonical_ticker(cls, ticker: str) -> str:
+        upper = ticker.strip().upper()
+        if not upper:
+            return ""
+
+        cn_match = re.fullmatch(r"(\d{6})\.(SH|SZ)", upper)
+        if cn_match:
+            return f"{cn_match.group(1)}.{cn_match.group(2)}"
+
+        hk_match = re.fullmatch(r"(\d{1,5})\.HK", upper)
+        if hk_match:
+            raw = hk_match.group(1)
+            core = raw.lstrip("0") or "0"
+            if len(core) < 4:
+                core = core.zfill(4)
+            return f"{core}.HK"
+        return upper
+
+    @staticmethod
+    def _coerce_number(value) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            text = value.strip().replace(",", "")
+            if not text:
+                return None
+            value = text
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+
 class AkshareProvider(BaseProvider):
     """AKShare 提供商 - 优先用于 A/HK 行情与指数"""
 

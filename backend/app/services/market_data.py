@@ -36,6 +36,7 @@ from app.services.market_providers import (
     FinnhubProvider,
     MockProvider,
     SinaProvider,
+    TushareProvider,
     TencentProvider,
     TwelveDataProvider,
     YahooProvider,
@@ -448,6 +449,7 @@ class MarketDataService:
         twelvedata: TwelveDataProvider | None = None,
         alphavantage: AlphaVantageProvider | None = None,
         finnhub: FinnhubProvider | None = None,
+        tushare: TushareProvider | None = None,
         tencent: TencentProvider | None = None,
         sina: SinaProvider | None = None,
         mock: MockProvider | None = None,
@@ -461,6 +463,7 @@ class MarketDataService:
         self.twelvedata = twelvedata or TwelveDataProvider(api_key=settings.market_twelvedata_api_key)
         self.alphavantage = alphavantage or AlphaVantageProvider(api_key=settings.market_alphavantage_api_key)
         self.finnhub = finnhub or FinnhubProvider(api_key=settings.market_finnhub_api_key)
+        self.tushare = tushare or TushareProvider(token=settings.market_tushare_token)
         self.mock = mock or MockProvider()
         self.enable_mock_fallback = (
             settings.market_enable_mock_fallback
@@ -522,11 +525,13 @@ class MarketDataService:
         # quote chain
         self.register_provider("quote", "cn", self.akshare, priority=0)
         self.register_provider("quote", "cn", self.tencent, priority=1)
-        self.register_provider("quote", "cn", self.sina, priority=2)
+        self.register_provider("quote", "cn", self.tushare, priority=2)
+        self.register_provider("quote", "cn", self.sina, priority=3)
 
         self.register_provider("quote", "hk", self.akshare, priority=0)
         self.register_provider("quote", "hk", self.tencent, priority=1)
-        self.register_provider("quote", "hk", self.yahoo, priority=2)
+        self.register_provider("quote", "hk", self.tushare, priority=2)
+        self.register_provider("quote", "hk", self.yahoo, priority=3)
 
         self.register_provider("quote", "us", self.yahoo, priority=0)
         self.register_provider("quote", "us", self.tencent, priority=1)

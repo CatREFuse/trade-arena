@@ -19,7 +19,7 @@ from app.schemas import (
     StockIntradayPointOut,
 )
 from app.services import market_data as md
-from app.services.market_providers import AkshareProvider, QuoteData, TencentProvider
+from app.services.market_providers import AkshareProvider, QuoteData, TencentProvider, TushareProvider
 
 
 class RaisingProvider:
@@ -95,6 +95,17 @@ def test_provider_chain_prioritizes_akshare_for_cn_and_hk(fake_redis):
     assert hk_chain
     assert isinstance(cn_chain[0], AkshareProvider)
     assert isinstance(hk_chain[0], AkshareProvider)
+
+
+def test_provider_chain_includes_tushare_for_cn_and_hk(fake_redis):
+    service = md.MarketDataService(fake_redis)
+    cn_chain = service._quote_providers("600519.SH")
+    hk_chain = service._quote_providers("0700.HK")
+
+    assert len(cn_chain) >= 4
+    assert len(hk_chain) >= 4
+    assert isinstance(cn_chain[2], TushareProvider)
+    assert isinstance(hk_chain[2], TushareProvider)
 
 
 def test_provider_chain_includes_tencent_as_us_fallback(fake_redis):

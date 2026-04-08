@@ -7,6 +7,7 @@ from app.services.market_providers import (
     AlphaVantageProvider,
     FinnhubProvider,
     TencentProvider,
+    TushareProvider,
     TwelveDataProvider,
     YahooProvider,
 )
@@ -220,3 +221,38 @@ def test_finnhub_parse_quote_payload():
     assert quote.previous_close == 246.74
     assert quote.change_pct == -0.68
     assert quote.volume == 0
+
+
+def test_tushare_parse_quote_rows_supports_cn_and_hk():
+    rows = [
+        {
+            "ts_code": "600519.SH",
+            "name": "贵州茅台",
+            "pre_close": 1452.87,
+            "close": 1445.00,
+            "vol": 2613200,
+        },
+        {
+            "ts_code": "00700.HK",
+            "pre_close": 498.0,
+            "close": 508.0,
+            "vol": 18400234,
+        },
+    ]
+
+    quotes = TushareProvider._parse_quote_rows(rows)
+
+    assert set(quotes.keys()) == {"600519.SH", "0700.HK"}
+    assert quotes["600519.SH"].name == "贵州茅台"
+    assert quotes["600519.SH"].previous_close == 1452.87
+    assert quotes["600519.SH"].change_pct == -0.54
+    assert quotes["0700.HK"].ticker == "0700.HK"
+    assert quotes["0700.HK"].name == "0700.HK"
+    assert quotes["0700.HK"].price == 508.0
+    assert quotes["0700.HK"].change_pct == 2.01
+
+
+def test_tushare_request_ticker_normalizes_hk_code_width():
+    assert TushareProvider._to_request_ticker("0700.HK") == "00700.HK"
+    assert TushareProvider._to_request_ticker("0005.HK") == "00005.HK"
+    assert TushareProvider._to_request_ticker("600519.SH") == "600519.SH"
