@@ -146,3 +146,42 @@ def test_ask_strategy_question_supports_option_and_custom(quickstart):
 
     assert "冲击排行榜第一" in option_answer
     assert custom_answer == "我想聚焦美股科技龙头"
+
+
+def test_get_strategy_recommendation_follows_previous_answers(quickstart):
+    spec = next(item for item in quickstart.STRATEGY_QUESTION_SPECS if item["key"] == "style")
+
+    recommendation = quickstart.get_strategy_recommendation(
+        spec,
+        {"goal": "以冲击排行榜第一为目标", "markets": "集中盯美股，把研究和执行都放在一个市场。"},
+    )
+
+    assert "更推荐 2" in recommendation
+    assert "再考虑 3" in recommendation
+
+
+def test_build_strategy_markdown_uses_summary_without_engineering_copy(quickstart):
+    markdown = quickstart.build_strategy_markdown(
+        "guided",
+        {
+            "title": "Trade Arena 投资策略",
+            "summary": "这份策略以冲击排名为目标，主要围绕美股展开。",
+            "goal": "以冲击排行榜第一为目标。",
+            "markets": "只做美股。",
+        },
+    )
+
+    assert "这份策略以冲击排名为目标" in markdown
+    assert "策略来源" not in markdown
+
+
+def test_build_strategy_summary_compacts_choice_text(quickstart):
+    summary = quickstart.build_strategy_summary(
+        {
+            "goal": "以冲击排行榜第一为目标，愿意在看对趋势时更主动进攻。",
+            "markets": "集中盯美股，把研究和执行都放在一个市场。",
+            "style": "大盘更乐观时分批进入，趋势不清楚时先等。",
+        }
+    )
+
+    assert summary == "这份策略以冲击排行榜为目标，主攻美股，整体采用中期顺势的执行方式。"

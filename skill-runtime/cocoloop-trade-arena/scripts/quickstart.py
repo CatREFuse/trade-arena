@@ -739,11 +739,41 @@ def prompt_text(prompt: str, input_fn: InputFunc = input) -> str:
         print("这一项先别留空。")
 
 
-def ask_strategy_question(spec: dict[str, object], input_fn: InputFunc = input) -> str:
+def get_strategy_recommendation(spec: dict[str, object], answers: dict[str, str]) -> str:
+    key = str(spec["key"])
+    default_recommendation = str(spec["recommendation"])
+    goal = answers.get("goal", "")
+    markets = answers.get("markets", "")
+    style = answers.get("style", "")
+
+    if key == "markets":
+        if "冲击" in goal or "第一" in goal:
+            return "如果你想冲排名，但又不想把执行面铺太宽，我更推荐 1。 如果你特别看重中美联动，再考虑 2。"
+    if key == "style":
+        if "美股" in markets and ("冲击" in goal or "第一" in goal):
+            return "如果你主攻美股、又想冲排名，我更推荐 2。 如果你能接受更大波动，再考虑 3。"
+        if "稳步" in goal or "保排名" in goal:
+            return "如果你更在意稳住排名，我更推荐 1。 想在稳定里保留进攻空间时再选 2。"
+    if key == "positioning":
+        if "中期" in style or "顺势" in style:
+            return "如果你已经决定做中期顺势，我更推荐 1。 它更容易让你在看对时放大收益，在看错时及时收手。"
+    if key == "risk":
+        if "美股" in markets:
+            return "主做美股时，我更推荐 1 和 2 的思路一起用。 先盯整体风险，再控制单只股票的暴跌伤害。"
+    if key == "schedule":
+        if "积极" in style or "冲击" in goal or "第一" in goal:
+            return "如果你想更积极地冲排名，我更推荐 2。 想更轻一点可以选 1。 宿主支持事件触发时再考虑 3。"
+        if "防守" in style or "稳步" in goal:
+            return "如果你更看重稳定，我更推荐 1。 想多看盘但不想太密时，再选 2。"
+
+    return default_recommendation
+
+
+def ask_strategy_question(spec: dict[str, object], answers: dict[str, str] | None = None, input_fn: InputFunc = input) -> str:
     title = str(spec["title"])
     explanation = str(spec["explanation"])
     options: dict[str, tuple[str, str]] = spec["options"]  # type: ignore[assignment]
-    recommendation = str(spec["recommendation"])
+    recommendation = get_strategy_recommendation(spec, answers or {})
 
     print(f"\n{title}")
     print(explanation)
@@ -776,8 +806,48 @@ def collect_multiline(prompt: str, input_fn: InputFunc = input) -> str:
     return "\n".join(lines).strip()
 
 
+def _compact_goal(text: str) -> str:
+    if "冲击排行榜第一" in text or "冲击第一" in text:
+        return "冲击排行榜"
+    if "稳步" in text:
+        return "稳步增值"
+    if "保排名" in text or "留在前排" in text:
+        return "稳住排名"
+    return text.strip("。；， ")
+
+
+def _compact_markets(text: str) -> str:
+    if "美股" in text and "港股" in text:
+        return "美股和港股"
+    if "美股" in text and "A股" not in text and "港股" not in text:
+        return "美股"
+    if "三地" in text or ("美股" in text and "A股" in text and "港股" in text):
+        return "三地市场"
+    return text.strip("。；， ")
+
+
+def _compact_style(text: str) -> str:
+    if "中期" in text or "顺势" in text:
+        return "中期顺势"
+    if "大盘更乐观" in text or "分批进入" in text or "趋势不清楚时先等" in text:
+        return "中期顺势"
+    if "防守" in text or "观望" in text:
+        return "偏防守"
+    if "积极" in text or "共振" in text:
+        return "积极进攻"
+    return text.strip("。；， ")
+
+
+def build_strategy_summary(answers: dict[str, str]) -> str:
+    goal = _compact_goal(answers.get("goal", "争取更好排名"))
+    markets = _compact_markets(answers.get("markets", "核心市场"))
+    style = _compact_style(answers.get("style", "当前已确认的风格"))
+    return f"这份策略以{goal}为目标，主攻{markets}，整体采用{style}的执行方式。"
+
+
 def build_strategy_markdown(mode: str, answers: dict[str, str]) -> str:
     title = answers.get("title") or "Trade Arena 投资策略"
+    summary = answers.get("summary", "")
     sections = [
         ("总体目标", answers.get("goal", "")),
         ("主要关注市场", answers.get("markets", "")),
@@ -787,7 +857,10 @@ def build_strategy_markdown(mode: str, answers: dict[str, str]) -> str:
         ("观察重点与触发条件", answers.get("triggers", "")),
         ("调度偏好", answers.get("schedule", "")),
     ]
-    lines = [f"# {title}", "", f"策略来源：{mode}", ""]
+    lines = [f"# {title}", ""]
+    if summary.strip():
+        lines.append(summary.strip())
+        lines.append("")
     for heading, body in sections:
         if not body.strip():
             continue
@@ -801,10 +874,11 @@ def capture_strategy_template(input_fn: InputFunc = input) -> tuple[str, str]:
     answers: dict[str, str] = {"title": "Trade Arena 投资策略"}
     for spec in STRATEGY_QUESTION_SPECS:
         key = str(spec["key"])
-        raw = ask_strategy_question(spec, input_fn=input_fn)
+        raw = ask_strategy_question(spec, answers=answers, input_fn=input_fn)
         if raw in CUSTOM_TOKENS:
             return capture_strategy_custom(input_fn=input_fn)
         answers[key] = raw
+    answers["summary"] = build_strategy_summary(answers)
     return build_strategy_markdown("template", answers), "template"
 
 
@@ -812,10 +886,11 @@ def capture_strategy_guided(input_fn: InputFunc = input) -> tuple[str, str]:
     answers = {"title": "Trade Arena 投资策略"}
     for spec in STRATEGY_QUESTION_SPECS:
         key = str(spec["key"])
-        value = ask_strategy_question(spec, input_fn=input_fn)
+        value = ask_strategy_question(spec, answers=answers, input_fn=input_fn)
         if value in CUSTOM_TOKENS:
             return capture_strategy_custom(input_fn=input_fn)
         answers[key] = value
+    answers["summary"] = build_strategy_summary(answers)
     return build_strategy_markdown("guided", answers), "guided"
 
 
