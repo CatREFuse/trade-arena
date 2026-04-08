@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Account
+from app.models import Account, Agent
 
 
 async def get_current_account(
@@ -16,7 +16,11 @@ async def get_current_account(
             detail={"error": "INVALID_TOKEN", "message": "Missing Bearer token"},
         )
     token = authorization[7:]
-    result = await db.execute(select(Account).where(Account.api_token == token))
+    result = await db.execute(
+        select(Account)
+        .join(Agent, Agent.id == Account.agent_id)
+        .where(Account.api_token == token, Agent.is_deleted.is_(False))
+    )
     account = result.scalars().first()
     if not account:
         raise HTTPException(

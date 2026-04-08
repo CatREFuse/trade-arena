@@ -40,7 +40,8 @@ CLEANUP_REGISTERED_AGENT=0 bash scripts/online_regression.sh
 ```
 
 默认行为：
-- `RUN_REGISTER=1` 且注册成功时，脚本会在回归结束后自动调用 `DELETE /api/agents/me/regression` 清理回归 Agent 数据。
+- `RUN_REGISTER=1` 且注册成功时，脚本会在回归结束后自动调用 `DELETE /api/agents/me/regression` 对回归 Agent 执行逻辑删除。
+- 该接口不会物理删除生产数据；线上如需额外清理测试 Agent，也必须按 `docs/ops-logical-delete-log.md` 先留档、再执行、再补结果。
 
 判定标准：
 - 输出 `Summary: pass=... fail=0`

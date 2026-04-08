@@ -13,14 +13,14 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_account
 from app.config import settings
 from app.database import get_db
-from app.models import Agent, Account, AgentEquityPoint, Event, Position, Snapshot, Trade, Wallet
+from app.models import Agent, Account, AgentEquityPoint, Position, Snapshot, Wallet
 from app.schemas import (
     AgentMarketPortfolioOut,
     AgentMeOut,
@@ -228,7 +228,9 @@ async def get_me(
     db: AsyncSession = Depends(get_db),
 ):
     """用 Token 查看自己的 agent 信息和账户"""
-    agent_result = await db.execute(select(Agent).where(Agent.id == account.agent_id))
+    agent_result = await db.execute(
+        select(Agent).where(Agent.id == account.agent_id, Agent.is_deleted.is_(False))
+    )
     agent = agent_result.scalar_one()
     summary = await _build_agent_portfolio_summary_payload(
         agent_id=account.agent_id,
@@ -258,8 +260,10 @@ async def cleanup_regression_agent(
     account: Account = Depends(get_current_account),
     db: AsyncSession = Depends(get_db),
 ):
-    """删除回归测试注册的临时 Agent 数据。"""
-    agent_result = await db.execute(select(Agent).where(Agent.id == account.agent_id))
+    """逻辑删除回归测试注册的临时 Agent 数据。"""
+    agent_result = await db.execute(
+        select(Agent).where(Agent.id == account.agent_id, Agent.is_deleted.is_(False))
+    )
     agent = agent_result.scalar_one_or_none()
     if agent is None:
         raise HTTPException(
@@ -276,31 +280,10 @@ async def cleanup_regression_agent(
             detail={"error": "FORBIDDEN", "message": "仅允许清理回归测试选手"},
         )
 
-    account_ids_result = await db.execute(
-        select(Account.id).where(Account.agent_id == agent.id)
-    )
-    account_ids = [row[0] for row in account_ids_result.all()]
-
-    async def safe_delete(statement):
-        try:
-            await db.execute(statement)
-        except SQLAlchemyError as exc:
-            message = str(exc).lower()
-            if "no such table" in message or "does not exist" in message:
-                logger.warning("Skip regression cleanup for missing table: %s", exc)
-                return
-            raise
-
-    if account_ids:
-        await safe_delete(delete(Position).where(Position.account_id.in_(account_ids)))
-        await safe_delete(delete(Trade).where(Trade.account_id.in_(account_ids)))
-        await safe_delete(delete(Snapshot).where(Snapshot.account_id.in_(account_ids)))
-        await safe_delete(delete(Account).where(Account.id.in_(account_ids)))
-
-    await safe_delete(delete(Wallet).where(Wallet.agent_id == agent.id))
-    await safe_delete(delete(AgentEquityPoint).where(AgentEquityPoint.agent_id == agent.id))
-    await safe_delete(delete(Event).where(Event.agent_id == agent.id))
-    await safe_delete(delete(Agent).where(Agent.id == agent.id))
+    agent.is_deleted = True
+    agent.deleted_at = datetime.utcnow()
+    agent.deleted_by = "api:/api/agents/me/regression"
+    agent.delete_reason = "regression cleanup"
     await db.commit()
     return {"status": "deleted", "agent_id": agent.id}
 
@@ -453,7 +436,9 @@ async def _query_agents(
     db: AsyncSession,
 ) -> list[AgentOut]:
     try:
-        result = await db.execute(select(Agent).order_by(Agent.created_at))
+        result = await db.execute(
+            select(Agent).where(Agent.is_deleted.is_(False)).order_by(Agent.created_at)
+        )
         return [
             AgentOut(
                 id=a.id,
@@ -821,7 +806,9 @@ async def get_agent_equity_curve(
     chart_type: Literal["intraday", "swing", "trend", "long"] | None = None,
     interval: Literal["auto", "5m", "15m", "1h", "1d"] = "auto",
 ):
-    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent_result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.is_deleted.is_(False))
+    )
     if not agent_result.scalar_one_or_none():
         raise HTTPException(404, detail="Agent not found")
 
@@ -842,7 +829,9 @@ async def get_agent_chart(
     db: AsyncSession = Depends(get_db),
 ):
     """兼容旧接口：返回资产曲线点数组。"""
-    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent_result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.is_deleted.is_(False))
+    )
     if not agent_result.scalar_one_or_none():
         raise HTTPException(404, detail="Agent not found")
 
@@ -873,7 +862,9 @@ async def get_agent_accounts(
 ):
     """获取 Agent 的 US/CN/HK 账户 ID"""
     # 先确认 agent 存在
-    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent_result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.is_deleted.is_(False))
+    )
     if not agent_result.scalar_one_or_none():
         raise HTTPException(
             404, detail={"error": "AGENT_NOT_FOUND", "message": "Agent 不存在"}
@@ -911,7 +902,9 @@ async def get_agent_portfolio_summary(
     db: AsyncSession = Depends(get_db),
 ):
     """公开返回 Agent 分市场持仓汇总（人民币口径）。"""
-    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent_result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.is_deleted.is_(False))
+    )
     agent = agent_result.scalar_one_or_none()
     if not agent:
         raise HTTPException(

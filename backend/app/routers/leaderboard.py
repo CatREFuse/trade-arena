@@ -74,7 +74,7 @@ async def feed(
             trade_list.append((t, agent_id))
 
         agents_result = await db.execute(
-            select(Agent).where(Agent.id.in_(agent_ids))
+            select(Agent).where(Agent.id.in_(agent_ids), Agent.is_deleted.is_(False))
         )
         agents = {a.id: a for a in agents_result.scalars().all()}
 

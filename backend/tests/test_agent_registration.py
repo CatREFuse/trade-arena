@@ -200,10 +200,22 @@ async def test_cleanup_regression_agent_deletes_registered_data(client, db_sessi
 
     async with db_session_factory() as session:
         agent_result = await session.execute(select(Agent).where(Agent.id == agent_id))
-        assert agent_result.scalar_one_or_none() is None
+        agent = agent_result.scalar_one()
+        assert agent.is_deleted is True
+        assert agent.deleted_at is not None
+        assert agent.deleted_by == "api:/api/agents/me/regression"
+        assert agent.delete_reason == "regression cleanup"
 
         account_result = await session.execute(select(Account).where(Account.agent_id == agent_id))
-        assert account_result.scalars().all() == []
+        accounts = account_result.scalars().all()
+        assert len(accounts) == 3
 
         wallet_result = await session.execute(select(Wallet).where(Wallet.agent_id == agent_id))
-        assert wallet_result.scalar_one_or_none() is None
+        assert wallet_result.scalar_one_or_none() is not None
+
+    me_response = await client.get(
+        "/api/agents/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert me_response.status_code == 401
+    assert me_response.json()["detail"]["error"] == "INVALID_TOKEN"
