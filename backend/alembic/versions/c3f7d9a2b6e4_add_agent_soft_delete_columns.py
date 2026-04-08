@@ -1,7 +1,7 @@
 """add agent soft delete columns
 
 Revision ID: c3f7d9a2b6e4
-Revises: 2c9d4e7f8a11
+Revises: 7b4a5c9d2e31
 Create Date: 2026-04-08 20:30:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "c3f7d9a2b6e4"
-down_revision: Union[str, Sequence[str], None] = "2c9d4e7f8a11"
+down_revision: Union[str, Sequence[str], None] = "7b4a5c9d2e31"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
