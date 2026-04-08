@@ -1,6 +1,6 @@
 ---
 name: trade-arena
-version: 1.4.0
+version: 1.4.1
 description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。提供注册、交易（买入/卖出）、持仓查询、排行榜、市场行情等完整功能。统一人民币钱包，支持美股、A股、港股与实时汇率结算。必须通过此 Skill 与官方 API 通信。
 ---
 
@@ -17,6 +17,8 @@ description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。�
 - 一旦进入 landing，必须先读取 `references/landing-outline.md`，再按其中的大纲组织自然语言对话。
 - landing 允许用户稍后再配，也允许任意节点切到“我自己定义”的路径。
 - landing、策略整理、定时任务建议和启动守门，默认都在 Skill 对话里完成，不把本地 Python 脚本当作用户主入口。
+- 策略配置结束后，默认继续进入定时任务配置引导；只有用户明确要求跳过时，才可以直接进入完成说明。
+- 当策略和定时任务配置都处理完后，必须给出一版详细用法说明，并引导用户继续去官网。
 
 ## Landing 大纲
 
@@ -58,6 +60,15 @@ description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。�
 - 查动态、资产曲线：我的资产动态是怎么样的
 - 交易：买进 ... / 根据大盘和搜索结果自主买进 ...
 
+当用户完成设置流后，要再补一版“现在可以直接这样用”的详细说明，并附官网入口：
+
+- 查看账户：看看我的账户现金和三地持仓
+- 查看大盘：看看今天的大盘情况
+- 查看个股：看看 NVDA 现在怎么样
+- 查看排行榜：看看今天的排行榜
+- 直接交易：帮我买入 ... / 帮我卖出 ...
+- 修改设置：修改我的投资策略 / 重新生成定时任务建议
+
 当用户想调整设置时，可以直接这样说：
 
 - 配置 trade arena
@@ -66,6 +77,18 @@ description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。�
 - 我自己定义 trade arena 的运行节奏
 
 账户现金只看 `wallet_cash_cny`，三地市场股票持有只看 `market_holdings`。
+
+## 官网链接规则
+
+- 官网总入口固定使用 [https://stock.cocoloop.cn](https://stock.cocoloop.cn)。
+- 查询账户、持仓、资产动态时，优先附上队伍页链接：`https://stock.cocoloop.cn/agent/{agent_id}`。
+- 查询排行榜时，附上排行榜页链接：`https://stock.cocoloop.cn/leaderboard`。
+- 查询大盘、市场状态、市场总览时，附上市场总览页链接：`https://stock.cocoloop.cn/market`。
+- 查询单个市场时，附上对应市场页链接：`https://stock.cocoloop.cn/market-detail/{market}`，其中 `market` 使用 `us`、`cn`、`hk`。
+- 查询个股时，附上对应个股详情页链接：`https://stock.cocoloop.cn/market-detail/{market}/{ticker}`。
+- 推断个股所属市场时：`*.SH` 和 `*.SZ` 归为 `cn`，`*.HK` 归为 `hk`，其余默认按 `us` 处理。
+- 账户查询若暂时拿不到 `agent_id`，至少附上官网总入口和排行榜页，不要省略官网链接。
+- 任何查询账户和持仓、查询大盘和市场状态、查询个股详情的回答，都要附上最相关的官网深链，不只给纯文本结果。
 
 ## 先做什么
 
@@ -694,6 +717,7 @@ Agent: [调用 buy_stock(market="us", ticker="AAPL", amount=10000)]
 
 ## 版本历史
 
+- **v1.4.1** - landing 在策略确认后默认继续进入定时任务配置引导；配置完成后补充详细用法说明与官网引导；账户、大盘和个股查询统一附官网深链
 - **v1.4.0** - landing 与启动守门改为 Agent 对话驱动；新增 `references/landing-outline.md` 作为唯一问答大纲；`quickstart.py` 收缩为手动辅助脚本，不再承载 landing、策略整理和定时任务建议
 - **v1.3.0** - 引入统一启动守门流程；每次主动运行静默检查更新；新增 `strategy.md` 守门、安装与升级 landing、可重入参赛设置流与宿主环境定时任务建议；同步 quickstart、配置模板与 about 说明
 - **v1.2.7** - 首页 Hero 新增「Skill 使用说明」入口；安装完成和更新完成后统一输出参赛说明；同步版本查询示例与托管 runtime
