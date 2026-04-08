@@ -102,10 +102,11 @@ function getReturnColor(value: number): string {
 
 function formatCny(value: number | string | null | undefined, options: { compact?: boolean } = {}): string {
   const num = typeof value === 'string' ? parseFloat(value) : (value || 0)
-  if (options.compact && num >= 1000000) {
+  const absNum = Math.abs(num)
+  if (options.compact && absNum >= 999500) {
     return `¥${(num / 1000000).toFixed(1)}M`
   }
-  if (options.compact && num >= 1000) {
+  if (options.compact && absNum >= 1000) {
     return `¥${(num / 1000).toFixed(1)}K`
   }
   return `¥${num.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
