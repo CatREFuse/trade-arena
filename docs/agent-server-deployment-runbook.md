@@ -37,8 +37,14 @@ ls -la skill
 解压后应至少包含：
 - `skill/SKILL.md`
 - `skill/config.json`
+- `skill/references/landing-outline.md`
 - `skill/scripts/quickstart.py`
 - `skill/tools/tools.json`
+
+说明：
+- `SKILL.md` 是主入口规则文件。
+- `references/landing-outline.md` 是 landing 的唯一问答大纲来源。
+- `scripts/quickstart.py` 只是手动辅助脚本，不承载 landing、策略整理或定时任务建议。
 
 ## 4. 注册与配置
 

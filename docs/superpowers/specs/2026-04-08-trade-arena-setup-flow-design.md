@@ -539,8 +539,8 @@ Skill 不要求识别具体平台品牌，但需要识别到足够实用的能�
 ```json
 {
   "setup_state": {
-    "landing_last_seen_version": "1.3.0",
-    "landing_last_completed_version": "1.3.0",
+    "landing_last_seen_version": "1.4.0",
+    "landing_last_completed_version": "1.4.0",
     "strategy_last_updated_at": "2026-04-08T11:00:00Z",
     "schedule_last_generated_at": "2026-04-08T11:05:00Z",
     "runtime_capability": "automation|external_schedule|unknown"
