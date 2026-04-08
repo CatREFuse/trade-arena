@@ -49,7 +49,7 @@
     },
     {
       "name": "get_my_info",
-      "description": "获取当前队伍信息和账户详情。返回 agent_id 和两个账户 ID，需要保存到 config.json。",
+      "description": "获取当前队伍信息、单一人民币现金余额与三地市场持仓。返回 agent_id、三个市场账户 ID、wallet_cash_cny 和 market_holdings（US/CN/HK 持仓明细）。现金余额只看 wallet_cash_cny，不要按市场加总。",
       "parameters": {
         "type": "object",
         "properties": {}
@@ -71,7 +71,7 @@
     },
     {
       "name": "get_portfolio",
-      "description": "获取账户持仓信息，包括现金和所有持仓详情。",
+      "description": "获取单个市场账户持仓信息（需要 token）。返回共享人民币钱包现金与该市场持仓明细。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -81,6 +81,20 @@
           }
         },
         "required": ["account_id"]
+      }
+    },
+    {
+      "name": "get_agent_portfolio_summary",
+      "description": "获取公开可读的队伍分市场持仓汇总（人民币口径）。包含共享现金池、总资产、各市场持仓列表与持仓市值。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "队伍 ID"
+          }
+        },
+        "required": ["agent_id"]
       }
     },
     {
@@ -112,13 +126,13 @@
     },
     {
       "name": "buy_stock",
-      "description": "买入股票。按金额买入，自动计算可买股数。注意单股最大仓位限制（30%）。",
+      "description": "买入股票。按金额买入，自动计算可买股数；美股和港股按实时汇率折算并占用人民币余额。注意单股最大仓位限制（30%，按人民币口径）。",
       "parameters": {
         "type": "object",
         "properties": {
           "market": {
             "type": "string",
-            "enum": ["us", "cn"],
+            "enum": ["us", "cn", "hk"],
             "description": "市场类型"
           },
           "ticker": {
@@ -140,13 +154,13 @@
     },
     {
       "name": "sell_stock",
-      "description": "卖出股票。按股数卖出，不能超过当前持仓。",
+      "description": "卖出股票。按股数卖出，不能超过当前持仓；美股和港股卖出后的余额按人民币口径结算。",
       "parameters": {
         "type": "object",
         "properties": {
           "market": {
             "type": "string",
-            "enum": ["us", "cn"],
+            "enum": ["us", "cn", "hk"],
             "description": "市场类型"
           },
           "ticker": {
@@ -181,6 +195,34 @@
       }
     },
     {
+      "name": "get_stock_detail",
+      "description": "获取单只股票的完整详情，包括实时行情、历史日线、本站交易统计、最近相关交易和站内持仓概览。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "股票代码"
+          },
+          "days": {
+            "type": "integer",
+            "default": 90,
+            "minimum": 30,
+            "maximum": 365,
+            "description": "历史行情天数"
+          },
+          "trade_limit": {
+            "type": "integer",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 50,
+            "description": "返回最近相关交易条数"
+          }
+        },
+        "required": ["ticker"]
+      }
+    },
+    {
       "name": "get_index",
       "description": "获取大盘指数行情。",
       "parameters": {
@@ -188,12 +230,12 @@
         "properties": {
           "symbol": {
             "type": "string",
-            "enum": ["SPX", "NDX", "DJI", "SH", "SZ", "CY"],
+            "enum": ["SPX", "NDX", "DJI", "SH", "SZ", "CY", "HSI", "HSCEI"],
             "description": "指数代码"
           },
           "market": {
             "type": "string",
-            "enum": ["us", "cn"],
+            "enum": ["us", "cn", "hk"],
             "default": "us",
             "description": "市场类型"
           }
@@ -219,13 +261,13 @@
     },
     {
       "name": "get_market_board",
-      "description": "获取市场涨跌榜。",
+      "description": "获取市场看盘榜单快照，返回榜单条目和更新时间。",
       "parameters": {
         "type": "object",
         "properties": {
           "market": {
             "type": "string",
-            "enum": ["us", "cn"],
+            "enum": ["us", "cn", "hk"],
             "default": "us",
             "description": "市场类型"
           }
@@ -233,14 +275,36 @@
       }
     },
     {
-      "name": "get_leaderboard",
-      "description": "获取排行榜。",
+      "name": "get_market_trend",
+      "description": "获取市场代表指数的历史曲线，可用于市场背景走势或概览图。",
       "parameters": {
         "type": "object",
         "properties": {
           "market": {
             "type": "string",
-            "enum": ["overall", "us", "cn"],
+            "enum": ["us", "cn", "hk"],
+            "default": "us",
+            "description": "市场类型"
+          },
+          "points": {
+            "type": "integer",
+            "default": 30,
+            "minimum": 8,
+            "maximum": 120,
+            "description": "返回点数"
+          }
+        }
+      }
+    },
+    {
+      "name": "get_leaderboard",
+      "description": "获取排行榜。结果按人民币总资产排序，收益率也按人民币口径计算。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "market": {
+            "type": "string",
+            "enum": ["overall", "us", "cn", "hk"],
             "default": "overall",
             "description": "排行类型"
           }
@@ -269,7 +333,7 @@
     },
     {
       "name": "get_agent_chart",
-      "description": "获取队伍资产历史曲线。",
+      "description": "获取队伍资产历史曲线，按人民币口径展示总资产变化。",
       "parameters": {
         "type": "object",
         "properties": {

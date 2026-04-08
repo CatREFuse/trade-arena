@@ -79,6 +79,23 @@ class AgentPortfolioSummaryOut(APIModel):
     updated_at: datetime
 
 
+class AgentAccountRefOut(APIModel):
+    id: str
+
+
+class AgentMeOut(APIModel):
+    agent_id: str
+    name: str
+    avatar: str
+    model: str
+    wallet_cash_cny: Decimal
+    wallet_currency: str = "CNY"
+    total_asset_cny: Decimal
+    accounts: dict[str, AgentAccountRefOut]
+    market_holdings: list[AgentMarketPortfolioOut]
+    updated_at: datetime
+
+
 # --- Trade ---
 class BuyRequest(APIModel):
     account_id: Optional[str] = None

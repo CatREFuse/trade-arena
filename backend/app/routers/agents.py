@@ -23,6 +23,7 @@ from app.database import get_db
 from app.models import Agent, Account, AgentEquityPoint, Event, Position, Snapshot, Trade, Wallet
 from app.schemas import (
     AgentMarketPortfolioOut,
+    AgentMeOut,
     AgentPortfolioSummaryOut,
     AgentEquityCurveOut,
     AgentEmailCodeRequest,
@@ -124,36 +125,132 @@ def _package_skill_archive(
     return buf
 
 
-@router.get("/me")
+async def _build_agent_portfolio_summary_payload(
+    agent_id: str,
+    request: Request,
+    db: AsyncSession,
+) -> AgentPortfolioSummaryOut:
+    accounts_result = await db.execute(select(Account).where(Account.agent_id == agent_id))
+    accounts = accounts_result.scalars().all()
+    account_by_market = {account.market: account for account in accounts}
+
+    wallet_result = await db.execute(
+        select(Wallet)
+        .where(Wallet.agent_id == agent_id)
+        .order_by(Wallet.updated_at.desc(), Wallet.created_at.desc())
+        .limit(1)
+    )
+    wallet = wallet_result.scalar_one_or_none()
+    wallet_cash_cny = wallet.cash if wallet is not None else Decimal("0")
+
+    account_ids = [account.id for account in accounts]
+    positions: list[Position] = []
+    if account_ids:
+        positions_result = await db.execute(select(Position).where(Position.account_id.in_(account_ids)))
+        positions = positions_result.scalars().all()
+
+    redis = request.app.state.redis
+    fx_service = getattr(request.app.state, "fx_service", None) or FXService(redis)
+    market_svc = getattr(request.app.state, "market_data_service", None) or MarketDataService(redis)
+
+    quote_map = await market_svc.get_quotes_batch([pos.ticker for pos in positions]) if positions else {}
+    usd_cny, _, _ = await fx_service.get_rate_to_cny("us")
+    hkd_cny, _, _ = await fx_service.get_rate_to_cny("hk")
+    rate_map = {
+        "cn": Decimal("1"),
+        "us": Decimal(str(usd_cny)),
+        "hk": Decimal(str(hkd_cny)),
+    }
+
+    market_positions: dict[str, list[PublicPositionOut]] = {"us": [], "cn": [], "hk": []}
+    market_position_values: dict[str, Decimal] = {"us": Decimal("0"), "cn": Decimal("0"), "hk": Decimal("0")}
+    account_by_id = {account.id: account for account in accounts}
+
+    for position in positions:
+        account = account_by_id.get(position.account_id)
+        if account is None:
+            continue
+        market = account.market
+        fx = rate_map.get(market, Decimal("1"))
+        quote = quote_map.get(position.ticker)
+        current_price_local = quote.price if quote is not None else position.avg_cost
+        current_price_cny = current_price_local * fx
+        avg_cost_cny = position.avg_cost * fx
+        pnl_cny = (current_price_local - position.avg_cost) * position.shares * fx
+        market_value_cny = current_price_cny * position.shares
+
+        market_positions[market].append(
+            PublicPositionOut(
+                ticker=position.ticker,
+                shares=position.shares,
+                avg_cost_cny=avg_cost_cny,
+                current_price_cny=current_price_cny,
+                pnl_cny=pnl_cny,
+                market_value_cny=market_value_cny,
+            )
+        )
+        market_position_values[market] = market_position_values[market] + market_value_cny
+
+    for market in market_positions:
+        market_positions[market].sort(
+            key=lambda item: item.market_value_cny,
+            reverse=True,
+        )
+
+    markets: list[AgentMarketPortfolioOut] = []
+    for market in ("us", "cn", "hk"):
+        market_account = account_by_market.get(market)
+        positions_out = market_positions[market]
+        markets.append(
+            AgentMarketPortfolioOut(
+                market=market,
+                account_id=(market_account.id if market_account is not None else None),
+                holdings_count=len(positions_out),
+                position_value_cny=market_position_values[market],
+                positions=positions_out,
+            )
+        )
+
+    total_asset_cny = wallet_cash_cny + sum(market_position_values.values())
+    return AgentPortfolioSummaryOut(
+        agent_id=agent_id,
+        wallet_cash_cny=wallet_cash_cny,
+        total_asset_cny=total_asset_cny,
+        markets=markets,
+        updated_at=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/me", response_model=AgentMeOut)
 async def get_me(
+    request: Request,
     account: Account = Depends(get_current_account),
     db: AsyncSession = Depends(get_db),
 ):
     """用 Token 查看自己的 agent 信息和账户"""
     agent_result = await db.execute(select(Agent).where(Agent.id == account.agent_id))
     agent = agent_result.scalar_one()
-    accounts_result = await db.execute(
-        select(Account).where(Account.agent_id == account.agent_id)
+    summary = await _build_agent_portfolio_summary_payload(
+        agent_id=account.agent_id,
+        request=request,
+        db=db,
     )
-    accs = accounts_result.scalars().all()
-    wallet_result = await db.execute(
-        select(Wallet)
-        .where(Wallet.agent_id == account.agent_id)
-        .order_by(Wallet.updated_at.desc(), Wallet.created_at.desc())
-        .limit(1)
-    )
-    wallet = wallet_result.scalar_one_or_none()
-    wallet_cash = wallet.cash if wallet is not None else Decimal("0")
-    return {
-        "agent_id": agent.id,
-        "name": agent.name,
-        "avatar": agent.avatar,
-        "model": agent.model,
-        "accounts": {
-            a.market: {"id": a.id, "cash": str(wallet_cash), "currency": "CNY"}
-            for a in accs
-        },
+    account_refs = {
+        market_summary.market: {"id": market_summary.account_id}
+        for market_summary in summary.markets
+        if market_summary.account_id is not None
     }
+    return AgentMeOut(
+        agent_id=agent.id,
+        name=agent.name,
+        avatar=agent.avatar,
+        model=agent.model,
+        wallet_cash_cny=summary.wallet_cash_cny,
+        total_asset_cny=summary.total_asset_cny,
+        accounts=account_refs,
+        market_holdings=summary.markets,
+        updated_at=summary.updated_at,
+    )
 
 
 @router.delete("/me/regression")
@@ -822,94 +919,10 @@ async def get_agent_portfolio_summary(
             detail={"error": "AGENT_NOT_FOUND", "message": "Agent 不存在"},
         )
 
-    accounts_result = await db.execute(select(Account).where(Account.agent_id == agent_id))
-    accounts = accounts_result.scalars().all()
-    account_by_market = {account.market: account for account in accounts}
-
-    wallet_result = await db.execute(
-        select(Wallet)
-        .where(Wallet.agent_id == agent_id)
-        .order_by(Wallet.updated_at.desc(), Wallet.created_at.desc())
-        .limit(1)
-    )
-    wallet = wallet_result.scalar_one_or_none()
-    wallet_cash_cny = wallet.cash if wallet is not None else Decimal("0")
-
-    account_ids = [account.id for account in accounts]
-    positions: list[Position] = []
-    if account_ids:
-        positions_result = await db.execute(select(Position).where(Position.account_id.in_(account_ids)))
-        positions = positions_result.scalars().all()
-
-    redis = request.app.state.redis
-    fx_service = getattr(request.app.state, "fx_service", None) or FXService(redis)
-    market_svc = getattr(request.app.state, "market_data_service", None) or MarketDataService(redis)
-
-    quote_map = await market_svc.get_quotes_batch([pos.ticker for pos in positions]) if positions else {}
-    usd_cny, _, _ = await fx_service.get_rate_to_cny("us")
-    hkd_cny, _, _ = await fx_service.get_rate_to_cny("hk")
-    rate_map = {
-        "cn": Decimal("1"),
-        "us": Decimal(str(usd_cny)),
-        "hk": Decimal(str(hkd_cny)),
-    }
-
-    market_positions: dict[str, list[PublicPositionOut]] = {"us": [], "cn": [], "hk": []}
-    market_position_values: dict[str, Decimal] = {"us": Decimal("0"), "cn": Decimal("0"), "hk": Decimal("0")}
-    account_by_id = {account.id: account for account in accounts}
-
-    for position in positions:
-        account = account_by_id.get(position.account_id)
-        if account is None:
-            continue
-        market = account.market
-        fx = rate_map.get(market, Decimal("1"))
-        quote = quote_map.get(position.ticker)
-        current_price_local = quote.price if quote is not None else position.avg_cost
-        current_price_cny = current_price_local * fx
-        avg_cost_cny = position.avg_cost * fx
-        pnl_cny = (current_price_local - position.avg_cost) * position.shares * fx
-        market_value_cny = current_price_cny * position.shares
-
-        market_positions[market].append(
-            PublicPositionOut(
-                ticker=position.ticker,
-                shares=position.shares,
-                avg_cost_cny=avg_cost_cny,
-                current_price_cny=current_price_cny,
-                pnl_cny=pnl_cny,
-                market_value_cny=market_value_cny,
-            )
-        )
-        market_position_values[market] = market_position_values[market] + market_value_cny
-
-    for market in market_positions:
-        market_positions[market].sort(
-            key=lambda item: item.market_value_cny,
-            reverse=True,
-        )
-
-    markets: list[AgentMarketPortfolioOut] = []
-    for market in ("us", "cn", "hk"):
-        account = account_by_market.get(market)
-        positions_out = market_positions[market]
-        markets.append(
-            AgentMarketPortfolioOut(
-                market=market,
-                account_id=(account.id if account is not None else None),
-                holdings_count=len(positions_out),
-                position_value_cny=market_position_values[market],
-                positions=positions_out,
-            )
-        )
-
-    total_asset_cny = wallet_cash_cny + sum(market_position_values.values())
-    return AgentPortfolioSummaryOut(
+    return await _build_agent_portfolio_summary_payload(
         agent_id=agent_id,
-        wallet_cash_cny=wallet_cash_cny,
-        total_asset_cny=total_asset_cny,
-        markets=markets,
-        updated_at=datetime.now(timezone.utc),
+        request=request,
+        db=db,
     )
 
 

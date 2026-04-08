@@ -311,12 +311,19 @@ def get_my_info(token):
         print("📊 队伍信息:")
         print(f"   名称: {data['name']}")
         print(f"   模型: {data['model']}")
-        shared_cash = data.get("accounts", {}).get("cn", {}).get("cash")
-        if shared_cash is not None:
-            print(f"   共享现金池: {shared_cash} CNY")
-        for market, account in data["accounts"].items():
-            print(f"   {market.upper()} 账户: {account['id']}")
-            print(f"      钱包口径余额: {account['cash']} {account['currency']}")
+        print(f"   人民币现金余额: {data.get('wallet_cash_cny', '0')} CNY")
+        print(f"   总资产: {data.get('total_asset_cny', '0')} CNY")
+        accounts = data.get("accounts", {})
+        holdings = {item.get("market"): item for item in data.get("market_holdings", [])}
+        for market in ("us", "cn", "hk"):
+            account = accounts.get(market, {})
+            market_holding = holdings.get(market, {})
+            print(f"   {market.upper()} 账户: {account.get('id', 'N/A')}")
+            print(
+                "      持仓: "
+                f"{market_holding.get('holdings_count', 0)} 只, "
+                f"持仓市值 {market_holding.get('position_value_cny', '0')} CNY"
+            )
         return data
 
     print(f"❌ 获取信息失败: {response.json()}")

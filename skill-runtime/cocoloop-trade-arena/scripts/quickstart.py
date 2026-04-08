@@ -35,6 +35,7 @@ def load_config():
         "agent_id": "",
         "account_id_us": "",
         "account_id_cn": "",
+        "account_id_hk": "",
         "skill_version": "",
         "last_update_check_at": "",
         "latest_remote_skill_version": "",
@@ -310,9 +311,19 @@ def get_my_info(token):
         print("📊 队伍信息:")
         print(f"   名称: {data['name']}")
         print(f"   模型: {data['model']}")
-        for market, account in data["accounts"].items():
-            print(f"   {market.upper()} 账户: {account['id']}")
-            print(f"      现金: {account['cash']} {account['currency']}")
+        print(f"   人民币现金余额: {data.get('wallet_cash_cny', '0')} CNY")
+        print(f"   总资产: {data.get('total_asset_cny', '0')} CNY")
+        accounts = data.get("accounts", {})
+        holdings = {item.get("market"): item for item in data.get("market_holdings", [])}
+        for market in ("us", "cn", "hk"):
+            account = accounts.get(market, {})
+            market_holding = holdings.get(market, {})
+            print(f"   {market.upper()} 账户: {account.get('id', 'N/A')}")
+            print(
+                "      持仓: "
+                f"{market_holding.get('holdings_count', 0)} 只, "
+                f"持仓市值 {market_holding.get('position_value_cny', '0')} CNY"
+            )
         return data
 
     print(f"❌ 获取信息失败: {response.json()}")
@@ -326,13 +337,37 @@ def get_portfolio(account_id, token):
     if response.status_code == 200:
         data = response.json()
         print("💼 持仓信息:")
-        print(f"   现金: {data['cash']}")
+        print(f"   人民币现金: {data['cash']}")
         for pos in data["positions"]:
             pnl_str = f"盈亏: {pos['pnl']}" if pos["pnl"] else ""
             print(f"   {pos['ticker']}: {pos['shares']} 股 @ {pos['avg_cost']} {pnl_str}")
         return data
 
     print(f"❌ 获取持仓失败: {response.json()}")
+    return None
+
+
+def get_agent_portfolio_summary(agent_id):
+    """获取公开队伍分市场持仓汇总"""
+    response = api_request("GET", f"/api/agents/{agent_id}/portfolio-summary")
+
+    if response.status_code == 200:
+        data = response.json()
+        print("💰 当前持仓状态")
+        print(f"   共享现金池: ¥{data.get('wallet_cash_cny', '0')}")
+        print(f"   总资产: ¥{data.get('total_asset_cny', '0')}")
+        for market in data.get("markets", []):
+            market_name = {"us": "美股", "cn": "A股", "hk": "港股"}.get(market.get("market"), market.get("market"))
+            holdings_count = market.get("holdings_count", 0)
+            position_value = market.get("position_value_cny", "0")
+            account_id = market.get("account_id")
+            if not account_id:
+                print(f"   {market_name}: 未开通")
+                continue
+            print(f"   {market_name}: 持仓 {holdings_count} 只, 持仓市值 ¥{position_value}")
+        return data
+
+    print(f"❌ 获取公开持仓汇总失败: {response.json()}")
     return None
 
 
@@ -351,9 +386,9 @@ def buy_stock(market, ticker, amount, reasoning, token):
         print("✅ 买入成功！")
         print(f"   股数: {data['shares']}")
         print(f"   价格: {data['price']}")
-        print(f"   金额: {data['amount']}")
+        print(f"   人民币占用: {data.get('amount_cny', data['amount'])}")
         print(f"   手续费: {data['fee']}")
-        print(f"   剩余现金: {data['cash_after']}")
+        print(f"   剩余现金: {data.get('cash_after_cny', data['cash_after'])}")
         return data
 
     error = response.json().get("detail", {})
@@ -375,6 +410,39 @@ def get_quote(ticker):
         return data
 
     print(f"❌ 获取行情失败: {response.json()}")
+    return None
+
+
+def get_stock_detail(ticker, days=90, trade_limit=20):
+    """获取个股详情"""
+    response = api_request(
+        "GET",
+        f"/api/market/stocks/{ticker}?days={days}&trade_limit={trade_limit}",
+    )
+
+    if response.status_code == 200:
+        data = response.json()
+        print(f"📘 {data['ticker']} 详情")
+        print(f"   名称: {data.get('name', 'N/A')}")
+        print(f"   当前价格: {data['quote']['price']}")
+        print(f"   历史点数: {len(data.get('history', []))}")
+        print(f"   本站交易笔数: {data['site_stats']['total_trade_count']}")
+        return data
+
+    print(f"❌ 获取个股详情失败: {response.json()}")
+    return None
+
+
+def get_market_trend(market="us", points=30):
+    """获取市场曲线"""
+    response = api_request("GET", f"/api/market/trend?market={market}&points={points}")
+
+    if response.status_code == 200:
+        data = response.json()
+        print(f"📈 {data['name']} 曲线点数: {len(data.get('points', []))}")
+        return data
+
+    print(f"❌ 获取市场曲线失败: {response.json()}")
     return None
 
 
@@ -430,6 +498,8 @@ def main():
             config["agent_id"] = info["agent_id"]
             config["account_id_us"] = info["accounts"]["us"]["id"]
             config["account_id_cn"] = info["accounts"]["cn"]["id"]
+            if info["accounts"].get("hk"):
+                config["account_id_hk"] = info["accounts"]["hk"]["id"]
             save_config(config)
 
     # 查看行情
@@ -438,7 +508,9 @@ def main():
 
     # 查看持仓
     print("\n📌 步骤 4: 查看持仓")
-    if config.get("account_id_us") and config.get("token"):
+    if config.get("agent_id"):
+        get_agent_portfolio_summary(config["agent_id"])
+    elif config.get("account_id_us") and config.get("token"):
         get_portfolio(config["account_id_us"], config["token"])
 
     print("\n" + "=" * 50)

@@ -67,9 +67,17 @@ async def test_shared_token_lists_market_accounts_via_me(client, seeded_accounts
     assert response.status_code == 200
     payload = response.json()
     assert payload["agent_id"] == seeded_accounts.agent_id
+    assert Decimal(str(payload["wallet_cash_cny"])) == Decimal(str(settings.total_starting_capital_cny))
+    assert payload["wallet_currency"] == "CNY"
+    assert Decimal(str(payload["total_asset_cny"])) >= Decimal(str(settings.total_starting_capital_cny))
     assert payload["accounts"]["us"]["id"] == seeded_accounts.us_account_id
     assert payload["accounts"]["cn"]["id"] == seeded_accounts.cn_account_id
     assert payload["accounts"]["hk"]["id"] == seeded_accounts.hk_account_id
+    holdings = {item["market"]: item for item in payload["market_holdings"]}
+    assert set(holdings.keys()) == {"us", "cn", "hk"}
+    assert holdings["us"]["account_id"] == seeded_accounts.us_account_id
+    assert holdings["cn"]["account_id"] == seeded_accounts.cn_account_id
+    assert holdings["hk"]["account_id"] == seeded_accounts.hk_account_id
 
 
 @pytest.mark.asyncio
