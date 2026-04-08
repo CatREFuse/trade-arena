@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, event
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +24,10 @@ class Agent(Base):
     style: Mapped[str] = mapped_column(String(100))
     framework: Mapped[str] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", index=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    deleted_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    delete_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class Account(Base):

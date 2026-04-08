@@ -55,9 +55,17 @@ async def _collect_users(
     offset: int,
     redis=None,
 ) -> dict:
-    total = (await db.execute(select(func.count()).select_from(Agent))).scalar() or 0
+    total = (
+        await db.execute(
+            select(func.count()).select_from(Agent).where(Agent.is_deleted.is_(False))
+        )
+    ).scalar() or 0
     agent_rows = await db.execute(
-        select(Agent).order_by(Agent.created_at.desc()).limit(limit).offset(offset)
+        select(Agent)
+        .where(Agent.is_deleted.is_(False))
+        .order_by(Agent.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     )
     agents = agent_rows.scalars().all()
     if not agents:
@@ -165,7 +173,9 @@ async def _collect_logs(db: AsyncSession, limit: int, offset: int) -> dict:
     account_rows = await db.execute(select(Account).where(Account.id.in_(account_ids)))
     accounts = {account.id: account for account in account_rows.scalars().all()}
     agent_ids = list({account.agent_id for account in accounts.values()})
-    agent_rows = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
+    agent_rows = await db.execute(
+        select(Agent).where(Agent.id.in_(agent_ids), Agent.is_deleted.is_(False))
+    )
     agents = {agent.id: agent for agent in agent_rows.scalars().all()}
 
     items: list[dict] = []

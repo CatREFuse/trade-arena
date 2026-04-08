@@ -148,7 +148,7 @@ class RankingService:
     async def get_leaderboard(self, market: str = "overall") -> LeaderboardOut:
         db = self.db
 
-        agents_result = await db.execute(select(Agent))
+        agents_result = await db.execute(select(Agent).where(Agent.is_deleted.is_(False)))
         agents = {a.id: a for a in agents_result.scalars().all()}
 
         accounts_result = await db.execute(select(Account))

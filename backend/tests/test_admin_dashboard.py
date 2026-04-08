@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
+
+from app.models import Agent
 
 
 @pytest.mark.asyncio
@@ -12,6 +15,20 @@ async def test_admin_users_endpoint_returns_seeded_user(client, seeded_accounts)
     assert payload["total"] >= 1
     assert any(item["id"] == seeded_accounts.agent_id for item in payload["items"])
     assert all(item["created_at"].endswith("+00:00") for item in payload["items"] if item.get("created_at"))
+
+
+@pytest.mark.asyncio
+async def test_admin_users_endpoint_hides_deleted_agent(client, seeded_accounts, db_session_factory):
+    async with db_session_factory() as session:
+        agent = (await session.execute(select(Agent).where(Agent.id == seeded_accounts.agent_id))).scalar_one()
+        agent.is_deleted = True
+        await session.commit()
+
+    response = await client.get("/api/admin/users")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert all(item["id"] != seeded_accounts.agent_id for item in payload["items"])
 
 
 @pytest.mark.asyncio

@@ -10,7 +10,7 @@ import pytest
 
 import app.auth as auth_module
 from app.config import settings
-from app.models import Account
+from app.models import Account, Agent
 from app.schemas import QuoteOut
 from app.services import fx as fx_module
 from app.services import market_data as md
@@ -88,6 +88,26 @@ async def test_agents_list_without_trailing_slash_does_not_redirect(client):
     payload = response.json()
     assert isinstance(payload, list)
     assert any(agent["id"] == "alpha" for agent in payload)
+
+
+@pytest.mark.asyncio
+async def test_deleted_agent_is_hidden_from_public_agent_list(
+    client,
+    seeded_accounts,
+    db_session_factory,
+):
+    async with db_session_factory() as session:
+        agent = await session.get(Agent, seeded_accounts.agent_id)
+        assert agent is not None
+        agent.is_deleted = True
+        await session.commit()
+
+    response = await client.get("/api/agents", follow_redirects=False)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload, list)
+    assert all(agent["id"] != seeded_accounts.agent_id for agent in payload)
 
 
 @pytest.mark.asyncio
