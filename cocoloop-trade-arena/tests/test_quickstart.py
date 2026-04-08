@@ -39,7 +39,7 @@ def quickstart(tmp_path, monkeypatch):
 
     config_file.write_text(json.dumps(module.default_config(), ensure_ascii=False), encoding="utf-8")
     skill_md.write_text(
-        "---\nname: trade-arena\nversion: 1.3.0\ndescription: test\n---\n",
+        "---\nname: trade-arena\nversion: 1.4.0\ndescription: test\n---\n",
         encoding="utf-8",
     )
     return module
@@ -69,40 +69,6 @@ def test_load_config_handles_legacy_schema(quickstart):
 
 
 
-def test_run_startup_gate_requires_landing_without_strategy(quickstart, monkeypatch):
-    monkeypatch.setattr(
-        quickstart,
-        "api_request",
-        lambda *args, **kwargs: FakeResponse(payload={"version": "1.3.0", "hosted_url": "https://example.com/skill.zip"}),
-    )
-
-    gate = quickstart.run_startup_gate()
-
-    assert gate.should_run_landing is True
-    assert gate.landing_reason == "missing_strategy"
-    assert gate.strategy_state is not None
-    assert gate.strategy_state.exists is False
-
-
-
-def test_run_startup_gate_triggers_migration_once(quickstart, monkeypatch):
-    quickstart.STRATEGY_FILE.write_text("# Strategy\n\n稳健看 A股 和 美股。\n", encoding="utf-8")
-    monkeypatch.setattr(
-        quickstart,
-        "api_request",
-        lambda *args, **kwargs: FakeResponse(payload={"version": "1.3.0", "hosted_url": "https://example.com/skill.zip"}),
-    )
-
-    first_gate = quickstart.run_startup_gate()
-    assert first_gate.should_run_landing is True
-    assert first_gate.landing_reason == "migration"
-
-    quickstart.mark_landing_seen(quickstart.load_config(), "1.3.0")
-    second_gate = quickstart.run_startup_gate()
-    assert second_gate.should_run_landing is False
-
-
-
 def test_apply_skill_update_preserves_config_and_strategy(quickstart, monkeypatch):
     config = quickstart.load_config()
     config["token"] = "secret-token"
@@ -118,7 +84,7 @@ def test_apply_skill_update_preserves_config_and_strategy(quickstart, monkeypatc
 
     monkeypatch.setattr(quickstart.requests, "get", lambda *args, **kwargs: FakeResponse(content=archive_bytes))
 
-    updated = quickstart.apply_skill_update("https://example.com/skill.zip", "1.3.0", silent=True)
+    updated = quickstart.apply_skill_update("https://example.com/skill.zip", "1.4.0", silent=True)
 
     assert updated is True
     assert quickstart.load_config()["token"] == "secret-token"
@@ -127,61 +93,66 @@ def test_apply_skill_update_preserves_config_and_strategy(quickstart, monkeypatc
 
 
 
-def test_generate_schedule_plan_uses_detected_markets(quickstart, monkeypatch):
-    monkeypatch.setenv("CODEX_HOME", "/tmp/codex-home")
-
-    plan = quickstart.generate_schedule_plan("稳健风格，主要看A股，也会看美股。")
-
-    assert plan.capability == "automation"
-    assert any("A股增强版" in line for line in plan.market_lines)
-    assert any("美股增强版" in line for line in plan.market_lines)
-    assert plan.actionable_lines[0].startswith("直接对当前宿主说")
-
-
-def test_ask_strategy_question_supports_option_and_custom(quickstart):
-    spec = quickstart.STRATEGY_QUESTION_SPECS[0]
-
-    option_answer = quickstart.ask_strategy_question(spec, input_fn=lambda _prompt="": "2")
-    custom_answer = quickstart.ask_strategy_question(spec, input_fn=lambda _prompt="": "我想聚焦美股科技龙头")
-
-    assert "冲击排行榜第一" in option_answer
-    assert custom_answer == "我想聚焦美股科技龙头"
-
-
-def test_get_strategy_recommendation_follows_previous_answers(quickstart):
-    spec = next(item for item in quickstart.STRATEGY_QUESTION_SPECS if item["key"] == "style")
-
-    recommendation = quickstart.get_strategy_recommendation(
-        spec,
-        {"goal": "以冲击排行榜第一为目标", "markets": "集中盯美股，把研究和执行都放在一个市场。"},
+def test_check_and_update_skill_reports_remote_update_without_auto_apply(quickstart, monkeypatch):
+    monkeypatch.setattr(
+        quickstart,
+        "api_request",
+        lambda *args, **kwargs: FakeResponse(
+            payload={"version": "1.4.1", "hosted_url": "https://example.com/skill.zip"}
+        ),
     )
 
-    assert "更推荐 2" in recommendation
-    assert "再考虑 3" in recommendation
+    result = quickstart.check_and_update_skill(force=True, auto_apply=False, silent=True)
+
+    assert result["checked"] is True
+    assert result["has_update"] is True
+    assert result["updated"] is False
+    assert result["remote_version"] == "1.4.1"
 
 
-def test_build_strategy_markdown_uses_summary_without_engineering_copy(quickstart):
-    markdown = quickstart.build_strategy_markdown(
-        "guided",
-        {
-            "title": "Trade Arena 投资策略",
-            "summary": "这份策略以冲击排名为目标，主要围绕美股展开。",
-            "goal": "以冲击排行榜第一为目标。",
-            "markets": "只做美股。",
+
+def test_read_strategy_document_supports_legacy_name(quickstart):
+    quickstart.LEGACY_STRATEGY_FILE.write_text("# Legacy Strategy\n", encoding="utf-8")
+
+    valid, path, content = quickstart.read_strategy_document()
+
+    assert valid is True
+    assert path is not None
+    assert path.name.lower() == "strategy.md"
+    assert "Legacy Strategy" in content
+
+
+
+def test_refresh_account_info_updates_market_accounts(quickstart, monkeypatch):
+    config = quickstart.load_config()
+    config["token"] = "token"
+    quickstart.save_config(config, announce=False)
+
+    monkeypatch.setattr(
+        quickstart,
+        "get_my_info",
+        lambda _token: {
+            "agent_id": "alpha",
+            "accounts": {
+                "us": {"id": "alpha-us"},
+                "cn": {"id": "alpha-cn"},
+                "hk": {"id": "alpha-hk"},
+            },
         },
     )
 
-    assert "这份策略以冲击排名为目标" in markdown
-    assert "策略来源" not in markdown
+    updated = quickstart.refresh_account_info(config)
+
+    assert updated["agent_id"] == "alpha"
+    assert updated["account_id_us"] == "alpha-us"
+    assert updated["account_id_cn"] == "alpha-cn"
+    assert updated["account_id_hk"] == "alpha-hk"
 
 
-def test_build_strategy_summary_compacts_choice_text(quickstart):
-    summary = quickstart.build_strategy_summary(
-        {
-            "goal": "以冲击排行榜第一为目标，愿意在看对趋势时更主动进攻。",
-            "markets": "集中盯美股，把研究和执行都放在一个市场。",
-            "style": "大盘更乐观时分批进入，趋势不清楚时先等。",
-        }
-    )
 
-    assert summary == "这份策略以冲击排行榜为目标，主攻美股，整体采用中期顺势的执行方式。"
+def test_print_helper_intro_points_back_to_skill_dialog(quickstart, capsys):
+    quickstart.print_helper_intro()
+
+    output = capsys.readouterr().out
+    assert "landing、策略整理、定时任务建议和启动守门都由 Skill 对话负责" in output
+    assert "请回到 Skill 对话触发 landing" in output

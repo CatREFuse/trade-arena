@@ -2,8 +2,8 @@
 """
 Trade Arena runtime helper
 
-这是 Skill 包内的辅助入口，用于本地辅助、自更新和宿主可执行场景。
-用户日常应优先通过 Skill 自然语言完成 landing、策略设置和定时任务建议。
+这是 Skill 包内的手动辅助入口，用于本地辅助、自更新和少量 API 调试。
+landing、策略整理、定时任务建议和启动守门都应由 Skill 对话完成。
 """
 
 from __future__ import annotations
@@ -11,15 +11,12 @@ from __future__ import annotations
 import argparse
 import io
 import json
-import os
 import shutil
 import tempfile
 import zipfile
-from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
-from zoneinfo import ZoneInfo
 
 import requests
 
@@ -28,141 +25,13 @@ CONFIG_FILE = SKILL_ROOT / "config.json"
 SKILL_MD_FILE = SKILL_ROOT / "SKILL.md"
 STRATEGY_FILE = SKILL_ROOT / "strategy.md"
 LEGACY_STRATEGY_FILE = SKILL_ROOT / "strategy.MD"
-LANDING_REQUIRED_VERSIONS = {"1.3.0"}
-LANDING_RECALL_LINES = [
-    "之后你随时都可以重新叫起这套设置流。",
-    "常用说法：配置 trade arena / 修改我的投资策略 / 重新生成定时任务建议",
-]
-LANDING_CAPABILITY_LINES = [
-    "你现在已经接入了 Trade Arena。",
-    "它可以帮你查看账户现金和三地持仓，跟踪个股、指数和市场状态，也能直接执行买入卖出。",
-    "你还可以查看排行榜、资产变化，并把自己的投资策略写成一份长期可复用的 strategy.md。",
-    "这一版开始，Skill 还会结合当前宿主环境，帮你生成更适合落地的定时任务建议。",
-]
-USER_EXAMPLE_LINES = [
-    "看看我的账户现金和三地持仓",
-    "看看 AAPL 股票的情况",
-    "查看今天的大盘情况，并做个总结",
-    "查看今天的排行榜",
-    "我的资产动态是怎么样的",
-    "根据大盘和搜索结果自主买进 ...",
-]
-CUSTOM_TOKENS = {"/custom", "我自己定义", "自定义"}
-LATER_TOKENS = {"/later", "稍后再说", "稍后"}
-
-
-@dataclass
-class StrategyState:
-    exists: bool
-    valid: bool
-    path: Path | None
-    content: str
-    reason: str = ""
-
-
-@dataclass
-class StartupGateResult:
-    config: dict
-    local_version: str
-    remote_version: str
-    update_checked: bool = False
-    updated: bool = False
-    update_error: str = ""
-    should_run_landing: bool = False
-    landing_reason: str = ""
-    strategy_state: StrategyState | None = None
-    migration_required: bool = False
-
-
-@dataclass
-class SchedulePlan:
-    capability: str
-    base_lines: list[str]
-    market_lines: list[str]
-    actionable_lines: list[str]
-    custom_request: str = ""
-
 
 InputFunc = Callable[[str], str]
 
-STRATEGY_QUESTION_SPECS = [
-    {
-        "key": "goal",
-        "title": "这次参赛你最想抓住什么机会？",
-        "explanation": "这个问题用来决定你的整体打法。目标不同，后面的仓位、节奏和风险控制都会不一样。",
-        "options": {
-            "1": ("稳步增值", "以稳步提升总资产为主，不追求极端进攻。"),
-            "2": ("冲击第一", "以冲击排行榜第一为目标，愿意在看对趋势时更主动进攻。"),
-            "3": ("先保排名", "先确保自己留在前排，再等待更好的机会。"),
-        },
-        "recommendation": "如果你想冲排名，我更推荐 2。 如果你更在意稳定回报，可以选 1。",
-    },
-    {
-        "key": "markets",
-        "title": "你主要关注哪些市场？",
-        "explanation": "这个问题会直接影响后面的研究范围和定时任务节奏。市场越聚焦，执行越稳定。",
-        "options": {
-            "1": ("只看美股", "集中盯美股，把研究和执行都放在一个市场。"),
-            "2": ("美股 + 港股", "围绕中美和科技叙事做联动观察。"),
-            "3": ("三地都看", "美股、A股、港股都纳入，但执行复杂度会明显上升。"),
-        },
-        "recommendation": "新手或想提高执行稳定性时，我更推荐 1。 如果你很在意中概和中美联动，可以选 2。",
-    },
-    {
-        "key": "style",
-        "title": "你通常会在什么情况下出手，又在什么情况下按兵不动？",
-        "explanation": "这个问题是在定义你的出手机制。没有出手边界，后面很容易变成看到什么都想买。",
-        "options": {
-            "1": ("偏防守", "只在大盘和个股都比较明确时出手，其余时间保持观望。"),
-            "2": ("中期顺势", "大盘更乐观时分批进入，趋势不清楚时先等。"),
-            "3": ("积极进攻", "只要看到主题和情绪共振，就更快出手。"),
-        },
-        "recommendation": "如果你做中期投资，我更推荐 2。 如果你非常怕回撤，可以选 1。 想抢排名、又能接受波动时再考虑 3。",
-    },
-    {
-        "key": "positioning",
-        "title": "如果判断正确或判断失误，你会怎么加减仓？",
-        "explanation": "这个问题决定你怎么把对的判断放大，也决定你怎么在错的时候收手。",
-        "options": {
-            "1": ("慢加慢减", "先小仓试，再逐步加仓；一旦走坏，先减一半。"),
-            "2": ("确认后集中加仓", "先观察，确认后快速加到目标仓位；走坏时迅速退出。"),
-            "3": ("固定仓位", "每次都用接近固定的仓位，不主动加仓。"),
-        },
-        "recommendation": "大多数中期策略我更推荐 1。 如果你只想抓最强趋势，可以考虑 2。 想把执行做得更机械时，可以选 3。",
-    },
-    {
-        "key": "risk",
-        "title": "你最不能接受的风险是什么，打算怎么控？",
-        "explanation": "这个问题是在定义你的底线。只有先讲清楚不能承受什么，后面的仓位规则才有意义。",
-        "options": {
-            "1": ("怕大盘转弱", "市场环境变差时优先整体降仓。"),
-            "2": ("怕个股暴跌", "避开流动性差的标的，单只股票不重仓。"),
-            "3": ("怕连续回撤", "一旦账户连续回撤，就先停手观察。"),
-        },
-        "recommendation": "如果你主要做美股中期趋势，我更推荐 1 和 2 组合使用。 如果你更怕情绪化操作，可以再加上 3。",
-    },
-    {
-        "key": "triggers",
-        "title": "你会重点看哪些消息、价格或市场状态？",
-        "explanation": "这个问题决定系统后面该围绕什么信号来观察，不然你会收到太泛的市场结论。",
-        "options": {
-            "1": ("大盘与板块情绪", "先看指数、板块轮动和整体风险偏好。"),
-            "2": ("宏观和政策变化", "重点盯利率、宏观数据、监管和地缘关系。"),
-            "3": ("公司与财报事件", "重点盯财报、指引、产品和个股新闻。"),
-        },
-        "recommendation": "做中期策略时，我更推荐 1 和 2。 如果你更偏个股驱动，再把 3 加进来。",
-    },
-    {
-        "key": "schedule",
-        "title": "你希望系统在什么节奏下提醒或运行？",
-        "explanation": "这个问题会影响后面的定时任务建议。节奏太密会打扰，太稀又容易错过变化。",
-        "options": {
-            "1": ("每天两次", "开盘后看一次，收盘前再复核一次。"),
-            "2": ("每小时一次", "交易时段内按小时巡检，适合需要持续盯盘的策略。"),
-            "3": ("事件触发为主", "平时更轻，遇到明显变化或消息再加强。"),
-        },
-        "recommendation": "如果你想兼顾执行和节奏，我更推荐 2。 如果你更低频，可以选 1。 如果宿主环境支持灵活触发，再考虑 3。",
-    },
+HANDOFF_LINES = [
+    "Trade Arena 的 landing、策略整理、定时任务建议和启动守门都由 Skill 对话负责。",
+    "如果你是普通使用者，请直接在宿主里说：配置 trade arena / 修改我的投资策略 / 重新生成定时任务建议。",
+    "这个脚本现在只保留手动辅助能力，例如检查更新、注册、刷新账户信息和查看单只股票行情。",
 ]
 
 
@@ -171,11 +40,11 @@ def _default_setup_state() -> dict:
         "landing_last_seen_version": "",
         "landing_last_completed_version": "",
         "strategy_last_updated_at": "",
-        "strategy_capture_mode": "",
         "schedule_last_generated_at": "",
         "runtime_capability": "",
         "last_update_error": "",
     }
+
 
 
 def default_config() -> dict:
@@ -193,6 +62,7 @@ def default_config() -> dict:
     }
 
 
+
 def _merge_setup_state(raw_setup: dict | None) -> dict:
     merged = _default_setup_state()
     if isinstance(raw_setup, dict):
@@ -203,12 +73,12 @@ def _merge_setup_state(raw_setup: dict | None) -> dict:
     return merged
 
 
+
 def _normalize_config_payload(raw: object) -> dict:
     config = default_config()
     if not isinstance(raw, dict):
         return config
 
-    # The source package used to ship a JSON schema in config.json.
     if raw.get("$schema") and raw.get("properties") and "api_url" not in raw:
         return config
 
@@ -222,6 +92,7 @@ def _normalize_config_payload(raw: object) -> dict:
     return config
 
 
+
 def load_config() -> dict:
     if not CONFIG_FILE.exists():
         return default_config()
@@ -232,11 +103,13 @@ def load_config() -> dict:
     return _normalize_config_payload(raw)
 
 
+
 def save_config(config: dict, announce: bool = True) -> None:
     normalized = _normalize_config_payload(config)
     CONFIG_FILE.write_text(json.dumps(normalized, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     if announce:
         print(f"✅ 配置已保存到 {CONFIG_FILE}")
+
 
 
 def _normalize_api_url(api_url: str) -> str:
@@ -246,20 +119,10 @@ def _normalize_api_url(api_url: str) -> str:
     return normalized
 
 
+
 def _now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-
-def _parse_iso_datetime(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
 
 
 def _version_to_tuple(version: str) -> tuple[int, ...]:
@@ -270,12 +133,14 @@ def _version_to_tuple(version: str) -> tuple[int, ...]:
     return tuple(parts)
 
 
+
 def _is_remote_newer(remote_version: str, local_version: str) -> bool:
     if not remote_version:
         return False
     if not local_version:
         return True
     return _version_to_tuple(remote_version) > _version_to_tuple(local_version)
+
 
 
 def _get_local_skill_version() -> str:
@@ -299,6 +164,7 @@ def _get_local_skill_version() -> str:
     return ""
 
 
+
 def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
     destination_resolved = destination.resolve()
     for member in archive.infolist():
@@ -308,12 +174,25 @@ def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
     archive.extractall(destination)
 
 
+
 def _normalize_download_url(url: str, api_url: str) -> str:
     if not url:
         return ""
     if url.startswith("/"):
         return f"{_normalize_api_url(api_url)}{url}"
     return _normalize_api_url(url)
+
+
+
+def api_request(method, endpoint, data=None, token=None):
+    config = load_config()
+    api_url = _normalize_api_url(config["api_url"])
+    url = f"{api_url}{endpoint}"
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return requests.request(method, url, json=data, headers=headers, timeout=30)
+
 
 
 def apply_skill_update(hosted_url: str, target_version: str, silent: bool = False) -> bool:
@@ -362,12 +241,14 @@ def apply_skill_update(hosted_url: str, target_version: str, silent: bool = Fals
     updated_config["latest_remote_skill_version"] = target_version
     updated_config["setup_state"]["last_update_error"] = ""
     save_config(updated_config, announce=False)
-    print(f"✅ 已自动更新到最新版 {target_version}（更新文件 {copied} 个）")
+    if not silent:
+        print(f"✅ 已自动更新到最新版 {target_version}（更新文件 {copied} 个）")
     return True
 
 
+
 def check_and_update_skill(force: bool = False, auto_apply: bool = True, silent: bool = False) -> dict:
-    """检查 skill 更新。默认每次主动运行都检查一次。"""
+    """手动检查 skill 更新。正常启动守门应由 Skill 对话负责。"""
     config = load_config()
     local_version = config.get("skill_version") or _get_local_skill_version()
     config["skill_version"] = local_version
@@ -448,107 +329,27 @@ def check_and_update_skill(force: bool = False, auto_apply: bool = True, silent:
     }
 
 
-def read_strategy_document() -> StrategyState:
+
+def read_strategy_document() -> tuple[bool, Path | None, str]:
     for path in (STRATEGY_FILE, LEGACY_STRATEGY_FILE):
         if not path.exists():
             continue
         try:
             content = path.read_text(encoding="utf-8")
         except OSError:
-            return StrategyState(True, False, path, "", "unreadable")
-        if not content.strip():
-            return StrategyState(True, False, path, content, "empty")
-        return StrategyState(True, True, path, content, "")
-    return StrategyState(False, False, None, "", "missing")
+            return False, path, ""
+        return bool(content.strip()), path, content
+    return False, None, ""
 
 
-def write_strategy_document(content: str) -> Path:
-    normalized = content.strip() + "\n"
-    STRATEGY_FILE.write_text(normalized, encoding="utf-8")
-    if LEGACY_STRATEGY_FILE.exists() and LEGACY_STRATEGY_FILE != STRATEGY_FILE:
-        try:
-            LEGACY_STRATEGY_FILE.unlink()
-        except OSError:
-            pass
-    return STRATEGY_FILE
 
+def prompt_text(prompt: str, input_fn: InputFunc = input) -> str:
+    while True:
+        raw = input_fn(prompt).strip()
+        if raw:
+            return raw
+        print("这一项先别留空。")
 
-def summarize_strategy(strategy_text: str) -> str:
-    lines = [line.strip() for line in strategy_text.splitlines() if line.strip()]
-    if not lines:
-        return "还没有有效策略。"
-    summary_lines = lines[:4]
-    if len(lines) > 4:
-        summary_lines.append("后续还有更完整的执行细节。")
-    return "\n".join(summary_lines)
-
-
-def _current_version_requires_landing(version: str) -> bool:
-    return version in LANDING_REQUIRED_VERSIONS
-
-
-def run_startup_gate(force_landing: bool = False) -> StartupGateResult:
-    update_result = check_and_update_skill(force=True, auto_apply=True, silent=True)
-    config = load_config()
-    local_version = config.get("skill_version") or _get_local_skill_version()
-    config["skill_version"] = local_version
-    strategy_state = read_strategy_document()
-    setup_state = config["setup_state"]
-    migration_required = (
-        _current_version_requires_landing(local_version)
-        and setup_state.get("landing_last_seen_version") != local_version
-    )
-
-    landing_reason = ""
-    should_run_landing = force_landing
-    if not strategy_state.exists:
-        should_run_landing = True
-        landing_reason = "missing_strategy"
-    elif not strategy_state.valid:
-        should_run_landing = True
-        landing_reason = "broken_strategy"
-    elif migration_required:
-        should_run_landing = True
-        landing_reason = "migration"
-    elif force_landing:
-        should_run_landing = True
-        landing_reason = "manual"
-
-    save_config(config, announce=False)
-    return StartupGateResult(
-        config=config,
-        local_version=local_version,
-        remote_version=update_result.get("remote_version", local_version),
-        update_checked=bool(update_result.get("checked")),
-        updated=bool(update_result.get("updated")),
-        update_error=update_result.get("error", ""),
-        should_run_landing=should_run_landing,
-        landing_reason=landing_reason,
-        strategy_state=strategy_state,
-        migration_required=migration_required,
-    )
-
-
-def mark_landing_seen(config: dict, version: str) -> None:
-    config["setup_state"]["landing_last_seen_version"] = version
-    save_config(config, announce=False)
-
-
-def mark_landing_completed(config: dict, version: str) -> None:
-    setup_state = config["setup_state"]
-    setup_state["landing_last_seen_version"] = version
-    setup_state["landing_last_completed_version"] = version
-    save_config(config, announce=False)
-
-
-def api_request(method, endpoint, data=None, token=None):
-    config = load_config()
-    api_url = _normalize_api_url(config["api_url"])
-    url = f"{api_url}{endpoint}"
-    headers = {"Content-Type": "application/json"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    return requests.request(method, url, json=data, headers=headers, timeout=30)
 
 
 def register(name, email, model, avatar, style):
@@ -583,6 +384,7 @@ def register(name, email, model, avatar, style):
     return None
 
 
+
 def get_my_info(token):
     response = api_request("GET", "/api/agents/me", token=token)
 
@@ -610,6 +412,7 @@ def get_my_info(token):
     return None
 
 
+
 def get_portfolio(account_id, token):
     response = api_request("GET", f"/api/accounts/{account_id}/portfolio", token=token)
 
@@ -624,6 +427,7 @@ def get_portfolio(account_id, token):
 
     print(f"❌ 获取持仓失败: {response.json()}")
     return None
+
 
 
 def get_agent_portfolio_summary(agent_id):
@@ -649,29 +453,6 @@ def get_agent_portfolio_summary(agent_id):
     return None
 
 
-def buy_stock(market, ticker, amount, reasoning, token):
-    print(f"📈 买入 {ticker} ({market}) {amount}...")
-    response = api_request(
-        "POST",
-        "/api/trade/buy",
-        {"market": market, "ticker": ticker, "amount": amount, "reasoning": reasoning},
-        token=token,
-    )
-
-    if response.status_code == 200:
-        data = response.json()
-        print("✅ 买入成功！")
-        print(f"   股数: {data['shares']}")
-        print(f"   价格: {data['price']}")
-        print(f"   人民币占用: {data.get('amount_cny', data['amount'])}")
-        print(f"   手续费: {data['fee']}")
-        print(f"   剩余现金: {data.get('cash_after_cny', data['cash_after'])}")
-        return data
-
-    error = response.json().get("detail", {})
-    print(f"❌ 买入失败: {error.get('message', response.text)}")
-    return None
-
 
 def get_quote(ticker):
     response = api_request("GET", f"/api/market/quote/{ticker}")
@@ -689,490 +470,16 @@ def get_quote(ticker):
     return None
 
 
-def get_stock_detail(ticker, days=90, trade_limit=20):
-    response = api_request(
-        "GET",
-        f"/api/market/stocks/{ticker}?days={days}&trade_limit={trade_limit}",
-    )
 
-    if response.status_code == 200:
-        data = response.json()
-        print(f"📘 {data['ticker']} 详情")
-        print(f"   名称: {data.get('name', 'N/A')}")
-        print(f"   当前价格: {data['quote']['price']}")
-        print(f"   历史点数: {len(data.get('history', []))}")
-        print(f"   本站交易笔数: {data['site_stats']['total_trade_count']}")
-        return data
-
-    print(f"❌ 获取个股详情失败: {response.json()}")
-    return None
-
-
-def get_market_trend(market="us", points=30):
-    response = api_request("GET", f"/api/market/trend?market={market}&points={points}")
-
-    if response.status_code == 200:
-        data = response.json()
-        print(f"📈 {data['name']} 曲线点数: {len(data.get('points', []))}")
-        return data
-
-    print(f"❌ 获取市场曲线失败: {response.json()}")
-    return None
-
-
-def prompt_choice(prompt: str, choices: dict[str, str], input_fn: InputFunc = input) -> str:
-    print(prompt)
-    for key, label in choices.items():
-        print(f"{key}. {label}")
-    while True:
-        raw = input_fn("请选择: ").strip()
-        if raw in choices:
-            return raw
-        print("请输入有效编号。")
-
-
-def prompt_text(prompt: str, input_fn: InputFunc = input) -> str:
-    while True:
-        raw = input_fn(prompt).strip()
-        if raw:
-            return raw
-        print("这一项先别留空。")
-
-
-def get_strategy_recommendation(spec: dict[str, object], answers: dict[str, str]) -> str:
-    key = str(spec["key"])
-    default_recommendation = str(spec["recommendation"])
-    goal = answers.get("goal", "")
-    markets = answers.get("markets", "")
-    style = answers.get("style", "")
-
-    if key == "markets":
-        if "冲击" in goal or "第一" in goal:
-            return "如果你想冲排名，但又不想把执行面铺太宽，我更推荐 1。 如果你特别看重中美联动，再考虑 2。"
-    if key == "style":
-        if "美股" in markets and ("冲击" in goal or "第一" in goal):
-            return "如果你主攻美股、又想冲排名，我更推荐 2。 如果你能接受更大波动，再考虑 3。"
-        if "稳步" in goal or "保排名" in goal:
-            return "如果你更在意稳住排名，我更推荐 1。 想在稳定里保留进攻空间时再选 2。"
-    if key == "positioning":
-        if "中期" in style or "顺势" in style:
-            return "如果你已经决定做中期顺势，我更推荐 1。 它更容易让你在看对时放大收益，在看错时及时收手。"
-    if key == "risk":
-        if "美股" in markets:
-            return "主做美股时，我更推荐 1 和 2 的思路一起用。 先盯整体风险，再控制单只股票的暴跌伤害。"
-    if key == "schedule":
-        if "积极" in style or "冲击" in goal or "第一" in goal:
-            return "如果你想更积极地冲排名，我更推荐 2。 想更轻一点可以选 1。 宿主支持事件触发时再考虑 3。"
-        if "防守" in style or "稳步" in goal:
-            return "如果你更看重稳定，我更推荐 1。 想多看盘但不想太密时，再选 2。"
-
-    return default_recommendation
-
-
-def ask_strategy_question(spec: dict[str, object], answers: dict[str, str] | None = None, input_fn: InputFunc = input) -> str:
-    title = str(spec["title"])
-    explanation = str(spec["explanation"])
-    options: dict[str, tuple[str, str]] = spec["options"]  # type: ignore[assignment]
-    recommendation = get_strategy_recommendation(spec, answers or {})
-
-    print(f"\n{title}")
-    print(explanation)
-    for key, (label, detail) in options.items():
-        print(f"{key}. {label}：{detail}")
-    print(f"推荐：{recommendation}")
-    print("如果这三项都不贴合，你也可以直接输入自己的想法。")
-
-    while True:
-        raw = input_fn("请选择或直接输入: ").strip()
-        if not raw:
-            print("这一项先别留空。")
-            continue
-        if raw in CUSTOM_TOKENS:
-            return raw
-        if raw in options:
-            return options[raw][1]
-        return raw
-
-
-def collect_multiline(prompt: str, input_fn: InputFunc = input) -> str:
-    print(prompt)
-    print("输入 END 结束。")
-    lines: list[str] = []
-    while True:
-        line = input_fn("").rstrip("\n")
-        if line.strip().upper() == "END":
-            break
-        lines.append(line)
-    return "\n".join(lines).strip()
-
-
-def _compact_goal(text: str) -> str:
-    if "冲击排行榜第一" in text or "冲击第一" in text:
-        return "冲击排行榜"
-    if "稳步" in text:
-        return "稳步增值"
-    if "保排名" in text or "留在前排" in text:
-        return "稳住排名"
-    return text.strip("。；， ")
-
-
-def _compact_markets(text: str) -> str:
-    if "美股" in text and "港股" in text:
-        return "美股和港股"
-    if "美股" in text and "A股" not in text and "港股" not in text:
-        return "美股"
-    if "三地" in text or ("美股" in text and "A股" in text and "港股" in text):
-        return "三地市场"
-    return text.strip("。；， ")
-
-
-def _compact_style(text: str) -> str:
-    if "中期" in text or "顺势" in text:
-        return "中期顺势"
-    if "大盘更乐观" in text or "分批进入" in text or "趋势不清楚时先等" in text:
-        return "中期顺势"
-    if "防守" in text or "观望" in text:
-        return "偏防守"
-    if "积极" in text or "共振" in text:
-        return "积极进攻"
-    return text.strip("。；， ")
-
-
-def build_strategy_summary(answers: dict[str, str]) -> str:
-    goal = _compact_goal(answers.get("goal", "争取更好排名"))
-    markets = _compact_markets(answers.get("markets", "核心市场"))
-    style = _compact_style(answers.get("style", "当前已确认的风格"))
-    return f"这份策略以{goal}为目标，主攻{markets}，整体采用{style}的执行方式。"
-
-
-def build_strategy_markdown(mode: str, answers: dict[str, str]) -> str:
-    title = answers.get("title") or "Trade Arena 投资策略"
-    summary = answers.get("summary", "")
-    sections = [
-        ("总体目标", answers.get("goal", "")),
-        ("主要关注市场", answers.get("markets", "")),
-        ("核心风格与原则", answers.get("style", "")),
-        ("建仓与减仓规则", answers.get("positioning", "")),
-        ("风险控制", answers.get("risk", "")),
-        ("观察重点与触发条件", answers.get("triggers", "")),
-        ("调度偏好", answers.get("schedule", "")),
-    ]
-    lines = [f"# {title}", ""]
-    if summary.strip():
-        lines.append(summary.strip())
-        lines.append("")
-    for heading, body in sections:
-        if not body.strip():
-            continue
-        lines.append(f"## {heading}")
-        lines.append(body.strip())
-        lines.append("")
-    return "\n".join(lines).strip() + "\n"
-
-
-def capture_strategy_template(input_fn: InputFunc = input) -> tuple[str, str]:
-    answers: dict[str, str] = {"title": "Trade Arena 投资策略"}
-    for spec in STRATEGY_QUESTION_SPECS:
-        key = str(spec["key"])
-        raw = ask_strategy_question(spec, answers=answers, input_fn=input_fn)
-        if raw in CUSTOM_TOKENS:
-            return capture_strategy_custom(input_fn=input_fn)
-        answers[key] = raw
-    answers["summary"] = build_strategy_summary(answers)
-    return build_strategy_markdown("template", answers), "template"
-
-
-def capture_strategy_guided(input_fn: InputFunc = input) -> tuple[str, str]:
-    answers = {"title": "Trade Arena 投资策略"}
-    for spec in STRATEGY_QUESTION_SPECS:
-        key = str(spec["key"])
-        value = ask_strategy_question(spec, answers=answers, input_fn=input_fn)
-        if value in CUSTOM_TOKENS:
-            return capture_strategy_custom(input_fn=input_fn)
-        answers[key] = value
-    answers["summary"] = build_strategy_summary(answers)
-    return build_strategy_markdown("guided", answers), "guided"
-
-
-def capture_strategy_custom(input_fn: InputFunc = input) -> tuple[str, str]:
-    body = collect_multiline("请直接贴出你的完整投资策略。", input_fn=input_fn)
-    if not body:
-        body = "暂未填写完整策略。"
-    answers = {
-        "title": "Trade Arena 投资策略",
-        "goal": body,
-    }
-    return build_strategy_markdown("custom", answers), "custom"
-
-
-def confirm_strategy_flow(existing_strategy: str = "", input_fn: InputFunc = input) -> tuple[str | None, str | None]:
-    current = existing_strategy
-    current_mode = ""
-    while True:
-        if current:
-            print("\n当前策略草稿如下：\n")
-            print(current)
-            choice = prompt_choice(
-                "你想怎么处理这份策略？",
-                {"1": "确认写入", "2": "重新生成", "3": "我自己直接写", "4": "稍后再说"},
-                input_fn=input_fn,
-            )
-            if choice == "1":
-                return current, current_mode or "custom"
-            if choice == "2":
-                current = ""
-                current_mode = ""
-                continue
-            if choice == "3":
-                current, current_mode = capture_strategy_custom(input_fn=input_fn)
-                continue
-            return None, None
-
-        mode_choice = prompt_choice(
-            "你想怎么整理投资策略？",
-            {"1": "轻量模板", "2": "半结构化向导", "3": "我自己直接写"},
-            input_fn=input_fn,
-        )
-        if mode_choice == "1":
-            current, current_mode = capture_strategy_template(input_fn=input_fn)
-        elif mode_choice == "2":
-            current, current_mode = capture_strategy_guided(input_fn=input_fn)
-        else:
-            current, current_mode = capture_strategy_custom(input_fn=input_fn)
-
-
-def infer_markets(strategy_text: str) -> list[str]:
-    lowered = strategy_text.lower()
-    detected: list[str] = []
-    mapping = {
-        "cn": ["a股", "沪深", "上证", "深证", "中证", "cn"],
-        "hk": ["港股", "恒生", ".hk", "hk"],
-        "us": ["美股", "纳指", "标普", "道指", "us", "nasdaq", "spx"],
-    }
-    for market, keywords in mapping.items():
-        if any(keyword in lowered for keyword in keywords):
-            detected.append(market)
-    return detected or ["cn", "hk", "us"]
-
-
-def classify_strategy_style(strategy_text: str) -> str:
-    lowered = strategy_text.lower()
-    if any(token in lowered for token in ["日内", "高频", "快进快出", "激进", "短线"]):
-        return "active"
-    if any(token in lowered for token in ["稳健", "低频", "中长线", "耐心", "防守"]):
-        return "steady"
-    return "balanced"
-
-
-def detect_runtime_capability() -> str:
-    if os.environ.get("CODEX_HOME") or (Path.home() / ".codex" / "automations").exists():
-        return "automation"
-    if shutil.which("crontab") or shutil.which("systemctl"):
-        return "external_schedule"
-    return "unknown"
-
-
-def _format_us_open_close() -> tuple[str, str]:
-    ny_tz = ZoneInfo("America/New_York")
-    sh_tz = ZoneInfo("Asia/Shanghai")
-    today_ny = datetime.now(ny_tz).date()
-    open_ny = datetime.combine(today_ny, datetime.min.time(), tzinfo=ny_tz).replace(hour=9, minute=30)
-    close_ny = open_ny.replace(hour=16, minute=0)
-    return open_ny.astimezone(sh_tz).strftime("%H:%M"), close_ny.astimezone(sh_tz).strftime("%H:%M")
-
-
-def _build_base_schedule_lines(style: str) -> list[str]:
-    if style == "active":
-        return [
-            "工作日每天至少巡检三次：开盘前、盘中、收盘前。",
-            "遇到大幅波动或关键消息时，加一轮临时复核。",
-        ]
-    if style == "steady":
-        return [
-            "工作日每天两次就够：开盘后确认一次，收盘前复核一次。",
-            "非重点市场只保留日终复盘，避免频繁打断。",
-        ]
-    return [
-        "工作日每天两到三次：开盘前准备、盘中观察、收盘前复核。",
-        "先用统一节奏跑起来，再按重点市场加密。",
-    ]
-
-
-def _build_market_schedule_lines(markets: list[str]) -> list[str]:
-    us_open, us_close = _format_us_open_close()
-    lines: list[str] = []
-    if "cn" in markets:
-        lines.append("A股增强版：09:20 看盘前准备，09:45 复核开盘，14:45 复核收盘前仓位。")
-    if "hk" in markets:
-        lines.append("港股增强版：09:20 看盘前准备，10:00 复核开盘阶段，15:45 复核收盘前仓位。")
-    if "us" in markets:
-        lines.append(
-            f"美股增强版：北京时间 {us_open} 前准备，开盘后 30 分钟复核一次，{us_close} 前再做收盘前检查。"
-        )
-    return lines
-
-
-def _build_actionable_lines(capability: str, base_lines: list[str], market_lines: list[str], custom_request: str = "") -> list[str]:
-    if capability == "automation":
-        head = "直接对当前宿主说：请按下面的节奏为我配置 trade-arena 自动运行。"
-    elif capability == "external_schedule":
-        head = "当前环境更适合外部调度。你可以把下面这段说明交给 cron 或服务器定时任务入口。"
-    else:
-        head = "当前没有识别出明确的调度承载方式。先保留这段运行说明，后续交给宿主或工作区里的自动化入口。"
-    lines = [head]
-    if custom_request:
-        lines.append(f"我的自定义要求：{custom_request}")
-    lines.extend(base_lines)
-    lines.extend(market_lines)
-    return lines
-
-
-def generate_schedule_plan(strategy_text: str, custom_request: str = "") -> SchedulePlan:
-    capability = detect_runtime_capability()
-    style = classify_strategy_style(strategy_text)
-    markets = infer_markets(strategy_text + "\n" + custom_request)
-    base_lines = _build_base_schedule_lines(style)
-    market_lines = _build_market_schedule_lines(markets)
-    actionable_lines = _build_actionable_lines(capability, base_lines, market_lines, custom_request=custom_request)
-    return SchedulePlan(
-        capability=capability,
-        base_lines=base_lines,
-        market_lines=market_lines,
-        actionable_lines=actionable_lines,
-        custom_request=custom_request,
-    )
-
-
-def print_schedule_plan(plan: SchedulePlan) -> None:
-    capability_name = {
-        "automation": "宿主自带自动化能力",
-        "external_schedule": "外部调度更合适",
-        "unknown": "调度承载方式暂未识别",
-    }.get(plan.capability, plan.capability)
-    print("\n🕒 定时任务建议")
-    print(f"环境判断：{capability_name}")
-    print("基础版：")
-    for line in plan.base_lines:
-        print(f"- {line}")
-    print("市场增强版：")
-    for line in plan.market_lines:
-        print(f"- {line}")
-    print("现在可以直接采用的表达：")
-    for line in plan.actionable_lines:
-        print(f"- {line}")
-
-
-def update_schedule_state(config: dict, capability: str) -> None:
-    config["setup_state"]["schedule_last_generated_at"] = _now_utc_iso()
-    config["setup_state"]["runtime_capability"] = capability
-    save_config(config, announce=False)
-
-
-def run_schedule_flow(strategy_text: str, config: dict, input_fn: InputFunc = input) -> bool:
-    print("\n接下来把自动运行这件事也补齐。")
-    choice = prompt_choice(
-        "你希望我怎么处理定时任务建议？",
-        {"1": "按当前策略生成建议", "2": "我自己定义运行节奏", "3": "稍后再说"},
-        input_fn=input_fn,
-    )
-    if choice == "3":
-        return False
-    custom_request = ""
-    if choice == "2":
-        custom_request = collect_multiline("请直接写出你希望的运行节奏。", input_fn=input_fn)
-    plan = generate_schedule_plan(strategy_text, custom_request=custom_request)
-    print_schedule_plan(plan)
-    update_schedule_state(config, plan.capability)
-    return True
-
-
-def print_landing_intro(reason: str, version: str, strategy_state: StrategyState | None) -> None:
-    print("\n" + "=" * 50)
-    print("📘 Trade Arena 参赛设置")
-    print("=" * 50)
-    if reason == "migration":
-        print(f"你刚升级到 {version}。这一版新增了策略沉淀和定时任务建议，建议现在补齐一次。")
-    elif reason == "broken_strategy":
-        print("我发现当前 strategy.md 读不出来，需要先修复或重建策略。")
-    elif reason == "manual":
-        print("现在重新打开参赛设置流。你可以改策略，也可以只更新定时任务建议。")
-    else:
-        print("你已经可以参赛了。现在把策略和自动运行准备补完整，后面会更顺。")
-    print()
-    for line in LANDING_CAPABILITY_LINES:
-        print(line)
-    if strategy_state and strategy_state.valid and strategy_state.content.strip():
-        print("\n当前策略摘要：")
-        print(summarize_strategy(strategy_state.content))
-
-
-def print_user_examples() -> None:
-    print("\n你之后可以直接这样说：")
-    for line in USER_EXAMPLE_LINES:
-        print(f"- {line}")
-
-
-def run_landing(gate: StartupGateResult, input_fn: InputFunc = input, schedule_only: bool = False, strategy_only: bool = False) -> bool:
+def register_interactively(input_fn: InputFunc = input) -> dict:
     config = load_config()
-    print_landing_intro(gate.landing_reason, gate.local_version, gate.strategy_state)
-    mark_landing_seen(config, gate.local_version)
-
-    if schedule_only and gate.strategy_state and gate.strategy_state.valid:
-        completed_schedule = run_schedule_flow(gate.strategy_state.content, config, input_fn=input_fn)
-        if completed_schedule:
-            mark_landing_completed(config, gate.local_version)
-        return completed_schedule
-
-    if strategy_only:
-        entry_choice = "1"
-    else:
-        entry_choice = prompt_choice(
-            "现在你想怎么继续？",
-            {"1": "开始引导", "2": "我自己定义", "3": "稍后再说"},
-            input_fn=input_fn,
-        )
-        if entry_choice == "3":
-            print()
-            for line in LANDING_RECALL_LINES:
-                print(line)
-            print_user_examples()
-            return False
-
-    existing_strategy = ""
-    if gate.strategy_state and gate.strategy_state.valid:
-        existing_strategy = gate.strategy_state.content
-    if entry_choice == "2":
-        strategy_draft, capture_mode = capture_strategy_custom(input_fn=input_fn)
-    else:
-        strategy_draft, capture_mode = confirm_strategy_flow(existing_strategy=existing_strategy, input_fn=input_fn)
-        if not strategy_draft:
-            for line in LANDING_RECALL_LINES:
-                print(line)
-            return False
-
-    path = write_strategy_document(strategy_draft)
-    config = load_config()
-    config["setup_state"]["strategy_last_updated_at"] = _now_utc_iso()
-    config["setup_state"]["strategy_capture_mode"] = capture_mode or "custom"
-    save_config(config, announce=False)
-    print(f"\n✅ 投资策略已写入 {path.name}")
-
-    completed_schedule = True
-    if not strategy_only:
-        completed_schedule = run_schedule_flow(strategy_draft, config, input_fn=input_fn)
-    if completed_schedule:
-        mark_landing_completed(load_config(), gate.local_version)
-    print_user_examples()
-    return True
-
-
-def ensure_registration(config: dict, input_fn: InputFunc = input) -> dict:
     if config.get("token"):
-        print("\n⛳ 已检测到现有参赛身份，跳过注册。")
+        print("⛳ 已检测到现有参赛身份，跳过注册。")
         print(f"   当前 Token: {config['token'][:20]}...")
         return config
 
-    print("\n📌 现在补一下参赛身份。")
+    print("\n📌 手动注册辅助")
+    print("正式的 landing 与参赛设置请直接在 Skill 对话里完成。")
     email = prompt_text("请输入邮箱: ", input_fn=input_fn)
     name = prompt_text("请输入队伍名称: ", input_fn=input_fn)
     avatar = prompt_text("请输入头像 emoji: ", input_fn=input_fn)
@@ -1180,114 +487,90 @@ def ensure_registration(config: dict, input_fn: InputFunc = input) -> dict:
     style = prompt_text("请输入投资风格: ", input_fn=input_fn)
 
     result = register(name, email, model, avatar, style)
-    if result:
-        config["token"] = result["token"]
-        config["agent_id"] = result["agent"]["id"]
-        save_config(config)
+    if not result:
+        return config
+
+    config["token"] = result["token"]
+    config["agent_id"] = result["agent"]["id"]
+    save_config(config)
     return config
+
 
 
 def refresh_account_info(config: dict) -> dict:
-    print("\n📌 获取账户信息")
-    if config.get("token"):
-        info = get_my_info(config["token"])
-        if info:
-            config["agent_id"] = info["agent_id"]
-            config["account_id_us"] = info["accounts"]["us"]["id"]
-            config["account_id_cn"] = info["accounts"]["cn"]["id"]
-            if info["accounts"].get("hk"):
-                config["account_id_hk"] = info["accounts"]["hk"]["id"]
-            save_config(config)
+    if not config.get("token"):
+        print("⚠️  当前还没有 token。请先在 Skill 对话里完成注册，或用 --register 做手动辅助注册。")
+        return config
+
+    info = get_my_info(config["token"])
+    if not info:
+        return config
+
+    config["agent_id"] = info["agent_id"]
+    config["account_id_us"] = info["accounts"]["us"]["id"]
+    config["account_id_cn"] = info["accounts"]["cn"]["id"]
+    if info["accounts"].get("hk"):
+        config["account_id_hk"] = info["accounts"]["hk"]["id"]
+    save_config(config)
     return config
 
 
-def run_demo_views(config: dict) -> None:
-    print("\n📌 查看行情")
-    get_quote("AAPL")
-    print("\n📌 查看持仓")
-    if config.get("agent_id"):
-        get_agent_portfolio_summary(config["agent_id"])
-    elif config.get("account_id_us") and config.get("token"):
-        get_portfolio(config["account_id_us"], config["token"])
+
+def print_helper_intro() -> None:
+    print("=" * 50)
+    print("🛠️  Trade Arena Helper")
+    print("=" * 50)
+    for line in HANDOFF_LINES:
+        print(line)
+    has_strategy, path, _content = read_strategy_document()
+    if path:
+        status = "可用" if has_strategy else "存在但不可读或为空"
+        print(f"当前策略文件: {path.name} ({status})")
+    else:
+        print("当前策略文件: 未找到，请回到 Skill 对话触发 landing。")
+
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Trade Arena quickstart")
-    parser.add_argument(
-        "--check-update",
-        action="store_true",
-        help="主动触发更新检查；发现新版本后自动下载并更新",
-    )
-    parser.add_argument(
-        "--check-update-only",
-        action="store_true",
-        help="主动触发更新检查；仅检查不更新",
-    )
-    parser.add_argument(
-        "--setup",
-        action="store_true",
-        help="重新进入完整参赛设置流",
-    )
-    parser.add_argument(
-        "--setup-strategy",
-        action="store_true",
-        help="只重写或补齐 strategy.md",
-    )
-    parser.add_argument(
-        "--setup-schedule",
-        action="store_true",
-        help="只重新生成定时任务建议",
-    )
+    parser = argparse.ArgumentParser(description="Trade Arena helper")
+    parser.add_argument("--check-update", action="store_true", help="手动检查更新；发现新版本后自动下载并更新")
+    parser.add_argument("--check-update-only", action="store_true", help="手动检查更新；仅检查不更新")
+    parser.add_argument("--register", action="store_true", help="手动辅助注册，不触发 landing")
+    parser.add_argument("--refresh-info", action="store_true", help="刷新并回写账户与市场账户信息")
+    parser.add_argument("--quote", metavar="TICKER", help="查看单只股票行情")
+    parser.add_argument("--portfolio-summary", action="store_true", help="查看当前 agent 的三地持仓汇总")
     return parser.parse_args()
 
 
+
 def main(input_fn: InputFunc = input):
-    print("=" * 50)
-    print("🚀 Trade Arena Quickstart")
-    print("=" * 50)
-
-    gate = run_startup_gate()
-    if gate.updated:
-        print(f"\n🔄 已自动切换到最新版 {load_config().get('skill_version') or _get_local_skill_version()}")
-
-    if gate.should_run_landing:
-        run_landing(gate, input_fn=input_fn)
-
-    config = load_config()
-    config = ensure_registration(config, input_fn=input_fn)
-    config = refresh_account_info(config)
-    run_demo_views(config)
-
-    print("\n" + "=" * 50)
-    print("✅ Quickstart 完成！")
-    print("提示: 你可以直接继续查看账户、行情、排行榜，或重新叫起设置流。")
-
-
-if __name__ == "__main__":
     args = parse_args()
     if args.check_update and args.check_update_only:
         raise SystemExit("--check-update 与 --check-update-only 不能同时使用")
+
+    print_helper_intro()
 
     if args.check_update:
         check_and_update_skill(force=True, auto_apply=True, silent=False)
     elif args.check_update_only:
         check_and_update_skill(force=True, auto_apply=False, silent=False)
-    elif args.setup or args.setup_strategy or args.setup_schedule:
-        gate = run_startup_gate(force_landing=True)
-        if args.setup_schedule:
-            state = read_strategy_document()
-            if not state.valid:
-                print("⚠️  先补齐有效的 strategy.md，再生成定时任务建议。")
-                run_landing(gate, schedule_only=False, strategy_only=False)
-            else:
-                gate.strategy_state = state
-                gate.landing_reason = "manual"
-                run_landing(gate, schedule_only=True)
-        elif args.setup_strategy:
-            gate.landing_reason = "manual"
-            run_landing(gate, strategy_only=True)
+
+    config = load_config()
+    if args.register:
+        config = register_interactively(input_fn=input_fn)
+    if args.refresh_info:
+        config = refresh_account_info(config)
+    if args.quote:
+        get_quote(args.quote)
+    if args.portfolio_summary:
+        if config.get("agent_id"):
+            get_agent_portfolio_summary(config["agent_id"])
         else:
-            gate.landing_reason = "manual"
-            run_landing(gate)
-    else:
-        main()
+            print("⚠️  当前没有 agent_id。先刷新账户信息，或在 Skill 对话里完成注册。")
+
+    if not any([args.check_update, args.check_update_only, args.register, args.refresh_info, args.quote, args.portfolio_summary]):
+        print("\n没有执行额外动作。请优先回到 Skill 对话完成 landing 和日常使用。")
+
+
+if __name__ == "__main__":
+    main()

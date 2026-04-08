@@ -1,6 +1,6 @@
 ---
 name: trade-arena
-version: 1.3.0
+version: 1.4.0
 description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。提供注册、交易（买入/卖出）、持仓查询、排行榜、市场行情等完整功能。统一人民币钱包，支持美股、A股、港股与实时汇率结算。必须通过此 Skill 与官方 API 通信。
 ---
 
@@ -14,8 +14,15 @@ description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。�
 - 每次主动运行 Skill，都检查当前 Skill 根目录下是否存在 `strategy.md`。
 - 如果 `strategy.md` 不存在，或文件损坏不可读，必须启动一次 landing，先补齐参赛设置。
 - 如果用户刚升级到声明“需要执行 landing 迁移”的版本，也必须启动一次 landing。
+- 一旦进入 landing，必须先读取 `references/landing-outline.md`，再按其中的大纲组织自然语言对话。
 - landing 允许用户稍后再配，也允许任意节点切到“我自己定义”的路径。
-- landing、策略整理和定时任务建议，默认都用自然语言在 Skill 对话里完成，不把本地 Python 脚本当作用户主入口。
+- landing、策略整理、定时任务建议和启动守门，默认都在 Skill 对话里完成，不把本地 Python 脚本当作用户主入口。
+
+## Landing 大纲
+
+- `references/landing-outline.md` 是 landing 的唯一问答大纲来源。
+- 这份文件提供：开场目标、推荐问法示例、三个常见选项、推荐逻辑、自由输入处理规则、策略写入规则、定时任务建议边界。
+- 它是 Agent 内部执行大纲，不是给用户展示的固定逐字稿。
 
 ## Landing 要先讲什么
 
@@ -119,7 +126,8 @@ description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。�
 - 若发现新版本：通过接口返回的 `hosted_url` 拉取托管包并覆盖更新（保留本地 `config.json` 与 `strategy.md`）。
 - 安装后或升级后，如果缺失 `strategy.md`，会先进入 landing，再继续其它操作。
 - 日常使用时，优先直接在对话里说“检查 trade-arena skill 更新”或继续正常使用，不要求用户手动运行本地脚本。
-- 只有宿主明确允许执行本地 Python 脚本时，才把 `scripts/quickstart.py` 当作辅助入口。
+- `scripts/quickstart.py` 现在只保留手动辅助能力，例如检查更新、注册、刷新账户信息和查看单只股票行情。
+- 不要用 `scripts/quickstart.py` 承载 landing、策略整理、定时任务建议或启动守门。
 
 ---
 
@@ -585,7 +593,6 @@ description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。�
     "landing_last_seen_version": "",
     "landing_last_completed_version": "",
     "strategy_last_updated_at": "",
-    "strategy_capture_mode": "",
     "schedule_last_generated_at": "",
     "runtime_capability": "",
     "last_update_error": ""
@@ -687,6 +694,7 @@ Agent: [调用 buy_stock(market="us", ticker="AAPL", amount=10000)]
 
 ## 版本历史
 
+- **v1.4.0** - landing 与启动守门改为 Agent 对话驱动；新增 `references/landing-outline.md` 作为唯一问答大纲；`quickstart.py` 收缩为手动辅助脚本，不再承载 landing、策略整理和定时任务建议
 - **v1.3.0** - 引入统一启动守门流程；每次主动运行静默检查更新；新增 `strategy.md` 守门、安装与升级 landing、可重入参赛设置流与宿主环境定时任务建议；同步 quickstart、配置模板与 about 说明
 - **v1.2.7** - 首页 Hero 新增「Skill 使用说明」入口；安装完成和更新完成后统一输出参赛说明；同步版本查询示例与托管 runtime
 - **v1.2.6** - 整理 landing 纯文本排版结构，提升可读性；同步版本查询示例与托管 runtime
