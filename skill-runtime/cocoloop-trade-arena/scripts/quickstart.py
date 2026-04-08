@@ -3,7 +3,7 @@
 Trade Arena runtime helper
 
 这是 Skill 包内的手动辅助入口，用于本地辅助、自更新和少量 API 调试。
-landing、策略整理、定时任务建议和启动守门都应由 Skill 对话完成。
+设置引导、策略整理、定时任务建议和启动守门都应由 Skill 对话完成。
 """
 
 from __future__ import annotations
@@ -29,21 +29,14 @@ LEGACY_STRATEGY_FILE = SKILL_ROOT / "strategy.MD"
 InputFunc = Callable[[str], str]
 
 HANDOFF_LINES = [
-    "Trade Arena 的 landing、策略整理、定时任务建议和启动守门都由 Skill 对话负责。",
+    "Trade Arena 的设置引导、策略整理、定时任务建议和启动守门都由 Skill 对话负责。",
     "如果你是普通使用者，请直接在宿主里说：配置 trade arena / 修改我的投资策略 / 重新生成定时任务建议。",
     "这个脚本现在只保留手动辅助能力，例如检查更新、注册、刷新账户信息和查看单只股票行情。",
 ]
 
 
 def _default_setup_state() -> dict:
-    return {
-        "landing_last_seen_version": "",
-        "landing_last_completed_version": "",
-        "strategy_last_updated_at": "",
-        "schedule_last_generated_at": "",
-        "runtime_capability": "",
-        "last_update_error": "",
-    }
+    return {"last_update_error": ""}
 
 
 
@@ -64,12 +57,12 @@ def default_config() -> dict:
 
 
 def _merge_setup_state(raw_setup: dict | None) -> dict:
-    merged = _default_setup_state()
+    merged: dict[str, str] = {}
     if isinstance(raw_setup, dict):
-        for key in merged:
-            value = raw_setup.get(key)
-            if isinstance(value, str):
+        for key, value in raw_setup.items():
+            if isinstance(key, str) and isinstance(value, str):
                 merged[key] = value
+    merged.setdefault("last_update_error", "")
     return merged
 
 
@@ -479,7 +472,7 @@ def register_interactively(input_fn: InputFunc = input) -> dict:
         return config
 
     print("\n📌 手动注册辅助")
-    print("正式的 landing 与参赛设置请直接在 Skill 对话里完成。")
+    print("正式的参赛设置请直接在 Skill 对话里完成。")
     email = prompt_text("请输入邮箱: ", input_fn=input_fn)
     name = prompt_text("请输入队伍名称: ", input_fn=input_fn)
     avatar = prompt_text("请输入头像 emoji: ", input_fn=input_fn)
@@ -527,7 +520,7 @@ def print_helper_intro() -> None:
         status = "可用" if has_strategy else "存在但不可读或为空"
         print(f"当前策略文件: {path.name} ({status})")
     else:
-        print("当前策略文件: 未找到，请回到 Skill 对话触发 landing。")
+        print("当前策略文件: 未找到，请回到 Skill 对话完成参赛设置。")
 
 
 
@@ -535,7 +528,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Trade Arena helper")
     parser.add_argument("--check-update", action="store_true", help="手动检查更新；发现新版本后自动下载并更新")
     parser.add_argument("--check-update-only", action="store_true", help="手动检查更新；仅检查不更新")
-    parser.add_argument("--register", action="store_true", help="手动辅助注册，不触发 landing")
+    parser.add_argument("--register", action="store_true", help="手动辅助注册，不触发设置对话")
     parser.add_argument("--refresh-info", action="store_true", help="刷新并回写账户与市场账户信息")
     parser.add_argument("--quote", metavar="TICKER", help="查看单只股票行情")
     parser.add_argument("--portfolio-summary", action="store_true", help="查看当前 agent 的三地持仓汇总")
@@ -569,7 +562,7 @@ def main(input_fn: InputFunc = input):
             print("⚠️  当前没有 agent_id。先刷新账户信息，或在 Skill 对话里完成注册。")
 
     if not any([args.check_update, args.check_update_only, args.register, args.refresh_info, args.quote, args.portfolio_summary]):
-        print("\n没有执行额外动作。请优先回到 Skill 对话完成 landing 和日常使用。")
+        print("\n没有执行额外动作。请优先回到 Skill 对话完成设置和日常使用。")
 
 
 if __name__ == "__main__":

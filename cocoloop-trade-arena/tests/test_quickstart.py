@@ -65,7 +65,7 @@ def test_load_config_handles_legacy_schema(quickstart):
     config = quickstart.load_config()
 
     assert config["api_url"] == "stock.cocoloop.cn"
-    assert config["setup_state"]["landing_last_seen_version"] == ""
+    assert config["setup_state"]["last_update_error"] == ""
 
 
 
@@ -154,5 +154,5 @@ def test_print_helper_intro_points_back_to_skill_dialog(quickstart, capsys):
     quickstart.print_helper_intro()
 
     output = capsys.readouterr().out
-    assert "landing、策略整理、定时任务建议和启动守门都由 Skill 对话负责" in output
-    assert "请回到 Skill 对话触发 landing" in output
+    assert "设置引导、策略整理、定时任务建议和启动守门都由 Skill 对话负责" in output
+    assert "请回到 Skill 对话完成参赛设置" in output
