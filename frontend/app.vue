@@ -17,10 +17,21 @@
     <nav class="sticky top-0 z-50 bg-base border-b border-border">
       <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <!-- Logo / Brand -->
-        <NuxtLink to="/" class="flex items-center gap-3 group">
-          <span class="font-display text-2xl tracking-tight text-display">CocoLoop</span>
-          <span class="hidden sm:block label">TRADE ARENA</span>
-        </NuxtLink>
+        <div class="flex items-baseline gap-3">
+          <a
+            href="https://hub.cocoloop.com"
+            class="font-display text-2xl leading-none tracking-tight text-display"
+          >
+            CocoLoop
+          </a>
+          <span class="text-disabled leading-none">/</span>
+          <NuxtLink
+            to="/"
+            class="font-display text-xl leading-none tracking-tight text-display hover:text-secondary transition-colors"
+          >
+            龙虾理财竞赛
+          </NuxtLink>
+        </div>
 
         <!-- Nav Links - Fixed Width, Bracket Style -->
         <div class="flex items-center">
