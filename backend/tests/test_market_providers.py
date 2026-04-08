@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import pandas as pd
 
-from app.services.market_providers import AkshareProvider, TencentProvider, YahooProvider
+from app.services.market_providers import (
+    AkshareProvider,
+    AlphaVantageProvider,
+    FinnhubProvider,
+    TencentProvider,
+    TwelveDataProvider,
+    YahooProvider,
+)
 
 
 def test_parse_stooq_snapshot_csv_batch_uses_prev_close_and_name_map():
@@ -104,3 +111,93 @@ def test_akshare_parse_hk_index_frame_for_hsi():
     assert quote.name == "恒生指数"
     assert quote.price == 20000.0
     assert quote.change_pct == 1.2
+
+
+def test_twelvedata_parse_quote_payload_supports_single_and_batch():
+    single_payload = {
+        "symbol": "AAPL",
+        "name": "Apple Inc",
+        "close": "245.07",
+        "previous_close": "246.74",
+        "percent_change": "-0.6768",
+        "volume": "2356072",
+        "is_market_open": False,
+    }
+    single = TwelveDataProvider._parse_quote_payload(single_payload)
+    assert set(single.keys()) == {"AAPL"}
+    assert single["AAPL"] is not None
+    assert single["AAPL"].price == 245.07
+    assert single["AAPL"].previous_close == 246.74
+    assert single["AAPL"].change_pct == -0.68
+    assert single["AAPL"].market_status == "closed"
+
+    batch_payload = {
+        "AAPL": {
+            "symbol": "AAPL",
+            "name": "Apple Inc",
+            "close": "245.07",
+            "previous_close": "246.74",
+            "percent_change": "-0.6768",
+            "volume": "2356072",
+            "is_market_open": False,
+        },
+        "BRK-B": {
+            "symbol": "BRK-B",
+            "name": "Berkshire Hathaway",
+            "close": "484.47",
+            "previous_close": "492.58",
+            "percent_change": "-1.6463",
+            "volume": "4356429",
+            "is_market_open": True,
+        },
+    }
+    batch = TwelveDataProvider._parse_quote_payload(batch_payload)
+    assert set(batch.keys()) == {"AAPL", "BRK-B"}
+    assert batch["BRK-B"] is not None
+    assert batch["BRK-B"].price == 484.47
+    assert batch["BRK-B"].change_pct == -1.65
+    assert batch["BRK-B"].market_status == "open"
+
+
+def test_alphavantage_parse_global_quote():
+    payload = {
+        "Global Quote": {
+            "01. symbol": "IBM",
+            "05. price": "245.0700",
+            "06. volume": "2356072",
+            "08. previous close": "246.7400",
+            "10. change percent": "-0.6768%",
+        }
+    }
+
+    quote = AlphaVantageProvider._parse_global_quote("IBM", payload)
+
+    assert quote is not None
+    assert quote.ticker == "IBM"
+    assert quote.price == 245.07
+    assert quote.previous_close == 246.74
+    assert quote.change_pct == -0.68
+    assert quote.volume == 2356072
+    assert quote.market_status == "unknown"
+
+
+def test_finnhub_parse_quote_payload():
+    payload = {
+        "c": 245.07,
+        "d": -1.67,
+        "dp": -0.6768,
+        "h": 245.76,
+        "l": 241.1,
+        "o": 245.32,
+        "pc": 246.74,
+        "t": 1775606400,
+    }
+
+    quote = FinnhubProvider._parse_quote_payload("IBM", payload)
+
+    assert quote is not None
+    assert quote.ticker == "IBM"
+    assert quote.price == 245.07
+    assert quote.previous_close == 246.74
+    assert quote.change_pct == -0.68
+    assert quote.volume == 0

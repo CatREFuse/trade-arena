@@ -30,11 +30,14 @@ from app.schemas import (
 )
 from app.services.market_calendar import MarketCalendarService
 from app.services.market_providers import (
+    AlphaVantageProvider,
     FAST_HTTP_TIMEOUT,
     AkshareProvider,
+    FinnhubProvider,
     MockProvider,
     SinaProvider,
     TencentProvider,
+    TwelveDataProvider,
     YahooProvider,
     _limited_get,
 )
@@ -175,6 +178,64 @@ MARKET_BOARD = {
         {"ticker": "VZ", "name": "Verizon"},
         {"ticker": "CMCSA", "name": "Comcast"},
         {"ticker": "DIS", "name": "Disney"},
+        {"ticker": "BAC", "name": "Bank of America"},
+        {"ticker": "WFC", "name": "Wells Fargo"},
+        {"ticker": "C", "name": "Citigroup"},
+        {"ticker": "GS", "name": "Goldman Sachs"},
+        {"ticker": "MS", "name": "Morgan Stanley"},
+        {"ticker": "BLK", "name": "BlackRock"},
+        {"ticker": "SCHW", "name": "Charles Schwab"},
+        {"ticker": "AXP", "name": "American Express"},
+        {"ticker": "JNJ", "name": "Johnson & Johnson"},
+        {"ticker": "BMY", "name": "Bristol Myers Squibb"},
+        {"ticker": "GILD", "name": "Gilead Sciences"},
+        {"ticker": "ISRG", "name": "Intuitive Surgical"},
+        {"ticker": "MDT", "name": "Medtronic"},
+        {"ticker": "SYK", "name": "Stryker"},
+        {"ticker": "CI", "name": "Cigna"},
+        {"ticker": "HUM", "name": "Humana"},
+        {"ticker": "ZTS", "name": "Zoetis"},
+        {"ticker": "VRTX", "name": "Vertex Pharma"},
+        {"ticker": "REGN", "name": "Regeneron"},
+        {"ticker": "TXN", "name": "Texas Instruments"},
+        {"ticker": "ADI", "name": "Analog Devices"},
+        {"ticker": "KLAC", "name": "KLA"},
+        {"ticker": "NXPI", "name": "NXP Semiconductors"},
+        {"ticker": "MCHP", "name": "Microchip"},
+        {"ticker": "ON", "name": "ON Semiconductor"},
+        {"ticker": "ANET", "name": "Arista Networks"},
+        {"ticker": "CDNS", "name": "Cadence Design"},
+        {"ticker": "SNPS", "name": "Synopsys"},
+        {"ticker": "INTC", "name": "Intel"},
+        {"ticker": "ARM", "name": "Arm Holdings"},
+        {"ticker": "SMCI", "name": "Super Micro Computer"},
+        {"ticker": "DELL", "name": "Dell Technologies"},
+        {"ticker": "PYPL", "name": "PayPal"},
+        {"ticker": "SQ", "name": "Block"},
+        {"ticker": "ADP", "name": "ADP"},
+        {"ticker": "FIS", "name": "Fidelity National Information"},
+        {"ticker": "FI", "name": "Fiserv"},
+        {"ticker": "ICE", "name": "Intercontinental Exchange"},
+        {"ticker": "SPGI", "name": "S&P Global"},
+        {"ticker": "MCO", "name": "Moody's"},
+        {"ticker": "TGT", "name": "Target"},
+        {"ticker": "TJX", "name": "TJX"},
+        {"ticker": "ROST", "name": "Ross Stores"},
+        {"ticker": "DG", "name": "Dollar General"},
+        {"ticker": "DLTR", "name": "Dollar Tree"},
+        {"ticker": "MAR", "name": "Marriott"},
+        {"ticker": "HLT", "name": "Hilton"},
+        {"ticker": "RCL", "name": "Royal Caribbean"},
+        {"ticker": "CCL", "name": "Carnival"},
+        {"ticker": "NCLH", "name": "Norwegian Cruise Line"},
+        {"ticker": "GM", "name": "General Motors"},
+        {"ticker": "F", "name": "Ford"},
+        {"ticker": "PGR", "name": "Progressive"},
+        {"ticker": "AIG", "name": "AIG"},
+        {"ticker": "MET", "name": "MetLife"},
+        {"ticker": "CB", "name": "Chubb"},
+        {"ticker": "LMT", "name": "Lockheed Martin"},
+        {"ticker": "NOC", "name": "Northrop Grumman"},
     ],
     "cn": [
         {"ticker": "600519.SH", "name": "贵州茅台"},
@@ -326,6 +387,9 @@ class MarketDataService:
         redis: Redis,
         akshare: AkshareProvider | None = None,
         yahoo: YahooProvider | None = None,
+        twelvedata: TwelveDataProvider | None = None,
+        alphavantage: AlphaVantageProvider | None = None,
+        finnhub: FinnhubProvider | None = None,
         tencent: TencentProvider | None = None,
         sina: SinaProvider | None = None,
         mock: MockProvider | None = None,
@@ -336,6 +400,9 @@ class MarketDataService:
         self.tencent = tencent or TencentProvider()
         self.sina = sina or SinaProvider()
         self.yahoo = yahoo or YahooProvider()
+        self.twelvedata = twelvedata or TwelveDataProvider(api_key=settings.market_twelvedata_api_key)
+        self.alphavantage = alphavantage or AlphaVantageProvider(api_key=settings.market_alphavantage_api_key)
+        self.finnhub = finnhub or FinnhubProvider(api_key=settings.market_finnhub_api_key)
         self.mock = mock or MockProvider()
         self.enable_mock_fallback = (
             settings.market_enable_mock_fallback
@@ -404,6 +471,9 @@ class MarketDataService:
         self.register_provider("quote", "hk", self.yahoo, priority=2)
 
         self.register_provider("quote", "us", self.yahoo, priority=0)
+        self.register_provider("quote", "us", self.twelvedata, priority=1)
+        self.register_provider("quote", "us", self.finnhub, priority=2)
+        self.register_provider("quote", "us", self.alphavantage, priority=3)
 
         # index chain
         self.register_provider("index", "cn", self.akshare, priority=0)

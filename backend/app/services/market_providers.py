@@ -39,6 +39,9 @@ FAST_HTTP_TIMEOUT = httpx.Timeout(4.0, connect=2.0)
 HTTP_CONCURRENCY_LIMITS = {
     "yahoo": 4,
     "stooq": 2,
+    "twelvedata": 4,
+    "alphavantage": 2,
+    "finnhub": 6,
     "tencent": 6,
     "sina": 4,
 }
@@ -562,6 +565,420 @@ class YahooProvider(BaseProvider):
             if start and end and start <= now <= end:
                 return status
         return "closed"
+
+
+class TwelveDataProvider(BaseProvider):
+    """Twelve Data 提供商 - 美股备用源（需 API Key）"""
+
+    QUOTE_URL = "https://api.twelvedata.com/quote"
+    BATCH_CHUNK_SIZE = 24
+    HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
+    }
+
+    def __init__(self, api_key: str | None = None):
+        self.api_key = (api_key or "").strip()
+
+    def _enabled(self) -> bool:
+        return bool(self.api_key)
+
+    async def get_quote(self, ticker: str) -> QuoteData | None:
+        if not self._enabled():
+            return None
+        query_symbol = self._normalize_symbol(ticker)
+        try:
+            payload = await self._fetch_quote_payload(query_symbol)
+        except Exception as e:
+            _warning_throttled("twelvedata_quote", "TwelveData quote fetch failed for %s: %s", ticker, e)
+            return None
+
+        parsed = self._parse_quote_payload(payload)
+        quote = parsed.get(query_symbol)
+        if quote:
+            quote.ticker = ticker
+        return quote
+
+    async def get_index(self, symbol: str) -> QuoteData | None:
+        return None
+
+    async def get_quotes_batch(self, tickers: list[str]) -> dict[str, QuoteData | None]:
+        if not tickers:
+            return {}
+        if not self._enabled():
+            return {ticker: None for ticker in tickers}
+
+        query_to_original: dict[str, str] = {}
+        for ticker in tickers:
+            query_symbol = self._normalize_symbol(ticker)
+            query_to_original[query_symbol] = ticker
+
+        resolved: dict[str, QuoteData | None] = {}
+        query_symbols = list(query_to_original.keys())
+        for i in range(0, len(query_symbols), self.BATCH_CHUNK_SIZE):
+            chunk = query_symbols[i:i + self.BATCH_CHUNK_SIZE]
+            try:
+                payload = await self._fetch_quote_payload(",".join(chunk))
+            except Exception as e:
+                _warning_throttled("twelvedata_batch", "TwelveData batch quote fetch failed: %s", e)
+                continue
+
+            parsed = self._parse_quote_payload(payload)
+            for query_symbol, quote in parsed.items():
+                original_ticker = query_to_original.get(query_symbol)
+                if original_ticker is None:
+                    continue
+                if quote:
+                    quote.ticker = original_ticker
+                resolved[original_ticker] = quote
+
+        for ticker in tickers:
+            resolved.setdefault(ticker, None)
+        return resolved
+
+    async def _fetch_quote_payload(self, symbol: str):
+        params = {
+            "symbol": symbol,
+            "apikey": self.api_key,
+        }
+        resp = await _limited_get(
+            "twelvedata",
+            self.QUOTE_URL,
+            params=params,
+            headers=self.HEADERS,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    @classmethod
+    def _parse_quote_payload(cls, payload) -> dict[str, QuoteData | None]:
+        if not isinstance(payload, dict):
+            return {}
+
+        if str(payload.get("status", "")).lower() == "error":
+            return {}
+        if payload.get("code") and payload.get("message"):
+            return {}
+
+        if "symbol" in payload:
+            quote = cls._parse_quote_record(payload)
+            query_symbol = cls._normalize_symbol(str(payload.get("symbol", "")))
+            if not query_symbol:
+                return {}
+            return {query_symbol: quote}
+
+        parsed: dict[str, QuoteData | None] = {}
+        for symbol, row in payload.items():
+            if symbol in {"status", "meta"}:
+                continue
+            if not isinstance(row, dict):
+                continue
+            query_symbol = cls._normalize_symbol(str(symbol))
+            if not query_symbol:
+                continue
+            parsed[query_symbol] = cls._parse_quote_record(row, fallback_ticker=query_symbol)
+        return parsed
+
+    @classmethod
+    def _parse_quote_record(
+        cls,
+        row: dict,
+        *,
+        fallback_ticker: str | None = None,
+    ) -> QuoteData | None:
+        ticker = str(row.get("symbol") or fallback_ticker or "").strip()
+        if not ticker:
+            return None
+        price = cls._coerce_number(row.get("close") or row.get("price"))
+        if price is None:
+            return None
+
+        previous_close = cls._coerce_number(row.get("previous_close"))
+        change_pct = cls._coerce_percent(row.get("percent_change") or row.get("change_percent"))
+        if previous_close is None:
+            change = cls._coerce_number(row.get("change"))
+            if change is not None:
+                previous_close = price - change
+        if previous_close is None and change_pct is not None:
+            divisor = 1 + (change_pct / 100)
+            if divisor:
+                previous_close = price / divisor
+        if previous_close is None:
+            previous_close = price
+        if change_pct is None:
+            change_pct = ((price - previous_close) / previous_close * 100) if previous_close else 0
+
+        volume = cls._coerce_number(row.get("volume")) or 0
+        market_open_raw = row.get("is_market_open")
+        market_status = "unknown"
+        if isinstance(market_open_raw, bool):
+            market_status = "open" if market_open_raw else "closed"
+        elif isinstance(market_open_raw, str):
+            lowered = market_open_raw.strip().lower()
+            if lowered in {"1", "true", "yes"}:
+                market_status = "open"
+            elif lowered in {"0", "false", "no"}:
+                market_status = "closed"
+
+        return QuoteData(
+            ticker=ticker,
+            price=round(price, 2),
+            change_pct=round(change_pct, 2),
+            volume=int(volume),
+            market_status=market_status,
+            name=str(row.get("name") or row.get("instrument_name") or ticker),
+            previous_close=round(previous_close, 2),
+        )
+
+    @staticmethod
+    def _normalize_symbol(ticker: str) -> str:
+        normalized = ticker.strip().upper()
+        if not normalized:
+            return ""
+        if normalized.endswith(".SH") or normalized.endswith(".SZ") or normalized.endswith(".HK"):
+            return normalized
+        return normalized.replace(".", "-")
+
+    @staticmethod
+    def _coerce_number(value) -> float | None:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _coerce_percent(cls, value) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.replace("%", "").strip()
+        return cls._coerce_number(value)
+
+
+class AlphaVantageProvider(BaseProvider):
+    """Alpha Vantage 提供商 - 美股备用源（需 API Key）"""
+
+    QUERY_URL = "https://www.alphavantage.co/query"
+    BATCH_MAX_SYMBOLS = 5
+    HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
+    }
+
+    def __init__(self, api_key: str | None = None):
+        self.api_key = (api_key or "").strip()
+
+    def _enabled(self) -> bool:
+        return bool(self.api_key)
+
+    async def get_quote(self, ticker: str) -> QuoteData | None:
+        if not self._enabled():
+            return None
+        params = {
+            "function": "GLOBAL_QUOTE",
+            "symbol": ticker,
+            "apikey": self.api_key,
+        }
+        try:
+            resp = await _limited_get(
+                "alphavantage",
+                self.QUERY_URL,
+                params=params,
+                headers=self.HEADERS,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            return self._parse_global_quote(ticker, payload)
+        except Exception as e:
+            _warning_throttled("alphavantage_quote", "AlphaVantage quote fetch failed for %s: %s", ticker, e)
+            return None
+
+    async def get_index(self, symbol: str) -> QuoteData | None:
+        return None
+
+    async def get_quotes_batch(self, tickers: list[str]) -> dict[str, QuoteData | None]:
+        if not tickers:
+            return {}
+        if not self._enabled():
+            return {ticker: None for ticker in tickers}
+
+        limited = tickers[: self.BATCH_MAX_SYMBOLS]
+        results = await asyncio.gather(
+            *(self.get_quote(ticker) for ticker in limited),
+            return_exceptions=True,
+        )
+        parsed: dict[str, QuoteData | None] = {}
+        for ticker, result in zip(limited, results):
+            if isinstance(result, Exception):
+                parsed[ticker] = None
+                continue
+            parsed[ticker] = result
+
+        for ticker in tickers:
+            parsed.setdefault(ticker, None)
+        return parsed
+
+    @classmethod
+    def _parse_global_quote(cls, ticker: str, payload: dict) -> QuoteData | None:
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("Note") or payload.get("Information") or payload.get("Error Message"):
+            return None
+
+        quote_block = payload.get("Global Quote")
+        if not isinstance(quote_block, dict) or not quote_block:
+            return None
+
+        price = cls._coerce_number(quote_block.get("05. price"))
+        if price is None:
+            return None
+        previous_close = cls._coerce_number(quote_block.get("08. previous close")) or price
+        change_pct = cls._coerce_percent(quote_block.get("10. change percent"))
+        if change_pct is None:
+            change_pct = ((price - previous_close) / previous_close * 100) if previous_close else 0
+        volume = cls._coerce_number(quote_block.get("06. volume")) or 0
+
+        return QuoteData(
+            ticker=ticker,
+            price=round(price, 2),
+            change_pct=round(change_pct, 2),
+            volume=int(volume),
+            market_status="unknown",
+            name=ticker,
+            previous_close=round(previous_close, 2),
+        )
+
+    @staticmethod
+    def _coerce_number(value) -> float | None:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _coerce_percent(cls, value) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.replace("%", "").strip()
+        return cls._coerce_number(value)
+
+
+class FinnhubProvider(BaseProvider):
+    """Finnhub 提供商 - 美股备用源（需 API Key）"""
+
+    QUOTE_URL = "https://finnhub.io/api/v1/quote"
+    BATCH_MAX_SYMBOLS = 60
+    HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
+    }
+
+    def __init__(self, api_key: str | None = None):
+        self.api_key = (api_key or "").strip()
+
+    def _enabled(self) -> bool:
+        return bool(self.api_key)
+
+    async def get_quote(self, ticker: str) -> QuoteData | None:
+        if not self._enabled():
+            return None
+        params = {
+            "symbol": ticker,
+            "token": self.api_key,
+        }
+        try:
+            resp = await _limited_get(
+                "finnhub",
+                self.QUOTE_URL,
+                params=params,
+                headers=self.HEADERS,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            return self._parse_quote_payload(ticker, payload)
+        except Exception as e:
+            _warning_throttled("finnhub_quote", "Finnhub quote fetch failed for %s: %s", ticker, e)
+            return None
+
+    async def get_index(self, symbol: str) -> QuoteData | None:
+        return None
+
+    async def get_quotes_batch(self, tickers: list[str]) -> dict[str, QuoteData | None]:
+        if not tickers:
+            return {}
+        if not self._enabled():
+            return {ticker: None for ticker in tickers}
+
+        limited = tickers[: self.BATCH_MAX_SYMBOLS]
+        results = await asyncio.gather(
+            *(self.get_quote(ticker) for ticker in limited),
+            return_exceptions=True,
+        )
+        parsed: dict[str, QuoteData | None] = {}
+        for ticker, result in zip(limited, results):
+            if isinstance(result, Exception):
+                parsed[ticker] = None
+                continue
+            parsed[ticker] = result
+
+        for ticker in tickers:
+            parsed.setdefault(ticker, None)
+        return parsed
+
+    @classmethod
+    def _parse_quote_payload(cls, ticker: str, payload: dict) -> QuoteData | None:
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("error"):
+            return None
+
+        price = cls._coerce_number(payload.get("c"))
+        previous_close = cls._coerce_number(payload.get("pc"))
+        if price is None and previous_close is None:
+            return None
+        if price is None:
+            price = previous_close
+        if previous_close is None:
+            previous_close = price
+
+        change_pct = cls._coerce_number(payload.get("dp"))
+        if change_pct is None:
+            change_value = cls._coerce_number(payload.get("d"))
+            if change_value is not None and previous_close:
+                change_pct = (change_value / previous_close) * 100
+            else:
+                change_pct = ((price - previous_close) / previous_close * 100) if previous_close else 0
+
+        volume = cls._coerce_number(payload.get("v")) or 0
+        return QuoteData(
+            ticker=ticker,
+            price=round(price, 2),
+            change_pct=round(change_pct, 2),
+            volume=int(volume),
+            market_status="unknown",
+            name=ticker,
+            previous_close=round(previous_close, 2),
+        )
+
+    @staticmethod
+    def _coerce_number(value) -> float | None:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
 
 class TencentProvider(BaseProvider):
