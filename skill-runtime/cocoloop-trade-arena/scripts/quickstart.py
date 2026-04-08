@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-Trade Arena Quickstart Example
+Trade Arena runtime helper
 
-演示如何使用 Trade Arena API 进行注册和交易。
-默认 API 地址: stock.cocoloop.cn
+这是 Skill 包内的手动辅助入口，用于本地辅助、自更新和少量 API 调试。
+设置引导、策略整理、定时任务建议和启动守门都应由 Skill 对话完成。
 """
+
+from __future__ import annotations
 
 import argparse
 import io
@@ -12,35 +14,33 @@ import json
 import shutil
 import tempfile
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 import requests
 
-# 路径配置
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_FILE = SKILL_ROOT / "config.json"
 SKILL_MD_FILE = SKILL_ROOT / "SKILL.md"
-UPDATE_CHECK_INTERVAL = timedelta(days=1)
-SKILL_USAGE_GUIDE_LINES = [
-    "参赛流程及操作说明",
-    "1. 先下载并安装 trade-arena skill，skill 会自动帮你完成注册并保存 token",
-    "2. 安装完成后，你可以用自然语言直接查询账户现金和三地持仓，继续下单交易并查看排行榜变化。",
-    "你可以在对话或者定时任务中直接这样说：",
-    "- 查看账户：看看我的账户现金和三地持仓",
-    "- 查个股行情和详情：看看 xxx 股票的情况",
-    "- 查指数和市场总览：查看今天的大盘情况，并做个总结",
-    "- 查交易历史排行榜：查看今天的排行榜",
-    "- 查动态、资产曲线：我的资产动态是怎么样的",
-    "- 交易：买进 ... / 根据大盘和搜索结果自主买进 ...",
+STRATEGY_FILE = SKILL_ROOT / "strategy.md"
+LEGACY_STRATEGY_FILE = SKILL_ROOT / "strategy.MD"
+
+InputFunc = Callable[[str], str]
+
+HANDOFF_LINES = [
+    "Trade Arena 的设置引导、策略整理、定时任务建议和启动守门都由 Skill 对话负责。",
+    "如果你是普通使用者，请直接在宿主里说：配置 trade arena / 修改我的投资策略 / 重新生成定时任务建议。",
+    "这个脚本现在只保留手动辅助能力，例如检查更新、注册、刷新账户信息和查看单只股票行情。",
 ]
 
 
-def load_config():
-    """加载配置文件"""
-    if CONFIG_FILE.exists():
-        with open(CONFIG_FILE, encoding="utf-8") as f:
-            return json.load(f)
+def _default_setup_state() -> dict:
+    return {"last_update_error": ""}
+
+
+
+def default_config() -> dict:
     return {
         "api_url": "stock.cocoloop.cn",
         "token": "",
@@ -51,20 +51,58 @@ def load_config():
         "skill_version": "",
         "last_update_check_at": "",
         "latest_remote_skill_version": "",
+        "setup_state": _default_setup_state(),
     }
 
 
-def save_config(config):
-    """保存配置文件"""
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-    print(f"✅ 配置已保存到 {CONFIG_FILE}")
+
+def _merge_setup_state(raw_setup: dict | None) -> dict:
+    merged: dict[str, str] = {}
+    if isinstance(raw_setup, dict):
+        for key, value in raw_setup.items():
+            if isinstance(key, str) and isinstance(value, str):
+                merged[key] = value
+    merged.setdefault("last_update_error", "")
+    return merged
 
 
-def print_skill_usage_guide() -> None:
-    print("\n📘 Skill 使用说明")
-    for line in SKILL_USAGE_GUIDE_LINES:
-        print(line)
+
+def _normalize_config_payload(raw: object) -> dict:
+    config = default_config()
+    if not isinstance(raw, dict):
+        return config
+
+    if raw.get("$schema") and raw.get("properties") and "api_url" not in raw:
+        return config
+
+    for key in config:
+        if key == "setup_state":
+            continue
+        value = raw.get(key)
+        if isinstance(value, str):
+            config[key] = value
+    config["setup_state"] = _merge_setup_state(raw.get("setup_state"))
+    return config
+
+
+
+def load_config() -> dict:
+    if not CONFIG_FILE.exists():
+        return default_config()
+    try:
+        raw = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return default_config()
+    return _normalize_config_payload(raw)
+
+
+
+def save_config(config: dict, announce: bool = True) -> None:
+    normalized = _normalize_config_payload(config)
+    CONFIG_FILE.write_text(json.dumps(normalized, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    if announce:
+        print(f"✅ 配置已保存到 {CONFIG_FILE}")
+
 
 
 def _normalize_api_url(api_url: str) -> str:
@@ -74,29 +112,10 @@ def _normalize_api_url(api_url: str) -> str:
     return normalized
 
 
+
 def _now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-
-def _parse_iso_datetime(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
-def _should_check_update(config: dict, force: bool = False) -> bool:
-    if force:
-        return True
-    last_checked = _parse_iso_datetime(config.get("last_update_check_at"))
-    if last_checked is None:
-        return True
-    return datetime.now(timezone.utc) - last_checked >= UPDATE_CHECK_INTERVAL
 
 
 def _version_to_tuple(version: str) -> tuple[int, ...]:
@@ -107,12 +126,14 @@ def _version_to_tuple(version: str) -> tuple[int, ...]:
     return tuple(parts)
 
 
+
 def _is_remote_newer(remote_version: str, local_version: str) -> bool:
     if not remote_version:
         return False
     if not local_version:
         return True
     return _version_to_tuple(remote_version) > _version_to_tuple(local_version)
+
 
 
 def _get_local_skill_version() -> str:
@@ -136,6 +157,7 @@ def _get_local_skill_version() -> str:
     return ""
 
 
+
 def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
     destination_resolved = destination.resolve()
     for member in archive.infolist():
@@ -143,6 +165,7 @@ def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
         if not str(target).startswith(str(destination_resolved)):
             raise ValueError("检测到不安全的压缩包路径，已中止更新")
     archive.extractall(destination)
+
 
 
 def _normalize_download_url(url: str, api_url: str) -> str:
@@ -153,18 +176,33 @@ def _normalize_download_url(url: str, api_url: str) -> str:
     return _normalize_api_url(url)
 
 
-def apply_skill_update(hosted_url: str, target_version: str) -> bool:
-    """通过托管链接下载并覆盖本地 skill 文件（保留本地 config.json）"""
+
+def api_request(method, endpoint, data=None, token=None):
+    config = load_config()
+    api_url = _normalize_api_url(config["api_url"])
+    url = f"{api_url}{endpoint}"
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return requests.request(method, url, json=data, headers=headers, timeout=30)
+
+
+
+def apply_skill_update(hosted_url: str, target_version: str, silent: bool = False) -> bool:
+    """通过托管链接下载并覆盖本地 skill 文件（保留本地 config.json 与 strategy.md）"""
     local_config = load_config()
     download_url = _normalize_download_url(hosted_url, local_config.get("api_url", ""))
     if not download_url:
-        print("❌ 缺少托管下载链接，无法更新")
+        if not silent:
+            print("❌ 缺少托管下载链接，无法更新")
         return False
 
-    print(f"⬇️  正在下载新版本 skill: {download_url}")
+    if not silent:
+        print(f"⬇️  正在下载新版本 skill: {download_url}")
     response = requests.get(download_url, timeout=90)
     if response.status_code != 200:
-        print(f"❌ 下载更新包失败: HTTP {response.status_code}")
+        if not silent:
+            print(f"❌ 下载更新包失败: HTTP {response.status_code}")
         return False
 
     with tempfile.TemporaryDirectory(prefix="trade_arena_update_") as tmp_dir:
@@ -173,15 +211,17 @@ def apply_skill_update(hosted_url: str, target_version: str) -> bool:
             with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
                 _safe_extract(archive, tmp_path)
         except Exception as exc:
-            print(f"❌ 解压更新包失败: {exc}")
+            if not silent:
+                print(f"❌ 解压更新包失败: {exc}")
             return False
 
         copied = 0
+        protected = {"config.json", "strategy.md", "strategy.MD"}
         for source in tmp_path.rglob("*"):
             if not source.is_file():
                 continue
             relative = source.relative_to(tmp_path)
-            if str(relative).replace("\\", "/") == "config.json":
+            if str(relative).replace("\\", "/") in protected:
                 continue
             destination = SKILL_ROOT / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -192,29 +232,40 @@ def apply_skill_update(hosted_url: str, target_version: str) -> bool:
     updated_config["skill_version"] = target_version
     updated_config["last_update_check_at"] = _now_utc_iso()
     updated_config["latest_remote_skill_version"] = target_version
-    save_config(updated_config)
-    print(f"✅ Skill 已更新到版本 {target_version}（更新文件 {copied} 个）")
-    print_skill_usage_guide()
+    updated_config["setup_state"]["last_update_error"] = ""
+    save_config(updated_config, announce=False)
+    if not silent:
+        print(f"✅ 已自动更新到最新版 {target_version}（更新文件 {copied} 个）")
     return True
 
 
-def check_and_update_skill(force: bool = False, auto_apply: bool = True) -> dict:
-    """检查 skill 更新。force=True 表示手动触发，绕过每日频率限制。"""
-    config = load_config()
-    if not _should_check_update(config, force=force):
-        return {
-            "checked": False,
-            "reason": "not_due",
-            "local_version": config.get("skill_version") or _get_local_skill_version(),
-        }
 
+def check_and_update_skill(force: bool = False, auto_apply: bool = True, silent: bool = False) -> dict:
+    """手动检查 skill 更新。正常启动守门应由 Skill 对话负责。"""
+    config = load_config()
     local_version = config.get("skill_version") or _get_local_skill_version()
-    response = api_request("GET", "/api/agents/skill/version")
+    config["skill_version"] = local_version
     config["last_update_check_at"] = _now_utc_iso()
 
+    try:
+        response = api_request("GET", "/api/agents/skill/version")
+    except requests.RequestException as exc:
+        config["setup_state"]["last_update_error"] = exc.__class__.__name__
+        save_config(config, announce=False)
+        if force and not silent:
+            print(f"⚠️  检查更新失败: {exc}")
+        return {
+            "checked": True,
+            "updated": False,
+            "error": exc.__class__.__name__,
+            "local_version": local_version,
+        }
+
     if response.status_code != 200:
-        save_config(config)
-        print(f"⚠️  检查更新失败: HTTP {response.status_code}")
+        config["setup_state"]["last_update_error"] = f"http_{response.status_code}"
+        save_config(config, announce=False)
+        if force and not silent:
+            print(f"⚠️  检查更新失败: HTTP {response.status_code}")
         return {
             "checked": True,
             "updated": False,
@@ -225,8 +276,10 @@ def check_and_update_skill(force: bool = False, auto_apply: bool = True) -> dict
     try:
         payload = response.json()
     except ValueError:
-        save_config(config)
-        print("⚠️  检查更新失败: 非法响应")
+        config["setup_state"]["last_update_error"] = "invalid_payload"
+        save_config(config, announce=False)
+        if force and not silent:
+            print("⚠️  检查更新失败: 非法响应")
         return {
             "checked": True,
             "updated": False,
@@ -238,34 +291,27 @@ def check_and_update_skill(force: bool = False, auto_apply: bool = True) -> dict
     hosted_url = payload.get("hosted_url", "")
     has_update = _is_remote_newer(remote_version, local_version)
 
-    config["skill_version"] = local_version
     config["latest_remote_skill_version"] = remote_version
-    save_config(config)
+    config["setup_state"]["last_update_error"] = ""
+    save_config(config, announce=False)
 
     if has_update:
-        print(f"🔔 发现新版本: 本地 {local_version or 'unknown'} -> 远端 {remote_version}")
+        updated = False
         if auto_apply:
-            updated = apply_skill_update(hosted_url, remote_version)
-            return {
-                "checked": True,
-                "updated": updated,
-                "has_update": True,
-                "local_version": local_version,
-                "remote_version": remote_version,
-                "hosted_url": hosted_url,
-            }
+            updated = apply_skill_update(hosted_url, remote_version, silent=silent)
+        elif not silent:
+            print(f"🔔 发现新版本: 本地 {local_version or 'unknown'} -> 远端 {remote_version}")
         return {
             "checked": True,
-            "updated": False,
+            "updated": updated,
             "has_update": True,
             "local_version": local_version,
             "remote_version": remote_version,
             "hosted_url": hosted_url,
         }
 
-    config["skill_version"] = remote_version or local_version
-    save_config(config)
-    print(f"✅ Skill 已是最新版本: {remote_version or local_version or 'unknown'}")
+    if force and not silent:
+        print(f"✅ Skill 已是最新版本: {remote_version or local_version or 'unknown'}")
     return {
         "checked": True,
         "updated": False,
@@ -276,20 +322,30 @@ def check_and_update_skill(force: bool = False, auto_apply: bool = True) -> dict
     }
 
 
-def api_request(method, endpoint, data=None, token=None):
-    """发送 API 请求"""
-    config = load_config()
-    api_url = _normalize_api_url(config["api_url"])
-    url = f"{api_url}{endpoint}"
-    headers = {"Content-Type": "application/json"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
 
-    return requests.request(method, url, json=data, headers=headers, timeout=30)
+def read_strategy_document() -> tuple[bool, Path | None, str]:
+    for path in (STRATEGY_FILE, LEGACY_STRATEGY_FILE):
+        if not path.exists():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError:
+            return False, path, ""
+        return bool(content.strip()), path, content
+    return False, None, ""
+
+
+
+def prompt_text(prompt: str, input_fn: InputFunc = input) -> str:
+    while True:
+        raw = input_fn(prompt).strip()
+        if raw:
+            return raw
+        print("这一项先别留空。")
+
 
 
 def register(name, email, model, avatar, style):
-    """完成注册"""
     local_config = load_config()
     if local_config.get("token"):
         print("⛔ 检测到本地已存在 token，注册流程已中断。")
@@ -321,8 +377,8 @@ def register(name, email, model, avatar, style):
     return None
 
 
+
 def get_my_info(token):
-    """获取队伍信息"""
     response = api_request("GET", "/api/agents/me", token=token)
 
     if response.status_code == 200:
@@ -349,8 +405,8 @@ def get_my_info(token):
     return None
 
 
+
 def get_portfolio(account_id, token):
-    """获取持仓"""
     response = api_request("GET", f"/api/accounts/{account_id}/portfolio", token=token)
 
     if response.status_code == 200:
@@ -366,8 +422,8 @@ def get_portfolio(account_id, token):
     return None
 
 
+
 def get_agent_portfolio_summary(agent_id):
-    """获取公开队伍分市场持仓汇总"""
     response = api_request("GET", f"/api/agents/{agent_id}/portfolio-summary")
 
     if response.status_code == 200:
@@ -390,33 +446,8 @@ def get_agent_portfolio_summary(agent_id):
     return None
 
 
-def buy_stock(market, ticker, amount, reasoning, token):
-    """买入股票"""
-    print(f"📈 买入 {ticker} ({market}) {amount}...")
-    response = api_request(
-        "POST",
-        "/api/trade/buy",
-        {"market": market, "ticker": ticker, "amount": amount, "reasoning": reasoning},
-        token=token,
-    )
-
-    if response.status_code == 200:
-        data = response.json()
-        print("✅ 买入成功！")
-        print(f"   股数: {data['shares']}")
-        print(f"   价格: {data['price']}")
-        print(f"   人民币占用: {data.get('amount_cny', data['amount'])}")
-        print(f"   手续费: {data['fee']}")
-        print(f"   剩余现金: {data.get('cash_after_cny', data['cash_after'])}")
-        return data
-
-    error = response.json().get("detail", {})
-    print(f"❌ 买入失败: {error.get('message', response.text)}")
-    return None
-
 
 def get_quote(ticker):
-    """获取行情"""
     response = api_request("GET", f"/api/market/quote/{ticker}")
 
     if response.status_code == 200:
@@ -432,120 +463,107 @@ def get_quote(ticker):
     return None
 
 
-def get_stock_detail(ticker, days=90, trade_limit=20):
-    """获取个股详情"""
-    response = api_request(
-        "GET",
-        f"/api/market/stocks/{ticker}?days={days}&trade_limit={trade_limit}",
-    )
 
-    if response.status_code == 200:
-        data = response.json()
-        print(f"📘 {data['ticker']} 详情")
-        print(f"   名称: {data.get('name', 'N/A')}")
-        print(f"   当前价格: {data['quote']['price']}")
-        print(f"   历史点数: {len(data.get('history', []))}")
-        print(f"   本站交易笔数: {data['site_stats']['total_trade_count']}")
-        return data
+def register_interactively(input_fn: InputFunc = input) -> dict:
+    config = load_config()
+    if config.get("token"):
+        print("⛳ 已检测到现有参赛身份，跳过注册。")
+        print(f"   当前 Token: {config['token'][:20]}...")
+        return config
 
-    print(f"❌ 获取个股详情失败: {response.json()}")
-    return None
+    print("\n📌 手动注册辅助")
+    print("正式的参赛设置请直接在 Skill 对话里完成。")
+    email = prompt_text("请输入邮箱: ", input_fn=input_fn)
+    name = prompt_text("请输入队伍名称: ", input_fn=input_fn)
+    avatar = prompt_text("请输入头像 emoji: ", input_fn=input_fn)
+    model = prompt_text("请输入模型名称 (如 gpt-5.4): ", input_fn=input_fn)
+    style = prompt_text("请输入投资风格: ", input_fn=input_fn)
+
+    result = register(name, email, model, avatar, style)
+    if not result:
+        return config
+
+    config["token"] = result["token"]
+    config["agent_id"] = result["agent"]["id"]
+    save_config(config)
+    return config
 
 
-def get_market_trend(market="us", points=30):
-    """获取市场曲线"""
-    response = api_request("GET", f"/api/market/trend?market={market}&points={points}")
 
-    if response.status_code == 200:
-        data = response.json()
-        print(f"📈 {data['name']} 曲线点数: {len(data.get('points', []))}")
-        return data
+def refresh_account_info(config: dict) -> dict:
+    if not config.get("token"):
+        print("⚠️  当前还没有 token。请先在 Skill 对话里完成注册，或用 --register 做手动辅助注册。")
+        return config
 
-    print(f"❌ 获取市场曲线失败: {response.json()}")
-    return None
+    info = get_my_info(config["token"])
+    if not info:
+        return config
+
+    config["agent_id"] = info["agent_id"]
+    config["account_id_us"] = info["accounts"]["us"]["id"]
+    config["account_id_cn"] = info["accounts"]["cn"]["id"]
+    if info["accounts"].get("hk"):
+        config["account_id_hk"] = info["accounts"]["hk"]["id"]
+    save_config(config)
+    return config
+
+
+
+def print_helper_intro() -> None:
+    print("=" * 50)
+    print("🛠️  Trade Arena Helper")
+    print("=" * 50)
+    for line in HANDOFF_LINES:
+        print(line)
+    has_strategy, path, _content = read_strategy_document()
+    if path:
+        status = "可用" if has_strategy else "存在但不可读或为空"
+        print(f"当前策略文件: {path.name} ({status})")
+    else:
+        print("当前策略文件: 未找到，请回到 Skill 对话完成参赛设置。")
+
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Trade Arena quickstart")
-    parser.add_argument(
-        "--check-update",
-        action="store_true",
-        help="主动触发更新检查；发现新版本后自动下载并更新",
-    )
-    parser.add_argument(
-        "--check-update-only",
-        action="store_true",
-        help="主动触发更新检查；仅检查不更新",
-    )
+    parser = argparse.ArgumentParser(description="Trade Arena helper")
+    parser.add_argument("--check-update", action="store_true", help="手动检查更新；发现新版本后自动下载并更新")
+    parser.add_argument("--check-update-only", action="store_true", help="手动检查更新；仅检查不更新")
+    parser.add_argument("--register", action="store_true", help="手动辅助注册，不触发设置对话")
+    parser.add_argument("--refresh-info", action="store_true", help="刷新并回写账户与市场账户信息")
+    parser.add_argument("--quote", metavar="TICKER", help="查看单只股票行情")
+    parser.add_argument("--portfolio-summary", action="store_true", help="查看当前 agent 的三地持仓汇总")
     return parser.parse_args()
 
 
-def main():
-    """主演示流程"""
-    print("=" * 50)
-    print("🚀 Trade Arena Quickstart")
-    print("=" * 50)
 
-    print("\n📌 启动前检查 Skill 更新（每天最多一次）")
-    check_and_update_skill(force=False, auto_apply=True)
-
-    config = load_config()
-
-    # 如果没有 token，需要进行注册
-    if not config.get("token"):
-        print("\n📌 步骤 1: 注册")
-        email = input("请输入邮箱: ")
-        name = input("请输入队伍名称: ")
-        avatar = input("请输入头像 emoji: ")
-        model = input("请输入模型名称 (如 gpt-4): ")
-        style = input("请输入投资风格: ")
-
-        result = register(name, email, model, avatar, style)
-        if result:
-            config["token"] = result["token"]
-            config["agent_id"] = result["agent"]["id"]
-            save_config(config)
-            print_skill_usage_guide()
-    else:
-        print("\n⛔ 检测到本地已存在 Token，已中断注册流程。")
-        print(f"   当前 Token: {config['token'][:20]}...")
-
-    # 获取账户信息
-    print("\n📌 步骤 2: 获取账户信息")
-    if config.get("token"):
-        info = get_my_info(config["token"])
-        if info:
-            config["agent_id"] = info["agent_id"]
-            config["account_id_us"] = info["accounts"]["us"]["id"]
-            config["account_id_cn"] = info["accounts"]["cn"]["id"]
-            if info["accounts"].get("hk"):
-                config["account_id_hk"] = info["accounts"]["hk"]["id"]
-            save_config(config)
-
-    # 查看行情
-    print("\n📌 步骤 3: 查看行情")
-    get_quote("AAPL")
-
-    # 查看持仓
-    print("\n📌 步骤 4: 查看持仓")
-    if config.get("agent_id"):
-        get_agent_portfolio_summary(config["agent_id"])
-    elif config.get("account_id_us") and config.get("token"):
-        get_portfolio(config["account_id_us"], config["token"])
-
-    print("\n" + "=" * 50)
-    print("✅ Quickstart 完成！")
-    print("提示: 使用上述 API 进行交易操作")
-
-
-if __name__ == "__main__":
+def main(input_fn: InputFunc = input):
     args = parse_args()
     if args.check_update and args.check_update_only:
         raise SystemExit("--check-update 与 --check-update-only 不能同时使用")
 
+    print_helper_intro()
+
     if args.check_update:
-        check_and_update_skill(force=True, auto_apply=True)
+        check_and_update_skill(force=True, auto_apply=True, silent=False)
     elif args.check_update_only:
-        check_and_update_skill(force=True, auto_apply=False)
-    else:
-        main()
+        check_and_update_skill(force=True, auto_apply=False, silent=False)
+
+    config = load_config()
+    if args.register:
+        config = register_interactively(input_fn=input_fn)
+    if args.refresh_info:
+        config = refresh_account_info(config)
+    if args.quote:
+        get_quote(args.quote)
+    if args.portfolio_summary:
+        if config.get("agent_id"):
+            get_agent_portfolio_summary(config["agent_id"])
+        else:
+            print("⚠️  当前没有 agent_id。先刷新账户信息，或在 Skill 对话里完成注册。")
+
+    if not any([args.check_update, args.check_update_only, args.register, args.refresh_info, args.quote, args.portfolio_summary]):
+        print("\n没有执行额外动作。请优先回到 Skill 对话完成设置和日常使用。")
+
+
+if __name__ == "__main__":
+    main()

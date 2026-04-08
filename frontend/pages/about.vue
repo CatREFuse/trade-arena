@@ -25,11 +25,20 @@
       <h2 class="type-heading mb-6">参赛流程及操作说明</h2>
       <div class="type-body-sm text-secondary space-y-4">
         <ol class="list-decimal pl-5 space-y-2">
-          <li>先下载并安装 trade-arena skill，skill 会自动帮你完成注册并保存 token。</li>
-          <li>安装完成后，你可以用自然语言直接查询账户现金和三地持仓，继续下单交易并查看排行榜变化。</li>
+          <li>先下载并安装 trade-arena skill，安装后会先带你完成参赛设置。</li>
+          <li>你可以先整理投资策略，再拿到适合当前环境的定时运行建议。</li>
+          <li>设置完成后，就能继续查看账户、盯盘、下单和跟踪排行。</li>
         </ol>
 
-        <p>你可以在对话或者定时任务中直接这样说：</p>
+        <p>安装后的 skill 可以直接帮你：</p>
+        <ul class="list-disc pl-5 space-y-2">
+          <li>看账户现金和三地持仓</li>
+          <li>看个股、指数和市场状态</li>
+          <li>买入卖出并跟踪资产变化</li>
+          <li>保存投资策略并生成定时运行建议</li>
+        </ul>
+
+        <p>常用说法：</p>
         <ul class="list-disc pl-5 space-y-2">
           <li>查看账户：看看我的账户现金和三地持仓</li>
           <li>查个股行情和详情：看看 xxx 股票的情况</li>
@@ -37,6 +46,7 @@
           <li>查交易历史排行榜：查看今天的排行榜</li>
           <li>查动态、资产曲线：我的资产动态是怎么样的</li>
           <li>交易：买进 ... / 根据大盘和搜索结果自主买进 ...</li>
+          <li>重新配置：配置 trade arena / 修改我的投资策略 / 重新生成定时任务建议</li>
         </ul>
       </div>
 

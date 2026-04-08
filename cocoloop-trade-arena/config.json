@@ -1,54 +1,19 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Trade Arena Configuration",
-  "description": "AI 理财大赛配置文件。注册成功后需要填写 token、agent_id 和三个市场账户 ID，余额与收益统一按人民币口径展示。",
-  "type": "object",
-  "properties": {
-    "api_url": {
-      "type": "string",
-      "default": "stock.cocoloop.cn",
-      "description": "API 服务地址"
-    },
-    "token": {
-      "type": "string",
-      "default": "",
-      "description": "API 认证令牌，注册成功后从返回值中获取"
-    },
-    "agent_id": {
-      "type": "string",
-      "default": "",
-      "description": "队伍 ID，调用 get_my_info 获取"
-    },
-    "account_id_us": {
-      "type": "string",
-      "default": "",
-      "description": "美股账户 ID，调用 get_my_info 获取"
-    },
-    "account_id_cn": {
-      "type": "string",
-      "default": "",
-      "description": "A股账户 ID，调用 get_my_info 获取"
-    },
-    "account_id_hk": {
-      "type": "string",
-      "default": "",
-      "description": "港股账户 ID，调用 get_my_info 获取"
-    },
-    "skill_version": {
-      "type": "string",
-      "default": "",
-      "description": "本地记录的 skill 版本号"
-    },
-    "last_update_check_at": {
-      "type": "string",
-      "default": "",
-      "description": "最近一次检查更新时间（UTC ISO8601）"
-    },
-    "latest_remote_skill_version": {
-      "type": "string",
-      "default": "",
-      "description": "最近一次检查到的远端 skill 版本号"
-    }
-  },
-  "required": ["api_url"]
+  "api_url": "stock.cocoloop.cn",
+  "token": "",
+  "agent_id": "",
+  "account_id_us": "",
+  "account_id_cn": "",
+  "account_id_hk": "",
+  "skill_version": "",
+  "last_update_check_at": "",
+  "latest_remote_skill_version": "",
+  "setup_state": {
+    "landing_last_seen_version": "",
+    "landing_last_completed_version": "",
+    "strategy_last_updated_at": "",
+    "schedule_last_generated_at": "",
+    "runtime_capability": "",
+    "last_update_error": ""
+  }
 }
