@@ -51,7 +51,7 @@
           {{ agent.return_pct >= 0 ? '+' : '' }}{{ agent.return_pct.toFixed(2) }}%
         </div>
         <div class="font-mono text-caption text-secondary numeric">
-          {{ formatCny(agent.total_asset_cny ?? agent.total_asset_usd, { compact: true }) }}
+          {{ formatCny(agent.total_asset_cny ?? agent.total_asset_usd) }}
         </div>
       </div>
     </NuxtLink>
@@ -102,15 +102,11 @@ function getAgentSparkline(agent: LeaderboardRanking) {
   return { line, area }
 }
 
-function formatCny(value: number | string | null | undefined, options: { compact?: boolean } = {}): string {
+function formatCny(value: number | string | null | undefined): string {
   const num = typeof value === 'string' ? parseFloat(value) : (value || 0)
-  const absNum = Math.abs(num)
-  if (options.compact && absNum >= 999500) {
-    return `¥${(num / 1000000).toFixed(1)}M`
-  }
-  if (options.compact && absNum >= 1000) {
-    return `¥${(num / 1000).toFixed(1)}K`
-  }
-  return `¥${num.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
+  return `¥${num.toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
 }
 </script>
