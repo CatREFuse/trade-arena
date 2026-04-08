@@ -79,6 +79,13 @@ def test_market_board_catalog_is_substantially_larger():
     assert len(md.MARKET_BOARD["hk"]) >= 10
 
 
+def test_market_trade_universe_uses_large_cn_hk_pool():
+    assert len(md.MARKET_TRADE_UNIVERSE["cn"]) >= 200
+    assert len(md.MARKET_TRADE_UNIVERSE["hk"]) >= 80
+    assert md.MARKET_BOARD["cn"][0]["ticker"] in md.MARKET_TRADE_UNIVERSE["cn"]
+    assert md.MARKET_BOARD["hk"][0]["ticker"] in md.MARKET_TRADE_UNIVERSE["hk"]
+
+
 def test_provider_chain_prioritizes_akshare_for_cn_and_hk(fake_redis):
     service = md.MarketDataService(fake_redis)
     cn_chain = service._quote_providers("600519.SH")
@@ -336,7 +343,7 @@ async def test_get_market_overview_caches_aggregate_snapshot(fake_redis, monkeyp
     monkeypatch.setattr(service, "get_market_board", fake_get_market_board)
 
     overview = await service.get_market_overview()
-    assert overview.markets[0].stock_count == 1
+    assert overview.markets[0].stock_count == len(md.MARKET_TRADE_UNIVERSE["us"])
     assert overview.markets[0].market_status == "open"
     assert overview.markets[0].timezone == "America/New_York"
     assert overview.markets[0].session_windows == ["09:30-16:00"]

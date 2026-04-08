@@ -307,10 +307,68 @@ MARKET_BOARD = {
     ],
 }
 
+CN_TRADE_POOL_TARGET = 200
+HK_TRADE_POOL_TARGET = 80
+
+
+def _extract_board_tickers(market: str) -> list[str]:
+    return [entry["ticker"] for entry in MARKET_BOARD.get(market, [])]
+
+
+def _build_unique_tickers(
+    base_tickers: list[str],
+    extra_tickers: list[str],
+    *,
+    target: int | None = None,
+) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for ticker in [*base_tickers, *extra_tickers]:
+        normalized = str(ticker or "").strip().upper()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(normalized)
+        if target is not None and len(result) >= target:
+            break
+    return result
+
+
+CN_TRADE_EXTRA_TICKERS = [
+    *[f"{code:06d}.SH" for code in range(600000, 600120)],
+    *[f"{code:06d}.SH" for code in range(601000, 601100)],
+    *[f"{code:06d}.SH" for code in range(603000, 603100)],
+    *[f"{code:06d}.SZ" for code in range(1, 121)],
+    *[f"{code:06d}.SZ" for code in range(2000, 2080)],
+    *[f"{code:06d}.SZ" for code in range(300001, 300081)],
+    *[f"{code:06d}.SH" for code in range(688001, 688051)],
+]
+
+HK_TRADE_EXTRA_TICKERS = [
+    *[f"{code:04d}.HK" for code in range(1, 121)],
+    *[f"{code:04d}.HK" for code in range(200, 260)],
+    *[f"{code:04d}.HK" for code in range(600, 660)],
+    *[f"{code:04d}.HK" for code in range(900, 960)],
+]
+
+MARKET_TRADE_UNIVERSE = {
+    "us": _build_unique_tickers(_extract_board_tickers("us"), []),
+    "cn": _build_unique_tickers(
+        _extract_board_tickers("cn"),
+        CN_TRADE_EXTRA_TICKERS,
+        target=CN_TRADE_POOL_TARGET,
+    ),
+    "hk": _build_unique_tickers(
+        _extract_board_tickers("hk"),
+        HK_TRADE_EXTRA_TICKERS,
+        target=HK_TRADE_POOL_TARGET,
+    ),
+}
+
 SUPPORTED_TICKERS = {
-    entry["ticker"]
-    for market_entries in MARKET_BOARD.values()
-    for entry in market_entries
+    ticker
+    for market_entries in MARKET_TRADE_UNIVERSE.values()
+    for ticker in market_entries
 }
 
 
@@ -2499,6 +2557,13 @@ class MarketDataService:
             json.dumps(model.model_dump(mode="json")),
         )
 
+    @staticmethod
+    def _market_trade_universe_size(market: str) -> int:
+        tickers = MARKET_TRADE_UNIVERSE.get(market) or []
+        if tickers:
+            return len(tickers)
+        return len(MARKET_BOARD.get(market, []))
+
     def _build_market_summary(
         self,
         market: str,
@@ -2524,7 +2589,7 @@ class MarketDataService:
             session_windows=self.market_calendar.session_windows(market),
             now_local=self.market_calendar.now_local_iso(market, now_utc=now_utc),
             next_open_local=self.market_calendar.next_open_local_iso(market, now_utc=now_utc),
-            stock_count=len(board),
+            stock_count=self._market_trade_universe_size(market),
             up_count=up_count,
             down_count=down_count,
             flat_count=flat_count,
