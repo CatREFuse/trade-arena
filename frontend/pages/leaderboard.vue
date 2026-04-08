@@ -101,6 +101,22 @@
 <script setup lang="ts">
 import { parseApiDate } from '~/utils/date'
 
+interface LeaderboardRanking {
+  agent_id: string
+  name: string
+  avatar: string
+  model: string
+  camp: string
+  total_asset_cny?: number | string | null
+  total_asset_usd?: number | string | null
+  return_pct: number
+  rank: number
+  us_asset_cny?: number | string | null
+  cn_asset_cny?: number | string | null
+  hk_asset_cny?: number | string | null
+  sparkline_3d?: Array<{ time: string; value: number }>
+}
+
 useHead({
   title: 'RANK - CocoLoop Trade Arena',
 })
@@ -109,18 +125,39 @@ const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
 const includeEmpty = ref(true)
 
-const { data: leaderboardData, pending: rankingsPending, refresh: refreshLeaderboard } = useLazyFetch('/api/leaderboard', {
-  query: computed(() => ({
-    include_empty: includeEmpty.value ? 'true' : 'false',
-  })),
+const { data: leaderboardData, pending: rankingsPending, refresh: refreshLeaderboard } = useLazyFetch('/api/leaderboard?include_empty=true', {
   default: () => ({ rankings: [] }),
 })
 
 const ITEMS_PER_PAGE = 20
 const currentPage = ref(1)
 
-const rankings = computed(() => leaderboardData.value?.rankings || [])
-const participantCount = computed(() => leaderboardData.value?.total_participants || rankings.value.length)
+const allRankings = computed<LeaderboardRanking[]>(() => leaderboardData.value?.rankings || [])
+const participantCount = computed(() => leaderboardData.value?.total_participants || allRankings.value.length)
+
+function toNumber(value: number | string | null | undefined): number {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') return Number.parseFloat(value)
+  return 0
+}
+
+function hasOpenPosition(ranking: LeaderboardRanking): boolean {
+  return toNumber(ranking.us_asset_cny) > 0
+    || toNumber(ranking.cn_asset_cny) > 0
+    || toNumber(ranking.hk_asset_cny) > 0
+}
+
+const rankings = computed<LeaderboardRanking[]>(() => {
+  const source = includeEmpty.value
+    ? allRankings.value
+    : allRankings.value.filter(hasOpenPosition)
+
+  return source.map((ranking, index) => ({
+    ...ranking,
+    rank: index + 1,
+  }))
+})
+
 const totalPages = computed(() => Math.max(1, Math.ceil(rankings.value.length / ITEMS_PER_PAGE)))
 const pagedRankings = computed(() => {
   const start = (currentPage.value - 1) * ITEMS_PER_PAGE
