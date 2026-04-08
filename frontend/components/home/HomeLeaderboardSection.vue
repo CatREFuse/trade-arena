@@ -124,7 +124,7 @@ const { isCN } = useColorConvention()
 const ITEMS_PER_PAGE = 5
 const currentPage = ref(1)
 
-const { data, pending, error } = useLazyFetch<LeaderboardResponse>('/api/leaderboard?market=overall', {
+const { data, pending, error } = useLazyFetch<LeaderboardResponse>('/api/leaderboard?market=overall&include_empty=false', {
   key: 'home-leaderboard-overall',
   default: () => ({ rankings: [] }),
   deep: false,

@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 async def leaderboard(
     request: Request,
     market: str = "overall",
+    include_empty: bool = True,
     db: AsyncSession = Depends(get_db),
 ):
     """获取排行榜"""
@@ -27,7 +28,7 @@ async def leaderboard(
         redis = request.app.state.redis
         market_svc = getattr(request.app.state, "market_data_service", None)
         svc = RankingService(db, redis, market_svc=market_svc)
-        return await svc.get_leaderboard(market)
+        return await svc.get_leaderboard(market, include_empty=include_empty)
     except SQLAlchemyError as e:
         logger.error(f"[GET /api/leaderboard] DB_ERROR: {e}")
         raise HTTPException(

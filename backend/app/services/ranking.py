@@ -145,7 +145,7 @@ class RankingService:
                 for idx in range(min(len(sampled), len(sampled_times)))
             ]
 
-    async def get_leaderboard(self, market: str = "overall") -> LeaderboardOut:
+    async def get_leaderboard(self, market: str = "overall", include_empty: bool = True) -> LeaderboardOut:
         db = self.db
 
         agents_result = await db.execute(select(Agent).where(Agent.is_deleted.is_(False)))
@@ -180,19 +180,24 @@ class RankingService:
 
         rankings: list[AgentRanking] = []
         initial_by_agent: dict[str, Decimal] = {}
+        total_participants = 0
 
         for agent_id, agent in agents.items():
             accs = agent_accounts.get(agent_id, [])
+            markets_for_agent = {acc.market for acc in accs}
+            if market != "overall" and market not in markets_for_agent:
+                continue
+
+            total_participants += 1
             agent_positions = [
                 pos
                 for acc in accs
                 for pos in pos_by_account.get(acc.id, [])
             ]
             has_positions = any(Decimal(str(pos.shares or 0)) > 0 for pos in agent_positions)
-            if not has_positions:
+            if not include_empty and not has_positions:
                 continue
 
-            markets_for_agent = {acc.market for acc in accs}
             market_assets_cny: dict[str, Decimal] = {
                 "us": Decimal("0"),
                 "cn": Decimal("0"),
@@ -225,9 +230,6 @@ class RankingService:
                 if total_initial_cny
                 else 0.0
             )
-
-            if market != "overall" and market not in markets_for_agent:
-                continue
 
             total_asset_usd: Optional[Decimal] = None
             if usd_to_cny > Decimal("0"):
@@ -291,5 +293,7 @@ class RankingService:
         return LeaderboardOut(
             market=market,
             rankings=rankings,
+            total_participants=total_participants,
+            ranked_participants=len(rankings),
             timestamp=datetime.utcnow(),
         )

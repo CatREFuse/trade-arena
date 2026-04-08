@@ -344,6 +344,8 @@ class AgentRanking(APIModel):
 class LeaderboardOut(APIModel):
     market: str
     rankings: list[AgentRanking]
+    total_participants: int = 0
+    ranked_participants: int = 0
     timestamp: datetime
 
 

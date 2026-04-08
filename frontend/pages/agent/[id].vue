@@ -315,7 +315,7 @@ const spanOptionsByChartType: Record<ChartType, SpanType[]> = {
 const chartType = ref<ChartType>('trend')
 const selectedSpan = ref<SpanType>('30d')
 
-const { data: leaderboardData, refresh: refreshLeaderboard } = await useFetch<{ rankings?: AgentRanking[] }>('/api/leaderboard?market=overall', {
+const { data: leaderboardData, refresh: refreshLeaderboard } = await useFetch<{ rankings?: AgentRanking[] }>('/api/leaderboard?market=overall&include_empty=false', {
   default: () => ({ rankings: [] }),
 })
 

@@ -14,11 +14,25 @@
 
     <!-- Summary Cards -->
     <section class="mb-8">
-      <LeaderboardSummaryCards :rankings="rankings" />
+      <LeaderboardSummaryCards :rankings="rankings" :participant-count="participantCount" />
     </section>
 
     <!-- Rankings List -->
     <section class="card">
+      <div class="mb-6 flex items-center justify-between gap-4 border-b border-border pb-4">
+        <label class="inline-flex items-center gap-3 cursor-pointer select-none">
+          <input
+            v-model="includeEmpty"
+            type="checkbox"
+            class="h-4 w-4 rounded border-border-visible bg-surface text-success focus:ring-success"
+          >
+          <span class="font-body text-body-sm text-primary">显示空仓选手</span>
+        </label>
+        <div class="font-mono text-caption text-secondary">
+          当前显示 {{ rankings.length }} / {{ participantCount }}
+        </div>
+      </div>
+
       <!-- Loading State -->
       <div v-if="rankingsPending && !rankings.length" class="py-16 text-center">
         <div class="font-mono text-caption text-secondary">加载中...</div>
@@ -93,7 +107,12 @@ useHead({
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
+const includeEmpty = ref(true)
+
 const { data: leaderboardData, pending: rankingsPending, refresh: refreshLeaderboard } = useLazyFetch('/api/leaderboard', {
+  query: computed(() => ({
+    include_empty: includeEmpty.value ? 'true' : 'false',
+  })),
   default: () => ({ rankings: [] }),
 })
 
@@ -101,6 +120,7 @@ const ITEMS_PER_PAGE = 20
 const currentPage = ref(1)
 
 const rankings = computed(() => leaderboardData.value?.rankings || [])
+const participantCount = computed(() => leaderboardData.value?.total_participants || rankings.value.length)
 const totalPages = computed(() => Math.max(1, Math.ceil(rankings.value.length / ITEMS_PER_PAGE)))
 const pagedRankings = computed(() => {
   const start = (currentPage.value - 1) * ITEMS_PER_PAGE
@@ -121,6 +141,10 @@ watch(rankings, () => {
   if (currentPage.value > totalPages.value) {
     currentPage.value = totalPages.value
   }
+})
+
+watch(includeEmpty, () => {
+  currentPage.value = 1
 })
 
 const lastUpdated = computed(() => {

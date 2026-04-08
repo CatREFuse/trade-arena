@@ -1,8 +1,8 @@
 <template>
-  <div v-if="props.rankings.length" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+  <div v-if="props.participantCount > 0" class="grid grid-cols-2 md:grid-cols-4 gap-4">
     <div class="card-raised">
       <div class="label mb-2">PARTICIPANTS</div>
-      <div class="font-mono type-display-lg numeric text-display">{{ props.rankings.length }}</div>
+      <div class="font-mono type-display-lg numeric text-display">{{ props.participantCount }}</div>
     </div>
     <div class="card-raised">
       <div class="label mb-2">POSITIVE</div>
@@ -38,6 +38,7 @@ interface LeaderboardRanking {
 
 const props = defineProps<{
   rankings: LeaderboardRanking[]
+  participantCount: number
 }>()
 
 const cc = useColorConvention()
