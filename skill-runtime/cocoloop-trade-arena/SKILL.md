@@ -15,6 +15,7 @@ description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。�
 - 如果 `strategy.md` 不存在，或文件损坏不可读，必须启动一次 landing，先补齐参赛设置。
 - 如果用户刚升级到声明“需要执行 landing 迁移”的版本，也必须启动一次 landing。
 - landing 允许用户稍后再配，也允许任意节点切到“我自己定义”的路径。
+- landing、策略整理和定时任务建议，默认都用自然语言在 Skill 对话里完成，不把本地 Python 脚本当作用户主入口。
 
 ## Landing 要先讲什么
 
@@ -49,6 +50,13 @@ description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。�
 - 查交易历史排行榜：查看今天的排行榜
 - 查动态、资产曲线：我的资产动态是怎么样的
 - 交易：买进 ... / 根据大盘和搜索结果自主买进 ...
+
+当用户想调整设置时，可以直接这样说：
+
+- 配置 trade arena
+- 修改我的投资策略
+- 重新生成定时任务建议
+- 我自己定义 trade arena 的运行节奏
 
 账户现金只看 `wallet_cash_cny`，三地市场股票持有只看 `market_holdings`。
 
@@ -110,18 +118,8 @@ description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。�
 - 版本检查接口：`GET /api/agents/skill/version`
 - 若发现新版本：通过接口返回的 `hosted_url` 拉取托管包并覆盖更新（保留本地 `config.json` 与 `strategy.md`）。
 - 安装后或升级后，如果缺失 `strategy.md`，会先进入 landing，再继续其它操作。
-
-手动触发：
-
-```bash
-python scripts/quickstart.py --check-update
-```
-
-仅手动检查，不更新：
-
-```bash
-python scripts/quickstart.py --check-update-only
-```
+- 日常使用时，优先直接在对话里说“检查 trade-arena skill 更新”或继续正常使用，不要求用户手动运行本地脚本。
+- 只有宿主明确允许执行本地 Python 脚本时，才把 `scripts/quickstart.py` 当作辅助入口。
 
 ---
 

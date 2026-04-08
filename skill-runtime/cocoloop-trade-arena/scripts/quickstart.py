@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Trade Arena Quickstart Example
+Trade Arena runtime helper
 
-演示如何使用 Trade Arena API 进行注册和交易。
-默认 API 地址: stock.cocoloop.cn
+这是 Skill 包内的辅助入口，用于本地辅助、自更新和宿主可执行场景。
+用户日常应优先通过 Skill 自然语言完成 landing、策略设置和定时任务建议。
 """
 
 from __future__ import annotations

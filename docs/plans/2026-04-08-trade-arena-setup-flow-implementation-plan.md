@@ -4,7 +4,7 @@
 
 **Goal:** 为 `trade-arena` Skill 实现统一启动守门流程、安装与升级 landing、投资策略沉淀、宿主环境探测与定时任务建议，让用户在首次安装、版本升级和后续任意时刻都能完成或重进参赛设置。
 
-**Architecture:** 以 `cocoloop-trade-arena/scripts/quickstart.py` 为运行入口核心，扩展启动守门逻辑、策略文件读写、landing 与 setup flow 编排；同步更新 `cocoloop-trade-arena/SKILL.md`、托管 runtime 副本 `skill-runtime/cocoloop-trade-arena/` 和相关说明页。
+**Architecture:** 以 Skill 自然语言说明和宿主对话为用户主入口，以 `cocoloop-trade-arena/scripts/quickstart.py` 作为包内辅助入口，扩展启动守门逻辑、策略文件读写、landing 与 setup flow 编排；同步更新 `cocoloop-trade-arena/SKILL.md`、托管 runtime 副本 `skill-runtime/cocoloop-trade-arena/` 和相关说明页。
 
 **Tech Stack:** Python 3, markdown docs, JSON config, hosted skill ZIP packaging, existing Nuxt about page copy sync
 
@@ -18,6 +18,7 @@
 - `strategy.md` 是唯一策略正文文件，位置与 `config.json` 同级
 - `config.json` 只存轻量状态，不存长文本策略
 - landing 文案先讲能力，再进入设置流
+- 用户主入口始终是 Skill 自然语言，不要求用户具备直接运行 Python 脚本的能力
 - 向导和自定义模式都必须能用，且任意节点都能切换
 - 定时任务建议只生成建议表达，不直接创建宿主调度实体
 - `cocoloop-trade-arena/` 与 `skill-runtime/cocoloop-trade-arena/` 必须保持一致
