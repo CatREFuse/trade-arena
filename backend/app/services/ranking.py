@@ -183,6 +183,15 @@ class RankingService:
 
         for agent_id, agent in agents.items():
             accs = agent_accounts.get(agent_id, [])
+            agent_positions = [
+                pos
+                for acc in accs
+                for pos in pos_by_account.get(acc.id, [])
+            ]
+            has_positions = any(Decimal(str(pos.shares or 0)) > 0 for pos in agent_positions)
+            if not has_positions:
+                continue
+
             markets_for_agent = {acc.market for acc in accs}
             market_assets_cny: dict[str, Decimal] = {
                 "us": Decimal("0"),

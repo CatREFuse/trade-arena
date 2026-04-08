@@ -1,7 +1,7 @@
 <template>
   <div>
     <!-- Loading -->
-    <div v-if="pending && !previewRankings.length" class="py-12 text-center card">
+    <div v-if="pending && !rankings.length" class="py-12 text-center card">
       <div class="font-mono text-caption text-secondary">加载中...</div>
     </div>
 
@@ -11,7 +11,7 @@
     </div>
 
     <!-- Empty -->
-    <div v-else-if="!previewRankings.length" class="py-8 text-center card">
+    <div v-else-if="!rankings.length" class="py-8 text-center card">
       <div class="font-mono text-heading text-secondary">暂无数据</div>
       <p class="font-mono text-caption text-disabled mt-2">暂时没有可展示的排行榜数据</p>
     </div>
@@ -28,7 +28,7 @@
 
       <!-- Rows -->
       <NuxtLink
-        v-for="agent in previewRankings"
+        v-for="agent in pagedRankings"
         :key="agent.agent_id"
         :to="`/agent/${agent.agent_id}`"
         class="flex items-center gap-2 md:gap-3 px-3 py-3 border-b border-border last:border-b-0 hover:bg-surface-raised transition-colors"
@@ -61,6 +61,44 @@
           </div>
         </div>
       </NuxtLink>
+
+      <div
+        v-if="totalPages > 1"
+        class="px-3 py-4 border-t border-border-visible flex items-center justify-center gap-2"
+      >
+        <button
+          type="button"
+          class="btn-ghost"
+          :disabled="currentPage === 1"
+          @click="goToPage(currentPage - 1)"
+        >
+          ← PREV
+        </button>
+
+        <div class="flex items-center gap-1">
+          <button
+            v-for="page in visiblePages"
+            :key="`home-leaderboard-page-${page}`"
+            type="button"
+            class="min-w-[40px] px-3 py-2 font-mono text-sm transition-colors numeric"
+            :class="currentPage === page
+              ? 'text-display border-b border-display'
+              : 'text-disabled hover:text-secondary'"
+            @click="goToPage(page)"
+          >
+            {{ page }}
+          </button>
+        </div>
+
+        <button
+          type="button"
+          class="btn-ghost"
+          :disabled="currentPage === totalPages"
+          @click="goToPage(currentPage + 1)"
+        >
+          NEXT →
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -83,6 +121,8 @@ interface LeaderboardResponse {
 }
 
 const { isCN } = useColorConvention()
+const ITEMS_PER_PAGE = 5
+const currentPage = ref(1)
 
 const { data, pending, error } = useLazyFetch<LeaderboardResponse>('/api/leaderboard?market=overall', {
   key: 'home-leaderboard-overall',
@@ -91,7 +131,32 @@ const { data, pending, error } = useLazyFetch<LeaderboardResponse>('/api/leaderb
 })
 
 const rankings = computed(() => data.value?.rankings || [])
-const previewRankings = computed(() => rankings.value.slice(0, 5))
+const totalPages = computed(() => Math.max(1, Math.ceil(rankings.value.length / ITEMS_PER_PAGE)))
+const pagedRankings = computed(() => {
+  const start = (currentPage.value - 1) * ITEMS_PER_PAGE
+  return rankings.value.slice(start, start + ITEMS_PER_PAGE)
+})
+
+const visiblePages = computed(() => {
+  if (totalPages.value <= 7) {
+    return Array.from({ length: totalPages.value }, (_, i) => i + 1)
+  }
+  const start = Math.max(1, currentPage.value - 3)
+  const end = Math.min(totalPages.value, start + 6)
+  const normalizedStart = Math.max(1, end - 6)
+  return Array.from({ length: end - normalizedStart + 1 }, (_, i) => normalizedStart + i)
+})
+
+watch(rankings, () => {
+  if (currentPage.value > totalPages.value) {
+    currentPage.value = totalPages.value
+  }
+})
+
+function goToPage(page: number) {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+}
 
 function getReturnColor(value: number): string {
   if (isCN.value) {

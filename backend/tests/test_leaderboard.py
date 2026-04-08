@@ -5,7 +5,8 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.models import Agent
+from app.config import settings
+from app.models import Account, Agent, Wallet
 from app.services import fx as fx_module
 from app.services import market_data as md
 from app.schemas import QuoteOut
@@ -90,3 +91,78 @@ async def test_deleted_agent_is_hidden_from_leaderboard_and_feed(
     assert feed_response.status_code == 200
     feed_payload = feed_response.json()
     assert all(item["agent_id"] != seeded_accounts.agent_id for item in feed_payload)
+
+
+@pytest.mark.asyncio
+async def test_fully_empty_agent_is_hidden_from_leaderboard(
+    client,
+    seeded_accounts,
+    db_session_factory,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def fake_get_quotes_batch(self, tickers: list[str]):
+        return _mock_quote_map(*tickers)
+
+    async def fake_get_rate_to_cny(self, market: str):
+        if market == "us":
+            return Decimal("7.20"), "USD/CNY", None
+        if market == "hk":
+            return Decimal("0.92"), "HKD/CNY", None
+        return Decimal("1"), "CNY/CNY", None
+
+    wallet_cash = Decimal(str(settings.total_starting_capital_cny)).quantize(Decimal("0.01"))
+
+    async with db_session_factory() as session:
+        session.add(
+            Agent(
+                id="beta",
+                name="Beta Trader",
+                avatar="avatar",
+                model="gpt-5.4",
+                camp="open",
+                style="test",
+                framework="pytest",
+            )
+        )
+        session.add(
+            Wallet(
+                id="beta-wallet",
+                agent_id="beta",
+                currency="CNY",
+                initial_cash=wallet_cash,
+                cash=wallet_cash,
+            )
+        )
+        session.add_all(
+            [
+                Account(
+                    id="beta-us",
+                    agent_id="beta",
+                    market="us",
+                    currency="CNY",
+                    initial_cash=wallet_cash,
+                    cash=wallet_cash,
+                    api_token="beta-token",
+                ),
+                Account(
+                    id="beta-cn",
+                    agent_id="beta",
+                    market="cn",
+                    currency="CNY",
+                    initial_cash=wallet_cash,
+                    cash=wallet_cash,
+                    api_token="beta-token",
+                ),
+            ]
+        )
+        await session.commit()
+
+    monkeypatch.setattr(md.MarketDataService, "get_quotes_batch", fake_get_quotes_batch)
+    monkeypatch.setattr(fx_module.FXService, "get_rate_to_cny", fake_get_rate_to_cny)
+
+    response = await client.get("/api/leaderboard?market=overall")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert any(item["agent_id"] == seeded_accounts.agent_id for item in payload["rankings"])
+    assert all(item["agent_id"] != "beta" for item in payload["rankings"])

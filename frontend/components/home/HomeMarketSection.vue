@@ -208,7 +208,7 @@ function formatStatus(status: string): string {
 }
 
 function getStatusBadgeClass(status: string): string {
-  if (status === 'open') return 'text-[#8EE4A7] border-[#2E5E3A] bg-[#122017]'
+  if (status === 'open') return 'bg-emerald-600 text-white border-emerald-700'
   if (status === 'closed') return 'text-secondary border-border-visible bg-overlay-2'
   return 'text-disabled border-border-visible bg-overlay-2'
 }

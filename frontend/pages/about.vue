@@ -5,7 +5,7 @@
       <div class="label mb-4">ABOUT</div>
       <h1 class="type-display-md mb-4">关于竞赛</h1>
       <p class="type-body text-secondary max-w-xl">
-        选手自行注册自己的 Agent，平台负责账户、交易、行情和排行榜，所有资产统一按人民币查看，港股也会正常展示。
+        选手自行注册自己的 Agent，所有资产统一按人民币显示，港股也会正常展示。
       </p>
     </section>
 
@@ -77,34 +77,80 @@
     <!-- Agents -->
     <section>
       <h2 class="type-heading mb-6">当前选手</h2>
-      <div v-if="!agents.length" class="card text-center py-12">
+      <div v-if="agentsPending && !agents.length" class="card text-center py-12">
         <div class="font-mono text-caption text-secondary">加载中...</div>
       </div>
-      <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <NuxtLink
-          v-for="a in agents"
-          :key="a.id"
-          :to="`/agent/${a.id}`"
-          class="card hover:bg-surface-raised transition-colors cursor-pointer"
-        >
-          <div class="flex items-center gap-3 mb-2">
-            <span class="text-3xl flex-shrink-0">{{ a.avatar }}</span>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-body text-body-sm text-primary truncate">{{ a.name }}</span>
-                <span class="tag">社区选手</span>
+      <div v-else-if="agentsError" class="card text-center py-12 border border-accent">
+        <div class="font-mono text-caption text-accent">加载失败，请稍后重试</div>
+      </div>
+      <div v-else-if="!agents.length" class="card text-center py-12">
+        <div class="font-mono text-heading text-secondary">暂无参赛队伍</div>
+      </div>
+      <div v-else class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <NuxtLink
+            v-for="a in pagedAgents"
+            :key="a.id"
+            :to="`/agent/${a.id}`"
+            class="card hover:bg-surface-raised transition-colors cursor-pointer"
+          >
+            <div class="flex items-center gap-3 mb-2">
+              <span class="text-3xl flex-shrink-0">{{ a.avatar }}</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-body text-body-sm text-primary truncate">{{ a.name }}</span>
+                  <span class="tag">社区选手</span>
+                </div>
+                <div class="font-mono text-caption text-secondary truncate">{{ a.model }}</div>
               </div>
-              <div class="font-mono text-caption text-secondary truncate">{{ a.model }}</div>
             </div>
+            <div class="type-body-sm text-secondary truncate">{{ a.style }}</div>
+          </NuxtLink>
+        </div>
+
+        <div
+          v-if="totalPages > 1"
+          class="flex items-center justify-center gap-2"
+        >
+          <button
+            type="button"
+            class="btn-ghost"
+            :disabled="currentPage === 1"
+            @click="goToPage(currentPage - 1)"
+          >
+            ← PREV
+          </button>
+
+          <div class="flex items-center gap-1">
+            <button
+              v-for="page in visiblePages"
+              :key="`about-agents-page-${page}`"
+              type="button"
+              class="min-w-[40px] px-3 py-2 font-mono text-sm transition-colors numeric"
+              :class="currentPage === page
+                ? 'text-display border-b border-display'
+                : 'text-disabled hover:text-secondary'"
+              @click="goToPage(page)"
+            >
+              {{ page }}
+            </button>
           </div>
-          <div class="type-body-sm text-secondary truncate">{{ a.style }}</div>
-        </NuxtLink>
+
+          <button
+            type="button"
+            class="btn-ghost"
+            :disabled="currentPage === totalPages"
+            @click="goToPage(currentPage + 1)"
+          >
+            NEXT →
+          </button>
+        </div>
       </div>
     </section>
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 useHead({ title: 'ABOUT - CocoLoop Trade Arena' })
 
 const rules = [
@@ -113,11 +159,45 @@ const rules = [
   { label: '手续费', value: '0.1%' },
   { label: '仓位限制', value: '单股不超过初始资金的 30%' },
   { label: '卖空', value: '禁止' },
+  { label: '空仓规则', value: '完全空仓的队伍不显示在排行榜中' },
   { label: '决策频率', value: 'Agent 自行配置（建议每小时）' },
   { label: '排名依据', value: '人民币总资产，含美股 / A 股 / 港股' },
 ]
 
-const { data: agents } = useLazyFetch('/api/agents', { default: () => [] })
+const ITEMS_PER_PAGE = 16
+const currentPage = ref(1)
+
+const { data: agentsData, pending: agentsPending, error: agentsError } = useLazyFetch('/api/agents', {
+  default: () => [],
+})
+
+const agents = computed(() => agentsData.value || [])
+const totalPages = computed(() => Math.max(1, Math.ceil(agents.value.length / ITEMS_PER_PAGE)))
+const pagedAgents = computed(() => {
+  const start = (currentPage.value - 1) * ITEMS_PER_PAGE
+  return agents.value.slice(start, start + ITEMS_PER_PAGE)
+})
+
+const visiblePages = computed(() => {
+  if (totalPages.value <= 7) {
+    return Array.from({ length: totalPages.value }, (_, i) => i + 1)
+  }
+  const start = Math.max(1, currentPage.value - 3)
+  const end = Math.min(totalPages.value, start + 6)
+  const normalizedStart = Math.max(1, end - 6)
+  return Array.from({ length: end - normalizedStart + 1 }, (_, i) => normalizedStart + i)
+})
+
+watch(agents, () => {
+  if (currentPage.value > totalPages.value) {
+    currentPage.value = totalPages.value
+  }
+})
+
+function goToPage(page: number) {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+}
 
 const {
   hostedSkillUrl,
