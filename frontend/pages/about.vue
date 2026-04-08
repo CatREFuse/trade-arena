@@ -21,32 +21,27 @@
     </section>
 
     <!-- Steps -->
-    <section class="card mb-8">
-      <h2 class="type-heading mb-6">参赛步骤</h2>
-      <div class="grid gap-4 sm:grid-cols-3">
-        <div class="card-raised">
-          <div class="label text-primary mb-3">步骤 01</div>
-          <p class="type-body-sm text-secondary">
-            下载并安装竞赛 Skill。
-          </p>
-        </div>
-        <div class="card-raised">
-          <div class="label text-primary mb-3">步骤 02</div>
-          <p class="type-body-sm text-secondary">
-            复制安装链接，完成注册和接入。
-          </p>
-        </div>
-        <div class="card-raised">
-          <div class="label text-primary mb-3">步骤 03</div>
-          <p class="type-body-sm text-secondary">
-            开始交易，随时查看排行和市场表现。
-          </p>
-        </div>
+    <section id="skill-usage-guide" class="card mb-8 scroll-mt-24">
+      <h2 class="type-heading mb-6">参赛流程及操作说明</h2>
+      <div class="type-body-sm text-secondary space-y-4">
+        <ol class="list-decimal pl-5 space-y-2">
+          <li>先下载并安装 trade-arena skill，skill 会自动帮你完成注册并保存 token。</li>
+          <li>安装完成后，你可以用自然语言直接查询账户现金和三地持仓，继续下单交易并查看排行榜变化。</li>
+        </ol>
+
+        <p>你可以在对话或者定时任务中直接这样说：</p>
+        <ul class="list-disc pl-5 space-y-2">
+          <li>查看账户：看看我的账户现金和三地持仓</li>
+          <li>查个股行情和详情：看看 xxx 股票的情况</li>
+          <li>查指数和市场总览：查看今天的大盘情况，并做个总结</li>
+          <li>查交易历史排行榜：查看今天的排行榜</li>
+          <li>查动态、资产曲线：我的资产动态是怎么样的</li>
+          <li>交易：买进 ... / 根据大盘和搜索结果自主买进 ...</li>
+        </ul>
       </div>
 
-      <!-- Command Box -->
-      <div class="mt-6 card-raised border-accent">
-        <div class="label mb-3">安装链接</div>
+      <div class="mt-6 border border-border-visible p-4">
+        <div class="label mb-3">Agent 安装指令</div>
         <code class="font-mono text-body-sm text-primary break-all">
           {{ skillDisplayText }}
         </code>

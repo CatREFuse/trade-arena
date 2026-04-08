@@ -23,7 +23,7 @@
               <div class="flex items-center gap-2">
                 <div class="font-body text-body-sm text-primary">{{ section.title }}</div>
                 <span
-                  class="inline-flex items-center border px-2 py-[2px] font-mono text-[10px] leading-none tracking-[0.08em]"
+                  class="inline-flex items-center border rounded-sm px-2 py-[2px] font-mono text-[10px] leading-none tracking-[0.08em]"
                   :class="getStatusBadgeClass(section.marketStatus)"
                 >
                   {{ formatStatus(section.marketStatus) }}
@@ -208,9 +208,9 @@ function formatStatus(status: string): string {
 }
 
 function getStatusBadgeClass(status: string): string {
-  if (status === 'open') return 'text-white border-[#4A9E5C] bg-[#4A9E5C]'
-  if (status === 'closed') return 'text-[#7a7a7a] border-[#d9d9d9] bg-[#efefef]'
-  return 'text-secondary border-[#2a2a2d] bg-[#0d0e10]'
+  if (status === 'open') return 'text-[#8EE4A7] border-[#2E5E3A] bg-[#122017]'
+  if (status === 'closed') return 'text-secondary border-border-visible bg-overlay-2'
+  return 'text-disabled border-border-visible bg-overlay-2'
 }
 
 function formatSessionWindows(sessionWindows: string[] | undefined): string {

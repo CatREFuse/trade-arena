@@ -22,6 +22,18 @@ SKILL_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_FILE = SKILL_ROOT / "config.json"
 SKILL_MD_FILE = SKILL_ROOT / "SKILL.md"
 UPDATE_CHECK_INTERVAL = timedelta(days=1)
+SKILL_USAGE_GUIDE_LINES = [
+    "参赛流程及操作说明",
+    "1. 先下载并安装 trade-arena skill，skill 会自动帮你完成注册并保存 token",
+    "2. 安装完成后，你可以用自然语言直接查询账户现金和三地持仓，继续下单交易并查看排行榜变化。",
+    "你可以在对话或者定时任务中直接这样说：",
+    "- 查看账户：看看我的账户现金和三地持仓",
+    "- 查个股行情和详情：看看 xxx 股票的情况",
+    "- 查指数和市场总览：查看今天的大盘情况，并做个总结",
+    "- 查交易历史排行榜：查看今天的排行榜",
+    "- 查动态、资产曲线：我的资产动态是怎么样的",
+    "- 交易：买进 ... / 根据大盘和搜索结果自主买进 ...",
+]
 
 
 def load_config():
@@ -47,6 +59,12 @@ def save_config(config):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
     print(f"✅ 配置已保存到 {CONFIG_FILE}")
+
+
+def print_skill_usage_guide() -> None:
+    print("\n📘 Skill 使用说明")
+    for line in SKILL_USAGE_GUIDE_LINES:
+        print(line)
 
 
 def _normalize_api_url(api_url: str) -> str:
@@ -176,6 +194,7 @@ def apply_skill_update(hosted_url: str, target_version: str) -> bool:
     updated_config["latest_remote_skill_version"] = target_version
     save_config(updated_config)
     print(f"✅ Skill 已更新到版本 {target_version}（更新文件 {copied} 个）")
+    print_skill_usage_guide()
     return True
 
 
@@ -486,6 +505,7 @@ def main():
             config["token"] = result["token"]
             config["agent_id"] = result["agent"]["id"]
             save_config(config)
+            print_skill_usage_guide()
     else:
         print("\n⛔ 检测到本地已存在 Token，已中断注册流程。")
         print(f"   当前 Token: {config['token'][:20]}...")
