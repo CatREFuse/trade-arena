@@ -19,7 +19,7 @@ from app.schemas import (
     StockIntradayPointOut,
 )
 from app.services import market_data as md
-from app.services.market_providers import AkshareProvider, QuoteData
+from app.services.market_providers import AkshareProvider, QuoteData, TencentProvider
 
 
 class RaisingProvider:
@@ -95,6 +95,17 @@ def test_provider_chain_prioritizes_akshare_for_cn_and_hk(fake_redis):
     assert hk_chain
     assert isinstance(cn_chain[0], AkshareProvider)
     assert isinstance(hk_chain[0], AkshareProvider)
+
+
+def test_provider_chain_includes_tencent_as_us_fallback(fake_redis):
+    service = md.MarketDataService(fake_redis)
+    us_quote_chain = service._quote_providers("AAPL")
+    us_index_chain = service._index_providers("us")
+
+    assert len(us_quote_chain) >= 2
+    assert isinstance(us_quote_chain[1], TencentProvider)
+    assert len(us_index_chain) >= 2
+    assert isinstance(us_index_chain[1], TencentProvider)
 
 
 @pytest.mark.asyncio
@@ -200,6 +211,7 @@ async def test_get_index_falls_back_to_mock_and_caches_result(fake_redis, monkey
 
     monkeypatch.setattr(service.yahoo, "get_index", provider_returns_none)
     monkeypatch.setattr(service.mock, "get_index", mock_get_index)
+    monkeypatch.setattr(service, "_index_providers", lambda _market: [service.yahoo])
 
     index = await service.get_index("SPX", "us")
 
@@ -256,6 +268,11 @@ async def test_get_market_board_batches_large_universe_and_falls_back(fake_redis
 
     monkeypatch.setattr(service.yahoo, "get_quotes_batch", fake_batch_quotes)
     monkeypatch.setattr(service.mock, "get_quote", fake_mock_quote)
+
+    async def tencent_returns_none(tickers: list[str]):
+        return {ticker: None for ticker in tickers}
+
+    monkeypatch.setattr(service.tencent, "get_quotes_batch", tencent_returns_none)
 
     board = await service.get_market_board("us")
 

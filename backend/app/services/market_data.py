@@ -529,9 +529,10 @@ class MarketDataService:
         self.register_provider("quote", "hk", self.yahoo, priority=2)
 
         self.register_provider("quote", "us", self.yahoo, priority=0)
-        self.register_provider("quote", "us", self.twelvedata, priority=1)
-        self.register_provider("quote", "us", self.finnhub, priority=2)
-        self.register_provider("quote", "us", self.alphavantage, priority=3)
+        self.register_provider("quote", "us", self.tencent, priority=1)
+        self.register_provider("quote", "us", self.twelvedata, priority=2)
+        self.register_provider("quote", "us", self.finnhub, priority=3)
+        self.register_provider("quote", "us", self.alphavantage, priority=4)
 
         # index chain
         self.register_provider("index", "cn", self.akshare, priority=0)
@@ -543,6 +544,7 @@ class MarketDataService:
         self.register_provider("index", "hk", self.yahoo, priority=2)
 
         self.register_provider("index", "us", self.yahoo, priority=0)
+        self.register_provider("index", "us", self.tencent, priority=1)
 
     def register_provider(
         self,

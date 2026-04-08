@@ -63,6 +63,25 @@ def test_tencent_parse_index_payload_for_cn_index():
     assert quote.change_pct == -1.24
 
 
+def test_tencent_quote_symbol_supports_us_tickers():
+    assert TencentProvider._to_quote_symbol("AAPL") == "usAAPL"
+    assert TencentProvider._to_quote_symbol("brk.b") == "usBRK.B"
+    assert TencentProvider._to_quote_symbol("0700.HK") == "hk00700"
+    assert TencentProvider._to_quote_symbol("600519.SH") == "sh600519"
+
+
+def test_tencent_parse_index_payload_for_us_index():
+    payload = "200~标普500~.INX~6766.36~6616.85~6754.36~1357618895~0~0~~"
+    quote = TencentProvider._parse_index_payload("SPX", "usINX", payload)
+
+    assert quote is not None
+    assert quote.ticker == "SPX"
+    assert quote.name == "标普500"
+    assert quote.price == 6766.36
+    assert quote.previous_close == 6616.85
+    assert quote.change_pct == 2.26
+
+
 def test_akshare_parse_cn_quote_frame_from_em_schema():
     provider = AkshareProvider()
     frame = pd.DataFrame(

@@ -42,6 +42,7 @@ HTTP_CONCURRENCY_LIMITS = {
     "twelvedata": 4,
     "alphavantage": 2,
     "finnhub": 6,
+    "tushare": 4,
     "tencent": 6,
     "sina": 4,
 }
@@ -96,6 +97,24 @@ async def _limited_get(
             follow_redirects=follow_redirects,
         )
         return await client.get(url, **kwargs)
+
+
+async def _limited_post(
+    upstream: str,
+    url: str,
+    *,
+    client_name: str | None = None,
+    timeout: httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
+    follow_redirects: bool = True,
+    **kwargs,
+) -> httpx.Response:
+    async with _shared_http_limiter(upstream):
+        client = _shared_http_client(
+            client_name or upstream,
+            timeout=timeout,
+            follow_redirects=follow_redirects,
+        )
+        return await client.post(url, **kwargs)
 
 
 async def close_shared_http_clients() -> None:
@@ -982,7 +1001,7 @@ class FinnhubProvider(BaseProvider):
 
 
 class TencentProvider(BaseProvider):
-    """腾讯行情接口 - 用于 A 股和港股，支持批量查询"""
+    """腾讯行情接口 - 用于 A/H/US 股与常见指数，支持批量查询"""
 
     QUOTE_URL = "https://qt.gtimg.cn/q="
     HEADERS = {
@@ -998,6 +1017,9 @@ class TencentProvider(BaseProvider):
         "CY": "s_sz399006",  # 创业板指
         "HSI": "hkHSI",  # 恒生指数
         "HSCEI": "hkHSCEI",  # 国企指数
+        "SPX": "usINX",  # S&P 500
+        "NDX": "usNDX",  # Nasdaq 100
+        "DJI": "usDJI",  # Dow Jones
     }
 
     async def get_quote(self, ticker: str) -> QuoteData | None:
@@ -1147,6 +1169,9 @@ class TencentProvider(BaseProvider):
             if not code.isdigit():
                 return None
             return f"hk{code.zfill(5)}"
+        # 腾讯接口支持 usAAPL / usBRK.B 等美股编码。
+        if re.fullmatch(r"[A-Z0-9][A-Z0-9.-]*", normalized):
+            return f"us{normalized}"
         return None
 
     @staticmethod
