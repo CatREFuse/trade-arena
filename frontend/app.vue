@@ -97,14 +97,13 @@
       <NuxtPage />
     </main>
 
-    <!-- Footer - Minimal -->
     <footer class="px-6 py-8 border-t border-border">
-      <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <div class="max-w-6xl mx-auto flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <span class="font-mono text-caption text-disabled">
-          本站纯属娱乐，不构成任何投资建议
+          仅供学习与体验，请理性决策
         </span>
-        <span class="font-mono text-caption text-disabled">
-          COCOLOOP 2024
+        <span class="font-mono text-caption tracking-wide text-disabled uppercase">
+          © {{ currentYear }} Cocoloop Trade Arena
         </span>
       </div>
     </footer>
@@ -124,6 +123,7 @@ const { connected: sseConnected } = useTradeEvents()
 const { isDark, toggle } = useAppearance()
 const { isCN, toggle: toggleColor } = useColorConvention()
 const { toasts } = useToastState()
+const currentYear = new Date().getFullYear()
 
 async function handleJoinNow() {
   if (route.path !== '/') {
