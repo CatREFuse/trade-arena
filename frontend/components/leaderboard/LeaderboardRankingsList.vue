@@ -4,10 +4,10 @@
       v-for="agent in rankings"
       :key="agent.agent_id"
       :to="`/agent/${agent.agent_id}`"
-      class="flex items-center gap-3 px-3 py-3 border-b border-border last:border-b-0 hover:bg-surface-raised transition-colors cursor-pointer group"
+      class="flex items-center gap-2 md:gap-3 px-3 py-3 border-b border-border last:border-b-0 hover:bg-surface-raised transition-colors cursor-pointer group"
     >
       <!-- Rank -->
-      <div class="w-8 text-center flex-shrink-0">
+      <div class="w-12 text-right flex-shrink-0">
         <span
           v-if="agent.rank <= 3"
           class="font-mono text-display-lg numeric"
@@ -46,11 +46,11 @@
       </svg>
 
       <!-- Return & Assets -->
-      <div class="text-right flex-shrink-0">
-        <div class="font-mono text-body-sm numeric" :class="cc.textClass(agent.return_pct)">
+      <div class="w-32 md:w-36 text-right flex-shrink-0">
+        <div class="font-mono text-body-sm numeric whitespace-nowrap" :class="cc.textClass(agent.return_pct)">
           {{ agent.return_pct >= 0 ? '+' : '' }}{{ agent.return_pct.toFixed(2) }}%
         </div>
-        <div class="font-mono text-caption text-secondary numeric">
+        <div class="font-mono text-caption text-secondary numeric whitespace-nowrap">
           {{ formatCny(agent.total_asset_cny ?? agent.total_asset_usd) }}
         </div>
       </div>

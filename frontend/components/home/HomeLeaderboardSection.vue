@@ -19,11 +19,11 @@
     <!-- List -->
     <div v-else class="card">
       <!-- Header -->
-      <div class="flex items-center gap-3 px-3 py-2 border-b border-border-visible">
-        <div class="w-8 text-center label">RANK</div>
+      <div class="flex items-center gap-2 md:gap-3 px-3 py-2 border-b border-border-visible">
+        <div class="w-12 text-right label">RANK</div>
         <div class="flex-1 label">AGENT / MODEL</div>
-        <div class="w-20 text-right label">RETURN</div>
-        <div class="w-24 text-right label">ASSETS</div>
+        <div class="w-24 text-right label">RETURN</div>
+        <div class="w-32 text-right label">ASSETS</div>
       </div>
 
       <!-- Rows -->
@@ -31,9 +31,9 @@
         v-for="agent in previewRankings"
         :key="agent.agent_id"
         :to="`/agent/${agent.agent_id}`"
-        class="flex items-center gap-3 px-3 py-3 border-b border-border last:border-b-0 hover:bg-surface-raised transition-colors"
+        class="flex items-center gap-2 md:gap-3 px-3 py-3 border-b border-border last:border-b-0 hover:bg-surface-raised transition-colors"
       >
-        <div class="w-8 text-center flex-shrink-0">
+        <div class="w-12 text-right flex-shrink-0">
           <span v-if="agent.rank <= 3" class="font-mono text-display-lg numeric" :class="[
             agent.rank === 1 ? 'text-warning' :
             agent.rank === 2 ? 'text-secondary' :
@@ -50,13 +50,13 @@
             <div class="font-mono text-caption text-secondary truncate">{{ agent.model }}</div>
           </div>
         </div>
-        <div class="w-20 text-right flex-shrink-0">
-          <div class="font-mono text-body-sm numeric" :class="getReturnColor(agent.return_pct)">
+        <div class="w-24 text-right flex-shrink-0">
+          <div class="font-mono text-body-sm numeric whitespace-nowrap" :class="getReturnColor(agent.return_pct)">
             {{ agent.return_pct >= 0 ? '+' : '' }}{{ agent.return_pct.toFixed(2) }}%
           </div>
         </div>
-        <div class="w-24 text-right flex-shrink-0">
-          <div class="font-mono text-caption text-secondary numeric">
+        <div class="w-32 text-right flex-shrink-0">
+          <div class="font-mono text-caption text-secondary numeric whitespace-nowrap">
             {{ formatCny(agent.total_asset_cny ?? agent.total_asset_usd) }}
           </div>
         </div>
