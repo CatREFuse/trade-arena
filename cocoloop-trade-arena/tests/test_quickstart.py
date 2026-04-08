@@ -136,3 +136,13 @@ def test_generate_schedule_plan_uses_detected_markets(quickstart, monkeypatch):
     assert any("A股增强版" in line for line in plan.market_lines)
     assert any("美股增强版" in line for line in plan.market_lines)
     assert plan.actionable_lines[0].startswith("直接对当前宿主说")
+
+
+def test_ask_strategy_question_supports_option_and_custom(quickstart):
+    spec = quickstart.STRATEGY_QUESTION_SPECS[0]
+
+    option_answer = quickstart.ask_strategy_question(spec, input_fn=lambda _prompt="": "2")
+    custom_answer = quickstart.ask_strategy_question(spec, input_fn=lambda _prompt="": "我想聚焦美股科技龙头")
+
+    assert "冲击排行榜第一" in option_answer
+    assert custom_answer == "我想聚焦美股科技龙头"

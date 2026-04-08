@@ -85,6 +85,86 @@ class SchedulePlan:
 
 InputFunc = Callable[[str], str]
 
+STRATEGY_QUESTION_SPECS = [
+    {
+        "key": "goal",
+        "title": "这次参赛你最想抓住什么机会？",
+        "explanation": "这个问题用来决定你的整体打法。目标不同，后面的仓位、节奏和风险控制都会不一样。",
+        "options": {
+            "1": ("稳步增值", "以稳步提升总资产为主，不追求极端进攻。"),
+            "2": ("冲击第一", "以冲击排行榜第一为目标，愿意在看对趋势时更主动进攻。"),
+            "3": ("先保排名", "先确保自己留在前排，再等待更好的机会。"),
+        },
+        "recommendation": "如果你想冲排名，我更推荐 2。 如果你更在意稳定回报，可以选 1。",
+    },
+    {
+        "key": "markets",
+        "title": "你主要关注哪些市场？",
+        "explanation": "这个问题会直接影响后面的研究范围和定时任务节奏。市场越聚焦，执行越稳定。",
+        "options": {
+            "1": ("只看美股", "集中盯美股，把研究和执行都放在一个市场。"),
+            "2": ("美股 + 港股", "围绕中美和科技叙事做联动观察。"),
+            "3": ("三地都看", "美股、A股、港股都纳入，但执行复杂度会明显上升。"),
+        },
+        "recommendation": "新手或想提高执行稳定性时，我更推荐 1。 如果你很在意中概和中美联动，可以选 2。",
+    },
+    {
+        "key": "style",
+        "title": "你通常会在什么情况下出手，又在什么情况下按兵不动？",
+        "explanation": "这个问题是在定义你的出手机制。没有出手边界，后面很容易变成看到什么都想买。",
+        "options": {
+            "1": ("偏防守", "只在大盘和个股都比较明确时出手，其余时间保持观望。"),
+            "2": ("中期顺势", "大盘更乐观时分批进入，趋势不清楚时先等。"),
+            "3": ("积极进攻", "只要看到主题和情绪共振，就更快出手。"),
+        },
+        "recommendation": "如果你做中期投资，我更推荐 2。 如果你非常怕回撤，可以选 1。 想抢排名、又能接受波动时再考虑 3。",
+    },
+    {
+        "key": "positioning",
+        "title": "如果判断正确或判断失误，你会怎么加减仓？",
+        "explanation": "这个问题决定你怎么把对的判断放大，也决定你怎么在错的时候收手。",
+        "options": {
+            "1": ("慢加慢减", "先小仓试，再逐步加仓；一旦走坏，先减一半。"),
+            "2": ("确认后集中加仓", "先观察，确认后快速加到目标仓位；走坏时迅速退出。"),
+            "3": ("固定仓位", "每次都用接近固定的仓位，不主动加仓。"),
+        },
+        "recommendation": "大多数中期策略我更推荐 1。 如果你只想抓最强趋势，可以考虑 2。 想把执行做得更机械时，可以选 3。",
+    },
+    {
+        "key": "risk",
+        "title": "你最不能接受的风险是什么，打算怎么控？",
+        "explanation": "这个问题是在定义你的底线。只有先讲清楚不能承受什么，后面的仓位规则才有意义。",
+        "options": {
+            "1": ("怕大盘转弱", "市场环境变差时优先整体降仓。"),
+            "2": ("怕个股暴跌", "避开流动性差的标的，单只股票不重仓。"),
+            "3": ("怕连续回撤", "一旦账户连续回撤，就先停手观察。"),
+        },
+        "recommendation": "如果你主要做美股中期趋势，我更推荐 1 和 2 组合使用。 如果你更怕情绪化操作，可以再加上 3。",
+    },
+    {
+        "key": "triggers",
+        "title": "你会重点看哪些消息、价格或市场状态？",
+        "explanation": "这个问题决定系统后面该围绕什么信号来观察，不然你会收到太泛的市场结论。",
+        "options": {
+            "1": ("大盘与板块情绪", "先看指数、板块轮动和整体风险偏好。"),
+            "2": ("宏观和政策变化", "重点盯利率、宏观数据、监管和地缘关系。"),
+            "3": ("公司与财报事件", "重点盯财报、指引、产品和个股新闻。"),
+        },
+        "recommendation": "做中期策略时，我更推荐 1 和 2。 如果你更偏个股驱动，再把 3 加进来。",
+    },
+    {
+        "key": "schedule",
+        "title": "你希望系统在什么节奏下提醒或运行？",
+        "explanation": "这个问题会影响后面的定时任务建议。节奏太密会打扰，太稀又容易错过变化。",
+        "options": {
+            "1": ("每天两次", "开盘后看一次，收盘前再复核一次。"),
+            "2": ("每小时一次", "交易时段内按小时巡检，适合需要持续盯盘的策略。"),
+            "3": ("事件触发为主", "平时更轻，遇到明显变化或消息再加强。"),
+        },
+        "recommendation": "如果你想兼顾执行和节奏，我更推荐 2。 如果你更低频，可以选 1。 如果宿主环境支持灵活触发，再考虑 3。",
+    },
+]
+
 
 def _default_setup_state() -> dict:
     return {
@@ -659,6 +739,31 @@ def prompt_text(prompt: str, input_fn: InputFunc = input) -> str:
         print("这一项先别留空。")
 
 
+def ask_strategy_question(spec: dict[str, object], input_fn: InputFunc = input) -> str:
+    title = str(spec["title"])
+    explanation = str(spec["explanation"])
+    options: dict[str, tuple[str, str]] = spec["options"]  # type: ignore[assignment]
+    recommendation = str(spec["recommendation"])
+
+    print(f"\n{title}")
+    print(explanation)
+    for key, (label, detail) in options.items():
+        print(f"{key}. {label}：{detail}")
+    print(f"推荐：{recommendation}")
+    print("如果这三项都不贴合，你也可以直接输入自己的想法。")
+
+    while True:
+        raw = input_fn("请选择或直接输入: ").strip()
+        if not raw:
+            print("这一项先别留空。")
+            continue
+        if raw in CUSTOM_TOKENS:
+            return raw
+        if raw in options:
+            return options[raw][1]
+        return raw
+
+
 def collect_multiline(prompt: str, input_fn: InputFunc = input) -> str:
     print(prompt)
     print("输入 END 结束。")
@@ -694,17 +799,9 @@ def build_strategy_markdown(mode: str, answers: dict[str, str]) -> str:
 
 def capture_strategy_template(input_fn: InputFunc = input) -> tuple[str, str]:
     answers: dict[str, str] = {"title": "Trade Arena 投资策略"}
-    prompts = [
-        ("goal", "你的总体目标是什么？"),
-        ("markets", "你主要关注哪些市场？"),
-        ("style", "你的投资风格和核心原则是什么？"),
-        ("positioning", "你打算怎么建仓、加仓和减仓？"),
-        ("risk", "你的仓位上限、止损或回撤规则是什么？"),
-        ("triggers", "你最看重哪些观察信号和触发条件？"),
-        ("schedule", "你希望任务按什么节奏运行？"),
-    ]
-    for key, prompt in prompts:
-        raw = prompt_text(f"{prompt} ", input_fn=input_fn)
+    for spec in STRATEGY_QUESTION_SPECS:
+        key = str(spec["key"])
+        raw = ask_strategy_question(spec, input_fn=input_fn)
         if raw in CUSTOM_TOKENS:
             return capture_strategy_custom(input_fn=input_fn)
         answers[key] = raw
@@ -712,19 +809,13 @@ def capture_strategy_template(input_fn: InputFunc = input) -> tuple[str, str]:
 
 
 def capture_strategy_guided(input_fn: InputFunc = input) -> tuple[str, str]:
-    answers = {
-        "title": "Trade Arena 投资策略",
-        "goal": prompt_text("这次参赛你最想抓住什么机会？ ", input_fn=input_fn),
-        "markets": prompt_text("你更想盯哪些市场，为什么？ ", input_fn=input_fn),
-        "style": prompt_text("你通常会在什么情况下出手，又在什么情况下按兵不动？ ", input_fn=input_fn),
-        "positioning": prompt_text("如果判断正确或判断失误，你会怎么加减仓？ ", input_fn=input_fn),
-        "risk": prompt_text("你最不能接受的风险是什么，打算怎么控？ ", input_fn=input_fn),
-        "triggers": prompt_text("你会重点看哪些消息、价格或市场状态？ ", input_fn=input_fn),
-        "schedule": prompt_text("你希望系统在什么节奏下提醒或运行？ ", input_fn=input_fn),
-    }
-    for value in answers.values():
+    answers = {"title": "Trade Arena 投资策略"}
+    for spec in STRATEGY_QUESTION_SPECS:
+        key = str(spec["key"])
+        value = ask_strategy_question(spec, input_fn=input_fn)
         if value in CUSTOM_TOKENS:
             return capture_strategy_custom(input_fn=input_fn)
+        answers[key] = value
     return build_strategy_markdown("guided", answers), "guided"
 
 
