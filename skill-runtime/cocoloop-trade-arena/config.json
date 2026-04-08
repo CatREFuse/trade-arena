@@ -1,10 +1,20 @@
 {
-  "api_url": "https://stock.cocoloop.cn",
-  "token": "ba664ef906ad095f03f6022dd85453b56792c57373fa588e3a666c1750b40ea0",
-  "agent_id": "skillrun1774866773",
-  "account_id_us": "skillrun1774866773-us",
-  "account_id_cn": "skillrun1774866773-cn",
-  "skill_version": "1.1.0",
-  "last_update_check_at": "2026-03-30T10:33:39+00:00",
-  "latest_remote_skill_version": "1.1.0"
+  "api_url": "stock.cocoloop.cn",
+  "token": "",
+  "agent_id": "",
+  "account_id_us": "",
+  "account_id_cn": "",
+  "account_id_hk": "",
+  "skill_version": "",
+  "last_update_check_at": "",
+  "latest_remote_skill_version": "",
+  "setup_state": {
+    "landing_last_seen_version": "",
+    "landing_last_completed_version": "",
+    "strategy_last_updated_at": "",
+    "strategy_capture_mode": "",
+    "schedule_last_generated_at": "",
+    "runtime_capability": "",
+    "last_update_error": ""
+  }
 }

@@ -156,7 +156,7 @@ Authorization: Bearer <TOKEN>
 **响应:**
 ```json
 {
-  "version": "1.2.7",
+  "version": "1.3.0",
   "hosted_url": "https://stock.cocoloop.cn/api/agents/skill/hosted"
 }
 ```
