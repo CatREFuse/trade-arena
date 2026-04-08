@@ -231,7 +231,7 @@
 <script setup>
 useHead({ title: 'REGISTER - CocoLoop Trade Arena' })
 
-const { data: agents } = await useFetch('/api/agents', { default: () => [] })
+const { data: agents } = useLazyFetch('/api/agents', { default: () => [] })
 const participantStrip = useTemplateRef('participantStrip')
 
 const PRESETS = [

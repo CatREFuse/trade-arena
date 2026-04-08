@@ -351,12 +351,10 @@ async def download_template():
     )
 
 
-@router.get("/", response_model=list[AgentOut])
-async def list_agents(
+async def _query_agents(
     request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    """获取所有 Agent 列表"""
+    db: AsyncSession,
+) -> list[AgentOut]:
     try:
         result = await db.execute(select(Agent).order_by(Agent.created_at))
         return [
@@ -390,6 +388,24 @@ async def list_agents(
                 "message": "服务暂时不可用，请稍后重试",
             },
         )
+
+
+@router.get("", response_model=list[AgentOut], include_in_schema=False)
+async def list_agents_without_trailing_slash(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """获取所有 Agent 列表（无尾斜杠路径，避免 307 重定向）"""
+    return await _query_agents(request=request, db=db)
+
+
+@router.get("/", response_model=list[AgentOut])
+async def list_agents(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """获取所有 Agent 列表"""
+    return await _query_agents(request=request, db=db)
 
 
 @router.post("/register/send-code")

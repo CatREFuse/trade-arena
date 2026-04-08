@@ -112,7 +112,7 @@ const rules = [
   { label: '排名依据', value: '人民币总资产，含美股 / A 股 / 港股' },
 ]
 
-const { data: agents } = await useFetch('/api/agents', { default: () => [] })
+const { data: agents } = useLazyFetch('/api/agents', { default: () => [] })
 
 const {
   hostedSkillUrl,

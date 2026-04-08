@@ -93,12 +93,8 @@ useHead({
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
-const { data: leaderboardData, pending: rankingsPending, refresh: refreshLeaderboard } = await useFetch('/api/leaderboard', {
+const { data: leaderboardData, pending: rankingsPending, refresh: refreshLeaderboard } = useLazyFetch('/api/leaderboard', {
   default: () => ({ rankings: [] }),
-})
-
-const { data: agentsData } = await useFetch('/api/agents', {
-  default: () => [],
 })
 
 const ITEMS_PER_PAGE = 20

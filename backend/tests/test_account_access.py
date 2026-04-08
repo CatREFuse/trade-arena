@@ -73,6 +73,16 @@ async def test_shared_token_lists_market_accounts_via_me(client, seeded_accounts
 
 
 @pytest.mark.asyncio
+async def test_agents_list_without_trailing_slash_does_not_redirect(client):
+    response = await client.get("/api/agents", follow_redirects=False)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload, list)
+    assert any(agent["id"] == "alpha" for agent in payload)
+
+
+@pytest.mark.asyncio
 async def test_shared_token_can_access_primary_account_routes(
     client,
     seeded_accounts,
