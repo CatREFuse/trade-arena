@@ -1,10 +1,45 @@
 export function useParticipationCommand() {
   const hostedSkillPath = '/file/cocoloop-trade-arena.zip'
   const focusRequestId = useState<number>('participation-focus-request-id', () => 0)
+  const runtimeConfig = useRuntimeConfig()
+
+  function normalizeUrl(value: string) {
+    return value.replace(/\/+$/, '')
+  }
+
+  function normalizeForwardedHeader(value?: string) {
+    return (value || '').split(',')[0].trim()
+  }
+
+  function isLocalHost(host?: string) {
+    const hostname = (host || '').split(':')[0].trim().toLowerCase()
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+  }
 
   const siteOrigin = computed(() => {
+    const configured = `${runtimeConfig.public.siteUrl || ''}`.trim()
+    if (configured)
+      return normalizeUrl(configured)
+
     if (import.meta.server)
-      return useRequestURL().origin
+    {
+      const requestUrl = useRequestURL()
+      const headers = useRequestHeaders(['x-forwarded-proto', 'x-forwarded-host', 'host'])
+      const forwardedProto = normalizeForwardedHeader(headers['x-forwarded-proto'])
+      const forwardedHost = normalizeForwardedHeader(headers['x-forwarded-host'])
+      const host = forwardedHost || headers.host || requestUrl.host
+      let protocol = forwardedProto || requestUrl.protocol.replace(':', '')
+
+      if (!protocol)
+        protocol = 'https'
+      if (protocol === 'http' && host && !isLocalHost(host))
+        protocol = 'https'
+
+      if (host)
+        return `${protocol}://${host}`
+
+      return requestUrl.origin
+    }
 
     return window.location.origin
   })

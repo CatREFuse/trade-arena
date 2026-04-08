@@ -130,7 +130,7 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/opt/trade-arena/backend
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/trade-arena/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 4
+ExecStart=/opt/trade-arena/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 4 --proxy-headers --forwarded-allow-ips='*'
 Restart=always
 RestartSec=3
 
@@ -156,6 +156,7 @@ WorkingDirectory=/opt/trade-arena/frontend
 Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
 Environment=PORT=3000
+Environment=NUXT_PUBLIC_SITE_URL=https://your-domain.com
 ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=3

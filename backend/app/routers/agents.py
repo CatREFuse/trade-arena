@@ -43,6 +43,34 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 logger = logging.getLogger(__name__)
 
 
+def _normalize_forwarded_header(value: str | None) -> str:
+    if not value:
+        return ""
+    return value.split(",")[0].strip()
+
+
+def _is_local_host(host: str | None) -> bool:
+    if not host:
+        return False
+    normalized = host.split(":", 1)[0].strip().strip("[]").lower()
+    return normalized in {"localhost", "127.0.0.1", "::1"}
+
+
+def _build_public_origin(request: Request) -> str:
+    forwarded_proto = _normalize_forwarded_header(request.headers.get("x-forwarded-proto"))
+    forwarded_host = _normalize_forwarded_header(request.headers.get("x-forwarded-host"))
+    host = forwarded_host or request.headers.get("host") or request.url.netloc
+    scheme = forwarded_proto or request.url.scheme or "https"
+
+    if scheme == "http" and host and not _is_local_host(host):
+        scheme = "https"
+
+    if host:
+        return f"{scheme}://{host}".rstrip("/")
+
+    return str(request.base_url).rstrip("/")
+
+
 def _hosted_skill_dir() -> Path:
     return Path(__file__).resolve().parent.parent.parent.parent / "cocoloop-trade-arena"
 
@@ -262,7 +290,7 @@ async def get_hosted_skill_version(request: Request):
 
     return SkillVersionOut(
         version=version,
-        hosted_url=str(request.url_for("download_hosted_skill")),
+        hosted_url=f"{_build_public_origin(request)}/api/agents/skill/hosted",
     )
 
 

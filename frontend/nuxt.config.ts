@@ -7,6 +7,9 @@ export default defineNuxtConfig({
     adminSessionSalt: process.env.NUXT_ADMIN_SESSION_SALT || 'trade-arena-admin-session',
     adminCookieSecure: process.env.NUXT_ADMIN_COOKIE_SECURE === 'true',
     adminLoginGuardStateFile: process.env.NUXT_ADMIN_LOGIN_GUARD_STATE_FILE || '.runtime/admin-login-guard/state.json',
+    public: {
+      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || '',
+    },
   },
   experimental: {
     appManifest: false,

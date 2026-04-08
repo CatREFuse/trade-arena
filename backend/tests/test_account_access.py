@@ -250,6 +250,22 @@ async def test_skill_version_endpoint_returns_version_and_hosted_url(client):
 
 
 @pytest.mark.asyncio
+async def test_skill_version_endpoint_prefers_https_for_public_forwarded_origin(client):
+    response = await client.get(
+        "/api/agents/skill/version",
+        headers={
+            "host": "stock.cocoloop.cn",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "stock.cocoloop.cn",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["hosted_url"] == "https://stock.cocoloop.cn/api/agents/skill/hosted"
+
+
+@pytest.mark.asyncio
 async def test_static_file_endpoint_returns_hosted_skill_archive_with_fallback(
     client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
