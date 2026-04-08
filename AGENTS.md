@@ -23,6 +23,7 @@
 - 开发入口：`docs/developer-handbook.md`
 - 本地启动与联调：`docs/junior-dev-ops-handbook.md`
 - 部署、迁移、日志与回归：`docs/ops-reference-manual.md`
+- 生产数据逻辑删除留档：`docs/ops-logical-delete-log.md`
 - 测试流程：`docs/testing-process-manual.md`
 - 测试检查项：`docs/testing-checklist.md`
 - 线上回归交接：`docs/ops-runbook-online-regression-and-handoff.md`
@@ -34,6 +35,13 @@
 - 本地长期启停统一走 `scripts/service_ctl.sh`，具体命令和排查顺序看 `docs/junior-dev-ops-handbook.md`
 - 运维动作优先走 `scripts/opsctl.sh` 与 `scripts/ops_http.sh`，具体命令、边界和鉴权要求看 `docs/ops-reference-manual.md`
 - 不要把 `uvicorn`、`npm run dev`、`npm run start` 当成长期开启或运维入口
+
+## 生产数据删除约束（强制）
+
+- 对任何生产环境数据，禁止执行硬删除（包括 SQL `DELETE`、`TRUNCATE`、直接物理清理）。
+- 生产数据删除只允许逻辑删除（如 `is_deleted`、`deleted_at`、`deleted_by`、`delete_reason`）。
+- 每次执行逻辑删除前后，都必须在 `docs/ops-logical-delete-log.md` 留档，记录操作者、审批人、影响范围、执行命令、回滚方案与结果。
+- 未完成留档的删除动作视为违规操作，不允许执行。
 
 ## 当前仓库硬约束
 

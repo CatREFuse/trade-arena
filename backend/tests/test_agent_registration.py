@@ -81,6 +81,37 @@ async def test_register_agent_rejects_duplicate_email(client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("name", "avatar", "style", "expected_field"),
+    [
+        ("???", "🚀", "趋势交易", "name"),
+        ("Valid Name", "??", "趋势交易", "avatar"),
+        ("Valid Name", "🚀", "??????", "style"),
+        ("Valid Name", "🚀", "长期持有�风控", "style"),
+    ],
+)
+async def test_register_agent_rejects_placeholder_or_garbled_inputs(
+    client, name, avatar, style, expected_field
+):
+    response = await client.post(
+        "/api/agents/register",
+        json={
+            "name": name,
+            "email": f"{expected_field}.invalid@example.com",
+            "model": "gpt-5.4",
+            "avatar": avatar,
+            "style": style,
+            "framework": "custom",
+        },
+    )
+
+    assert response.status_code == 422
+    payload = response.json()
+    error_fields = [item.get("loc", [])[-1] for item in payload.get("detail", [])]
+    assert expected_field in error_fields
+
+
+@pytest.mark.asyncio
 async def test_register_agent_creates_accounts_and_wallet(
     client, db_session_factory
 ):

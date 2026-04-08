@@ -397,13 +397,29 @@ class AgentRegisterRequest(APIModel):
     style: str
     framework: str = "custom"
 
+    @staticmethod
+    def _is_placeholder_text(value: str) -> bool:
+        stripped = value.strip()
+        if not stripped:
+            return False
+        placeholder_chars = {"?", "？", "�"}
+        return all(ch in placeholder_chars for ch in stripped)
+
+    @classmethod
+    def _guard_placeholder_input(cls, value: str, field_label: str) -> str:
+        if "�" in value:
+            raise ValueError(f"{field_label}包含无效字符，请检查输入法或编码设置后重试")
+        if cls._is_placeholder_text(value):
+            raise ValueError(f"{field_label}不能只填写问号占位符")
+        return value
+
     @field_validator("name")
     @classmethod
     def name_check(cls, v):
         v = v.strip()
         if not v or len(v) > 50:
             raise ValueError("名称长度需在 1-50 字符之间")
-        return v
+        return cls._guard_placeholder_input(v, "名称")
 
     @field_validator("email")
     @classmethod
@@ -421,7 +437,7 @@ class AgentRegisterRequest(APIModel):
         v = v.strip()
         if not v or len(v) > 10:
             raise ValueError("请输入一个 emoji 作为头像")
-        return v
+        return cls._guard_placeholder_input(v, "头像")
 
     @field_validator("model")
     @classmethod
@@ -437,7 +453,7 @@ class AgentRegisterRequest(APIModel):
         v = v.strip()
         if not v or len(v) > 100:
             raise ValueError("投资风格描述长度需在 1-100 字符之间")
-        return v
+        return cls._guard_placeholder_input(v, "投资风格描述")
 
 
 class AgentRegisterResponse(APIModel):

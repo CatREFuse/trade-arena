@@ -7,6 +7,7 @@
 - 执行数据库迁移
 - 维护 webhook 与部署日志
 - 故障时快速止损并恢复服务
+- 严格按逻辑删除流程处理生产数据删除
 
 操作本项目线上服务器时，优先结合 `docs/ssh-skill-ops-handbook.md` 使用 `ssh-skill`。
 
@@ -27,6 +28,7 @@
 - `scripts/service_ctl.sh`：服务启停统一脚本（start/stop/restart/status）
 - `webhook/DEPLOY_LOG.md`：Markdown 格式部署事件记录
 - `/var/log/trade-arena-deploy.log`：部署运行日志（服务器）
+- `docs/ops-logical-delete-log.md`：生产环境逻辑删除留档
 
 线上服务器 SSH 配置入口：
 
@@ -240,6 +242,15 @@ bash scripts/opsctl.sh deploy --branch main
 - 这是生产故障恢复优先级最高的排障项之一，`git fetch` 卡住时不要反复盲目重试部署。
 - 仅修改 `github.com` 映射，不要批量改写其它 host。
 - 网络恢复后可评估是否恢复默认 DNS，避免长期依赖静态 IP。
+
+### 3.5 生产数据删除 SOP（强制逻辑删除）
+
+生产环境禁止硬删除。任何删除动作都必须满足下面流程：
+
+1. 先在 `docs/ops-logical-delete-log.md` 新增“待执行”记录，补齐申请人、审批人、影响范围、回滚方案。
+2. 仅执行逻辑删除语句（例如更新 `is_deleted/deleted_at/deleted_by/delete_reason`）。
+3. 执行后补充同一条记录的执行结果和校验结果。
+4. 未留档或留档字段不完整时，不允许执行删除动作。
 
 ## 4. 数据库迁移 SOP（强制）
 
