@@ -307,6 +307,8 @@ start_backend() {
   log "Starting backend on ${BACKEND_HOST}:${BACKEND_PORT} (mode=$MODE)..."
   (
     cd "$ROOT_DIR/backend"
+    # Keep backend runtime env aligned with webhook/ops by loading ops env files.
+    load_ops_env
     if [[ "$MODE" == "dev" ]]; then
       if [[ "$BACKEND_RELOAD" == "1" ]]; then
         nohup "$py" -m uvicorn app.main:app --reload --host "$BACKEND_HOST" --port "$BACKEND_PORT" \
