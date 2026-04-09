@@ -62,7 +62,6 @@
       :indices="usIndices"
       :board-items="usBoardItems"
       market-type="us"
-      :is-cn="isCN"
     />
 
     <!-- CN Market -->
@@ -74,7 +73,6 @@
       :indices="cnIndices"
       :board-items="cnBoardItems"
       market-type="cn"
-      :is-cn="isCN"
       class="mt-6"
     />
 
@@ -87,7 +85,6 @@
       :indices="hkIndices"
       :board-items="hkBoardItems"
       market-type="hk"
-      :is-cn="isCN"
       class="mt-6"
     />
   </div>
@@ -97,8 +94,6 @@
 useHead({
   title: 'MARKET - CocoLoop Trade Arena',
 })
-
-const { isCN } = useColorConvention()
 
 type MarketKey = 'us' | 'cn' | 'hk'
 
@@ -245,9 +240,6 @@ function formatFxSource(source: string): string {
 
 function getChangeColor(change: number | undefined | null): string {
   if (change == null || Number.isNaN(change)) return 'text-disabled'
-  if (isCN.value) {
-    return change >= 0 ? 'text-success' : 'text-accent'
-  }
   return change >= 0 ? 'text-accent' : 'text-success'
 }
 

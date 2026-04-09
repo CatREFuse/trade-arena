@@ -17,7 +17,7 @@
         <div class="text-[11px] uppercase tracking-widest text-tertiary">{{ index.symbol }}</div>
         <div class="mt-1 text-sm font-semibold text-main">{{ index.name }}</div>
         <div class="mt-2 text-base font-bold text-main tabular-nums">{{ index.price }}</div>
-        <div :class="index.change_pct >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'" class="text-xs font-medium">
+        <div :class="index.change_pct >= 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'" class="text-xs font-medium">
           {{ index.change_pct >= 0 ? '+' : '' }}{{ index.change_pct.toFixed(2) }}%
         </div>
       </div>
@@ -42,8 +42,8 @@
           >
             <td class="py-2 pr-4 text-main">{{ item.name }}</td>
             <td class="py-2 pr-4 text-secondary tabular-nums">{{ item.stock_count }}</td>
-            <td class="py-2 pr-4 text-emerald-600 dark:text-emerald-400 tabular-nums">{{ item.up_count }}</td>
-            <td class="py-2 pr-4 text-rose-600 dark:text-rose-400 tabular-nums">{{ item.down_count }}</td>
+            <td class="py-2 pr-4 text-rose-600 dark:text-rose-400 tabular-nums">{{ item.up_count }}</td>
+            <td class="py-2 pr-4 text-emerald-600 dark:text-emerald-400 tabular-nums">{{ item.down_count }}</td>
             <td class="py-2 text-main tabular-nums">{{ item.avg_change_pct.toFixed(2) }}%</td>
           </tr>
         </tbody>

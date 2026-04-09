@@ -31,6 +31,41 @@ export interface AdminLogItem {
   agent_avatar: string
 }
 
+export interface AdminTrafficDailyItem {
+  date: string
+  pv: number
+}
+
+export interface AdminTrafficPageItem {
+  path: string
+  pv: number
+}
+
+export interface AdminTrafficIpItem {
+  ip: string
+  pv: number
+  geo_label: string
+  geo_level: 'province' | 'country' | 'unknown' | string
+}
+
+export interface AdminTrafficRegionItem {
+  region: string
+  pv: number
+  level: 'province' | 'country' | 'unknown' | string
+}
+
+export interface AdminTrafficStats {
+  window_days: number
+  total_pv: number
+  today_pv: number
+  unique_page_count: number
+  unique_ip_count: number
+  daily: AdminTrafficDailyItem[]
+  top_pages: AdminTrafficPageItem[]
+  top_ips: AdminTrafficIpItem[]
+  top_regions: AdminTrafficRegionItem[]
+}
+
 export interface AdminProbeItem {
   name: string
   ok: boolean
@@ -112,21 +147,29 @@ export interface AdminDashboardResponse {
   generated_at: string
   users: {
     total: number
+    limit?: number
+    offset?: number
     items: AdminUserItem[]
   }
   logs: {
+    total: number
+    buy_total: number
+    sell_total: number
+    limit?: number
+    offset?: number
     items: AdminLogItem[]
   }
   data_sources: AdminDataSourceStatus
   market: AdminMarketSnapshot
   trade_stats: AdminTradeStats
+  traffic: AdminTrafficStats
 }
 
 function createDefaultDashboard(): AdminDashboardResponse {
   return {
     generated_at: '',
     users: { total: 0, items: [] },
-    logs: { items: [] },
+    logs: { total: 0, buy_total: 0, sell_total: 0, items: [] },
     data_sources: {
       db: { ok: false, detail: '' },
       redis: { ok: false, detail: '' },
@@ -152,6 +195,17 @@ function createDefaultDashboard(): AdminDashboardResponse {
       by_market: {},
       daily: [],
       top_tickers: [],
+    },
+    traffic: {
+      window_days: 7,
+      total_pv: 0,
+      today_pv: 0,
+      unique_page_count: 0,
+      unique_ip_count: 0,
+      daily: [],
+      top_pages: [],
+      top_ips: [],
+      top_regions: [],
     },
   }
 }

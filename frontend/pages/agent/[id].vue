@@ -1,11 +1,12 @@
 <template>
   <div class="max-w-3xl mx-auto px-5 py-8 md:py-12">
-    <NuxtLink to="/" class="inline-flex items-center gap-1 text-sm text-secondary hover:text-main transition font-medium">
+    <NuxtLink :to="backTarget" class="inline-flex items-center gap-1 text-sm text-secondary hover:text-main transition font-medium">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
       返回
     </NuxtLink>
 
-    <div v-if="!agent" class="text-center py-20 text-tertiary">Agent 不存在</div>
+    <div v-if="isAgentPending" class="text-center py-20 text-tertiary">加载中...</div>
+    <div v-else-if="isAgentMissing" class="text-center py-20 text-tertiary">Agent 不存在</div>
 
     <template v-else>
       <div class="card mt-6">
@@ -23,11 +24,11 @@
             </div>
           </div>
           <div class="text-left sm:text-right">
-            <div class="text-3xl font-bold tabular-nums" :class="cc.textClass(agent.return_pct)">
-              {{ agent.return_pct >= 0 ? '+' : '' }}{{ agent.return_pct.toFixed(2) }}%
+            <div class="text-3xl font-bold tabular-nums" :class="cc.textClass(agentReturnPct)">
+              {{ agentReturnPct >= 0 ? '+' : '' }}{{ agentReturnPct.toFixed(2) }}%
             </div>
             <div class="text-sm text-secondary mt-1">
-              排名 <span class="text-main font-bold">#{{ agent.rank }}</span>
+              排名 <span class="text-main font-bold">#{{ agentRankLabel }}</span>
               · {{ formatCny(overallAssetCny) }}
             </div>
           </div>
@@ -39,7 +40,7 @@
           <h3 class="text-base font-bold text-main">人民币资产走势</h3>
           <div class="text-xs text-secondary">
             <span class="text-main font-bold">{{ formatCny(chartData[chartData.length - 1]?.value) }}</span>
-            <span :class="chartChange >= 0 ? 'text-emerald-500' : 'text-red-500'">
+            <span :class="chartChange >= 0 ? 'text-red-500' : 'text-emerald-500'">
               {{ chartChange >= 0 ? '+' : '' }}{{ chartChange.toFixed(1) }}%
             </span>
           </div>
@@ -238,6 +239,15 @@ interface AgentRanking {
   cn_asset_usd?: number | string | null
 }
 
+interface AgentDirectoryItem {
+  id: string
+  name: string
+  avatar: string
+  model: string
+  camp: string
+  style: string
+}
+
 interface AgentAccountItem {
   ticker: string
   shares: number | string
@@ -289,7 +299,7 @@ useECharts([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const cc = useColorConvention()
 const route = useRoute()
-const agentId = String(route.params.id)
+const agentId = computed(() => String(route.params.id || ''))
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
 const chartTypeItems: Array<{ value: ChartType; label: string; defaultSpan: SpanType }> = [
@@ -315,16 +325,56 @@ const spanOptionsByChartType: Record<ChartType, SpanType[]> = {
 const chartType = ref<ChartType>('trend')
 const selectedSpan = ref<SpanType>('30d')
 
-const { data: leaderboardData, refresh: refreshLeaderboard } = await useFetch<{ rankings?: AgentRanking[] }>('/api/leaderboard?market=overall&include_empty=false', {
+const { data: agentsDirectoryData, pending: agentsDirectoryPending } = useLazyFetch<AgentDirectoryItem[]>('/api/agents', {
+  default: () => [],
+})
+
+const { data: leaderboardData, refresh: refreshLeaderboard } = useLazyFetch<{ rankings?: AgentRanking[] }>('/api/leaderboard?market=overall&include_empty=true&include_sparkline=false', {
   default: () => ({ rankings: [] }),
 })
 
-const agent = computed(() => {
+const directoryAgent = computed(() => {
+  const allAgents = agentsDirectoryData.value || []
+  return allAgents.find(item => item.id === agentId.value) || null
+})
+const rankingAgent = computed(() => {
   const rankings = leaderboardData.value?.rankings || []
-  return rankings.find(r => r.agent_id === agentId) || null
+  return rankings.find(r => r.agent_id === agentId.value) || null
+})
+const agent = computed(() => {
+  const base = directoryAgent.value
+  const rank = rankingAgent.value
+  if (!base && !rank) return null
+  return {
+    id: base?.id || rank?.agent_id || agentId.value,
+    name: base?.name || rank?.name || agentId.value,
+    avatar: base?.avatar || rank?.avatar || '🤖',
+    model: base?.model || rank?.model || '-',
+    camp: base?.camp || rank?.camp || '',
+    style: base?.style || '',
+  }
+})
+const isAgentPending = computed(() => agentsDirectoryPending.value)
+const isAgentMissing = computed(() => !isAgentPending.value && !directoryAgent.value)
+const agentReturnPct = computed(() => {
+  const fromRank = Number(rankingAgent.value?.return_pct)
+  if (Number.isFinite(fromRank)) return fromRank
+  const baseCapital = 1_000_000
+  if (overallAssetCny.value <= 0) return 0
+  return ((overallAssetCny.value - baseCapital) / baseCapital) * 100
+})
+const agentRankLabel = computed(() => {
+  const rank = Number(rankingAgent.value?.rank)
+  if (!Number.isFinite(rank) || rank <= 0) return '--'
+  return String(Math.floor(rank))
+})
+const backTarget = computed(() => {
+  const from = String(route.query.from || '').toLowerCase()
+  if (from === 'about') return '/about'
+  return '/'
 })
 
-const { data: portfolioSummaryData } = await useFetch<AgentPortfolioSummaryResponse | null>(() => `/api/agents/${agentId}/portfolio-summary`, {
+const { data: portfolioSummaryData } = useLazyFetch<AgentPortfolioSummaryResponse | null>(() => `/api/agents/${agentId.value}/portfolio-summary`, {
   default: () => null,
   transform: data => data || null,
 })
@@ -332,18 +382,21 @@ const { data: portfolioSummaryData } = await useFetch<AgentPortfolioSummaryRespo
 const walletCashCny = computed(() => Number(portfolioSummaryData.value?.wallet_cash_cny ?? 0))
 const overallAssetCny = computed(() => Number(
   portfolioSummaryData.value?.total_asset_cny
-  ?? agent.value?.total_asset_cny
-  ?? agent.value?.total_asset_usd
+  ?? rankingAgent.value?.total_asset_cny
+  ?? rankingAgent.value?.total_asset_usd
   ?? 0
 ))
 
-const { data: allFeed } = await useFetch<TradeItem[]>('/api/feed?limit=100', { default: () => [] })
-const agentTrades = computed(() => (allFeed.value || []).filter(t => t.agent_id === agentId))
+const { data: allFeed } = useLazyFetch<TradeItem[]>(
+  () => `/api/feed?limit=50&agent_id=${encodeURIComponent(agentId.value)}`,
+  { default: () => [] },
+)
+const agentTrades = computed(() => allFeed.value || [])
 
 const spanOptions = computed(() => spanOptionsByChartType[chartType.value])
 
-const { data: curveData, refresh: refreshCurve } = await useFetch<AgentEquityCurveResponse>(() =>
-  `/api/agents/${agentId}/equity-curve?chart_type=${chartType.value}&span=${selectedSpan.value}&interval=auto`,
+const { data: curveData, refresh: refreshCurve } = useLazyFetch<AgentEquityCurveResponse>(() =>
+  `/api/agents/${agentId.value}/equity-curve?chart_type=${chartType.value}&span=${selectedSpan.value}&interval=auto`,
 {
   default: () => ({ span: '30d', interval: '1h', points: [] }),
 })
@@ -401,7 +454,7 @@ const portfolioSections = computed(() => {
 })
 
 const chartColor = computed(() => {
-  return chartChange.value >= 0 ? '#10b981' : '#ef4444'
+  return chartChange.value >= 0 ? '#ef4444' : '#10b981'
 })
 
 const chartChange = computed(() => {

@@ -6,7 +6,7 @@
     </div>
     <div class="card-raised">
       <div class="label mb-2">POSITIVE</div>
-      <div class="font-mono type-display-lg numeric text-success">{{ positiveCount }}</div>
+      <div class="font-mono type-display-lg numeric text-accent">{{ positiveCount }}</div>
     </div>
     <div class="card-raised">
       <div class="label mb-2">AVG RETURN</div>

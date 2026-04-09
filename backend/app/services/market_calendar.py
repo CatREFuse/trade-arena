@@ -111,33 +111,89 @@ class MarketCalendarService:
 
         return self._next_open_by_clock(rule, now)
 
-    def now_local_iso(self, market: str, now_utc: datetime | None = None) -> str | None:
+    @staticmethod
+    def _resolve_timezone(timezone_name: str | None) -> ZoneInfo | None:
+        if not timezone_name:
+            return None
+        try:
+            return ZoneInfo(timezone_name)
+        except Exception as exc:  # pragma: no cover - 运行时兜底
+            logger.warning("invalid timezone '%s': %s", timezone_name, exc)
+            return None
+
+    @staticmethod
+    def _format_session_window(start_at: datetime, end_at: datetime) -> str:
+        label = f"{start_at.strftime('%H:%M')}-{end_at.strftime('%H:%M')}"
+        day_delta = (end_at.date() - start_at.date()).days
+        if day_delta > 0:
+            label = f"{label}(+{day_delta})"
+        elif day_delta < 0:
+            label = f"{label}({day_delta})"
+        return label
+
+    def now_local_iso(
+        self,
+        market: str,
+        now_utc: datetime | None = None,
+        *,
+        display_timezone_name: str | None = None,
+    ) -> str | None:
         rule = self._rule(market.lower())
         if rule is None:
             return None
-        now = self._normalize_utc(now_utc).astimezone(rule.timezone)
+        display_timezone = self._resolve_timezone(display_timezone_name) or rule.timezone
+        now = self._normalize_utc(now_utc).astimezone(display_timezone)
         return now.isoformat(timespec="seconds")
 
-    def next_open_local_iso(self, market: str, now_utc: datetime | None = None) -> str | None:
+    def next_open_local_iso(
+        self,
+        market: str,
+        now_utc: datetime | None = None,
+        *,
+        display_timezone_name: str | None = None,
+    ) -> str | None:
         rule = self._rule(market.lower())
         if rule is None:
             return None
         next_open = self.next_open_at(market, now_utc=now_utc)
         if next_open is None:
             return None
-        return next_open.astimezone(rule.timezone).isoformat(timespec="seconds")
+        display_timezone = self._resolve_timezone(display_timezone_name) or rule.timezone
+        return next_open.astimezone(display_timezone).isoformat(timespec="seconds")
 
-    def timezone_name(self, market: str) -> str | None:
+    def timezone_name(self, market: str, *, display_timezone_name: str | None = None) -> str | None:
         rule = self._rule(market.lower())
         if rule is None:
             return None
+        if self._resolve_timezone(display_timezone_name):
+            return display_timezone_name
         return rule.timezone_name
 
-    def session_windows(self, market: str) -> list[str]:
+    def session_windows(
+        self,
+        market: str,
+        *,
+        now_utc: datetime | None = None,
+        display_timezone_name: str | None = None,
+    ) -> list[str]:
         rule = self._rule(market.lower())
         if rule is None:
             return []
-        return [f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}" for start, end in rule.sessions]
+        display_timezone = self._resolve_timezone(display_timezone_name)
+        if display_timezone is None:
+            return [f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}" for start, end in rule.sessions]
+
+        reference_day = self._normalize_utc(now_utc).astimezone(rule.timezone).date()
+        windows: list[str] = []
+        for start, end in rule.sessions:
+            start_local = datetime.combine(reference_day, start, tzinfo=rule.timezone)
+            end_local = datetime.combine(reference_day, end, tzinfo=rule.timezone)
+            if end <= start:
+                end_local = end_local + timedelta(days=1)
+            start_at = start_local.astimezone(display_timezone)
+            end_at = end_local.astimezone(display_timezone)
+            windows.append(self._format_session_window(start_at, end_at))
+        return windows
 
     def _calendar(self, market: str):
         if xcals is None:

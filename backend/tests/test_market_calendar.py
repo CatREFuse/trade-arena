@@ -59,3 +59,23 @@ def test_market_status_uses_short_ttl_cache(monkeypatch):
     assert svc.is_trade_open("us") is True
     assert svc.is_trade_open("us") is True
     assert fake_calendar.calls == 1
+
+
+def test_session_windows_supports_display_timezone():
+    svc = MarketCalendarService()
+    windows = svc.session_windows(
+        "us",
+        now_utc=_utc(2026, 3, 30, 14, 0),  # 10:00 ET
+        display_timezone_name="Asia/Shanghai",
+    )
+    assert windows == ["21:30-04:00(+1)"]
+
+
+def test_now_local_iso_supports_display_timezone():
+    svc = MarketCalendarService()
+    now_local = svc.now_local_iso(
+        "us",
+        now_utc=_utc(2026, 3, 30, 14, 0),  # 22:00 CST
+        display_timezone_name="Asia/Shanghai",
+    )
+    assert now_local == "2026-03-30T22:00:00+08:00"

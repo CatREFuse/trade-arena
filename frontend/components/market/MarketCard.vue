@@ -38,13 +38,13 @@
       </div>
       <div>
         <div class="label mb-1">上涨</div>
-        <div class="font-mono type-subheading numeric" :class="isCN ? 'text-success' : 'text-accent'">
+        <div class="font-mono type-subheading numeric text-accent">
           {{ summary?.up_count || 0 }}
         </div>
       </div>
       <div>
         <div class="label mb-1">下跌</div>
-        <div class="font-mono type-subheading numeric" :class="isCN ? 'text-accent' : 'text-success'">
+        <div class="font-mono type-subheading numeric text-success">
           {{ summary?.down_count || 0 }}
         </div>
       </div>
@@ -76,7 +76,7 @@
       <!-- Leader -->
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <span class="label" :class="isCN ? 'text-success' : 'text-accent'">领涨</span>
+          <span class="label text-accent">领涨</span>
           <NuxtLink
             v-if="summary?.leader?.ticker"
             :to="`/market-detail/${marketType}/${summary.leader.ticker}`"
@@ -86,14 +86,14 @@
           </NuxtLink>
           <span v-else class="font-mono text-body-sm text-disabled">--</span>
         </div>
-        <span class="font-mono text-caption numeric" :class="isCN ? 'text-success' : 'text-accent'">
+        <span class="font-mono text-caption numeric text-accent">
           {{ summary?.leader ? formatPercent(summary.leader.change_pct) : '--' }}
         </span>
       </div>
       <!-- Laggard -->
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <span class="label" :class="isCN ? 'text-accent' : 'text-success'">领跌</span>
+          <span class="label text-success">领跌</span>
           <NuxtLink
             v-if="summary?.laggard?.ticker"
             :to="`/market-detail/${marketType}/${summary.laggard.ticker}`"
@@ -103,7 +103,7 @@
           </NuxtLink>
           <span v-else class="font-mono text-body-sm text-disabled">--</span>
         </div>
-        <span class="font-mono text-caption numeric" :class="isCN ? 'text-accent' : 'text-success'">
+        <span class="font-mono text-caption numeric text-success">
           {{ summary?.laggard ? formatPercent(summary.laggard.change_pct) : '--' }}
         </span>
       </div>
@@ -171,7 +171,6 @@ const props = withDefaults(defineProps<{
   summary?: MarketSummary
   indices: IndexSnapshot[]
   marketType: string
-  isCN?: boolean
   boardItems?: BoardItem[]
 }>(), {
   boardItems: () => [],
@@ -179,9 +178,6 @@ const props = withDefaults(defineProps<{
 
 function getChangeColor(change: number | null): string {
   if (change === null || change === undefined || Number.isNaN(change)) return 'text-disabled'
-  if (props.isCN) {
-    return change >= 0 ? 'text-success' : 'text-accent'
-  }
   return change >= 0 ? 'text-accent' : 'text-success'
 }
 

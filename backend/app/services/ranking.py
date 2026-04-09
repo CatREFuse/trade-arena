@@ -145,7 +145,12 @@ class RankingService:
                 for idx in range(min(len(sampled), len(sampled_times)))
             ]
 
-    async def get_leaderboard(self, market: str = "overall", include_empty: bool = True) -> LeaderboardOut:
+    async def get_leaderboard(
+        self,
+        market: str = "overall",
+        include_empty: bool = True,
+        include_sparkline: bool = True,
+    ) -> LeaderboardOut:
         db = self.db
 
         agents_result = await db.execute(select(Agent).where(Agent.is_deleted.is_(False)))
@@ -289,7 +294,8 @@ class RankingService:
         for i, r in enumerate(rankings):
             r.rank = i + 1
 
-        await self._attach_sparklines(rankings, initial_by_agent)
+        if include_sparkline:
+            await self._attach_sparklines(rankings, initial_by_agent)
         return LeaderboardOut(
             market=market,
             rankings=rankings,

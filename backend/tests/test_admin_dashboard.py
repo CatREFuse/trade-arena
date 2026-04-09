@@ -37,6 +37,9 @@ async def test_admin_logs_endpoint_returns_trade_logs(client):
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["total"] >= 1
+    assert payload["buy_total"] >= 1
+    assert payload["sell_total"] >= 0
     assert len(payload["items"]) >= 1
     assert "ticker" in payload["items"][0]
     assert "action" in payload["items"][0]
@@ -77,4 +80,20 @@ async def test_admin_dashboard_endpoint_returns_all_modules(client):
     assert "data_sources" in payload
     assert "market" in payload
     assert "trade_stats" in payload
+    assert "traffic" in payload
     assert payload["generated_at"].endswith("+00:00")
+
+
+@pytest.mark.asyncio
+async def test_admin_traffic_endpoint_collects_pageview(client):
+    post_response = await client.post("/api/analytics/pageview", json={"path": "/leaderboard"})
+    assert post_response.status_code == 200
+    assert post_response.json()["ok"] is True
+
+    response = await client.get("/api/admin/traffic?days=7&top=5")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_pv"] >= 1
+    assert payload["today_pv"] >= 1
+    assert any(item["path"] == "/leaderboard" for item in payload["top_pages"])

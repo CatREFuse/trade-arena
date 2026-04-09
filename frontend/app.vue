@@ -62,15 +62,6 @@
             </svg>
           </button>
 
-          <!-- Color Convention Toggle -->
-          <button
-            @click="toggleColor"
-            class="w-10 h-10 flex items-center justify-center text-disabled hover:text-secondary transition-colors"
-            :title="isCN ? 'Red Up Green Down (CN)' : 'Green Up Red Down (US)'"
-          >
-            <span class="font-mono text-xs">{{ isCN ? 'CN' : 'US' }}</span>
-          </button>
-
           <!-- Live Indicator -->
           <div class="ml-4 flex items-center gap-2">
             <span class="w-1.5 h-1.5 rounded-full" :class="sseConnected ? 'bg-success' : 'text-disabled bg-current'">
@@ -121,9 +112,43 @@ const navLinks = [
 const route = useRoute()
 const { connected: sseConnected } = useTradeEvents()
 const { isDark, toggle } = useAppearance()
-const { isCN, toggle: toggleColor } = useColorConvention()
 const { toasts } = useToastState()
 const currentYear = new Date().getFullYear()
+let lastTrackedPath = ''
+
+function normalizeTrackingPath(rawPath) {
+  const text = String(rawPath || '').trim()
+  if (!text) return '/'
+  return text.startsWith('/') ? text : `/${text}`
+}
+
+function sendPageView(path) {
+  const normalizedPath = normalizeTrackingPath(path)
+  if (!normalizedPath || normalizedPath === lastTrackedPath) return
+  lastTrackedPath = normalizedPath
+
+  const payload = JSON.stringify({ path: normalizedPath })
+  if (navigator.sendBeacon) {
+    const blob = new Blob([payload], { type: 'application/json' })
+    navigator.sendBeacon('/api/analytics/pageview', blob)
+    return
+  }
+
+  $fetch('/api/analytics/pageview', {
+    method: 'POST',
+    body: { path: normalizedPath },
+  }).catch(() => {})
+}
+
+if (import.meta.client) {
+  watch(
+    () => route.path,
+    (path) => {
+      sendPageView(path)
+    },
+    { immediate: true },
+  )
+}
 
 async function handleJoinNow() {
   if (route.path !== '/') {

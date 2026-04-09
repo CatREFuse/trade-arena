@@ -15,6 +15,7 @@ from app.database import get_db
 from app.models import Account, Agent, Position, Trade, Wallet
 from app.services.fx import FXService
 from app.services.market_data import MARKET_CACHE_VERSION, MarketDataService
+from app.services.traffic_analytics import TrafficAnalyticsService
 from app.utils.datetime import ensure_utc_datetime, normalize_iso_datetime
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -69,7 +70,7 @@ async def _collect_users(
     )
     agents = agent_rows.scalars().all()
     if not agents:
-        return {"total": int(total), "items": []}
+        return {"total": int(total), "limit": int(limit), "offset": int(offset), "items": []}
 
     agent_ids = [agent.id for agent in agents]
     account_rows = await db.execute(
@@ -158,16 +159,31 @@ async def _collect_users(
             }
         )
 
-    return {"total": int(total), "items": items}
+    return {"total": int(total), "limit": int(limit), "offset": int(offset), "items": items}
 
 
 async def _collect_logs(db: AsyncSession, limit: int, offset: int) -> dict:
+    total = (await db.execute(select(func.count()).select_from(Trade))).scalar() or 0
+    buy_total = (
+        await db.execute(select(func.count()).select_from(Trade).where(Trade.action == "buy"))
+    ).scalar() or 0
+    sell_total = (
+        await db.execute(select(func.count()).select_from(Trade).where(Trade.action == "sell"))
+    ).scalar() or 0
+
     trade_rows = await db.execute(
         select(Trade).order_by(Trade.created_at.desc()).limit(limit).offset(offset)
     )
     trades = trade_rows.scalars().all()
     if not trades:
-        return {"items": []}
+        return {
+            "total": int(total),
+            "buy_total": int(buy_total),
+            "sell_total": int(sell_total),
+            "limit": int(limit),
+            "offset": int(offset),
+            "items": [],
+        }
 
     account_ids = list({trade.account_id for trade in trades})
     account_rows = await db.execute(select(Account).where(Account.id.in_(account_ids)))
@@ -200,7 +216,19 @@ async def _collect_logs(db: AsyncSession, limit: int, offset: int) -> dict:
                 "agent_avatar": agent.avatar if agent else "",
             }
         )
-    return {"items": items}
+    return {
+        "total": int(total),
+        "buy_total": int(buy_total),
+        "sell_total": int(sell_total),
+        "limit": int(limit),
+        "offset": int(offset),
+        "items": items,
+    }
+
+
+async def _collect_traffic(redis, days: int = 7, top: int = 15) -> dict:
+    service = TrafficAnalyticsService(redis)
+    return await service.get_report(days=days, top=top)
 
 
 async def _collect_data_sources(request: Request, db: AsyncSession) -> dict:
@@ -449,10 +477,21 @@ async def admin_trade_stats(
     return await _collect_trade_stats(db, days=days)
 
 
+@router.get("/traffic")
+async def admin_traffic(
+    request: Request,
+    days: int = Query(default=7, ge=1, le=30),
+    top: int = Query(default=15, ge=1, le=100),
+):
+    return await _collect_traffic(request.app.state.redis, days=days, top=top)
+
+
 @router.get("/dashboard")
 async def admin_dashboard(
     request: Request,
     live_market: bool = Query(default=False),
+    traffic_days: int = Query(default=7, ge=1, le=30),
+    traffic_top: int = Query(default=15, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     users = await _collect_users(db, limit=20, offset=0, redis=request.app.state.redis)
@@ -460,6 +499,7 @@ async def admin_dashboard(
     data_sources = await _collect_data_sources(request, db)
     market = await _collect_market_snapshot(request, live=live_market)
     trade_stats = await _collect_trade_stats(db, days=7)
+    traffic = await _collect_traffic(request.app.state.redis, days=traffic_days, top=traffic_top)
     return {
         "generated_at": datetime.now(timezone.utc),
         "users": users,
@@ -467,4 +507,5 @@ async def admin_dashboard(
         "data_sources": data_sources,
         "market": market,
         "trade_stats": trade_stats,
+        "traffic": traffic,
     }

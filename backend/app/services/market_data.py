@@ -2588,14 +2588,29 @@ class MarketDataService:
             2,
         ) if board else 0.0
         market_status = board[0].market_status if board else self.market_calendar.status(market, now_utc=now_utc)
+        display_timezone = (settings.market_display_timezone or "").strip() or None
         return MarketSummaryOut(
             market=market,
             name=name,
             market_status=market_status,
-            timezone=self.market_calendar.timezone_name(market) or "UTC",
-            session_windows=self.market_calendar.session_windows(market),
-            now_local=self.market_calendar.now_local_iso(market, now_utc=now_utc),
-            next_open_local=self.market_calendar.next_open_local_iso(market, now_utc=now_utc),
+            timezone=self.market_calendar.timezone_name(
+                market, display_timezone_name=display_timezone
+            ) or "UTC",
+            session_windows=self.market_calendar.session_windows(
+                market,
+                now_utc=now_utc,
+                display_timezone_name=display_timezone,
+            ),
+            now_local=self.market_calendar.now_local_iso(
+                market,
+                now_utc=now_utc,
+                display_timezone_name=display_timezone,
+            ),
+            next_open_local=self.market_calendar.next_open_local_iso(
+                market,
+                now_utc=now_utc,
+                display_timezone_name=display_timezone,
+            ),
             stock_count=self._market_trade_universe_size(market),
             up_count=up_count,
             down_count=down_count,

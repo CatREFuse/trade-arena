@@ -27,6 +27,7 @@ class SeededAccounts:
 class FakeRedis:
     def __init__(self) -> None:
         self.store: dict[str, bytes] = {}
+        self.hash_store: dict[str, dict[str, int]] = {}
         self.set_calls: list[tuple[str, int, str]] = []
 
     async def get(self, key: str) -> bytes | None:
@@ -42,7 +43,34 @@ class FakeRedis:
             if key in self.store:
                 del self.store[key]
                 deleted += 1
+            if key in self.hash_store:
+                del self.hash_store[key]
+                deleted += 1
         return deleted
+
+    async def incr(self, key: str) -> int:
+        current = self.store.get(key)
+        value = int((current.decode("utf-8") if isinstance(current, bytes) else current) or 0) + 1
+        self.store[key] = str(value).encode("utf-8")
+        return value
+
+    async def hincrby(self, key: str, field: str, amount: int = 1) -> int:
+        bucket = self.hash_store.setdefault(key, {})
+        bucket[field] = int(bucket.get(field, 0)) + int(amount)
+        return bucket[field]
+
+    async def hgetall(self, key: str) -> dict[bytes, bytes]:
+        bucket = self.hash_store.get(key, {})
+        return {
+            str(field).encode("utf-8"): str(value).encode("utf-8")
+            for field, value in bucket.items()
+        }
+
+    async def expire(self, _key: str, _ttl: int) -> bool:
+        return True
+
+    async def ping(self) -> bool:
+        return True
 
     async def publish(self, *_args, **_kwargs) -> int:
         return 0

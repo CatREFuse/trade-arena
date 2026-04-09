@@ -5,7 +5,9 @@
         <h2 class="text-lg font-bold text-main">操作日志</h2>
         <p class="text-xs text-secondary mt-1">最近交易行为流</p>
       </div>
-      <div class="text-xs text-tertiary">最近 {{ items.length }} 条</div>
+      <div class="text-xs text-tertiary">
+        总交易 {{ props.total }} · 买入 {{ props.buyTotal }} · 卖出 {{ props.sellTotal }}
+      </div>
     </div>
 
     <div class="mt-4 overflow-x-auto">
@@ -20,9 +22,9 @@
             <th class="py-2 font-medium">理由</th>
           </tr>
         </thead>
-        <tbody v-if="items.length">
+        <tbody v-if="props.items.length">
           <tr
-            v-for="log in items"
+            v-for="log in props.items"
             :key="log.id"
             class="border-b border-zinc-200/50 dark:border-zinc-700/50 last:border-0"
           >
@@ -49,7 +51,31 @@
           </tr>
         </tbody>
       </table>
-      <div v-if="!items.length" class="py-6 text-center text-xs text-tertiary">暂无日志</div>
+      <div v-if="!props.items.length" class="py-6 text-center text-xs text-tertiary">暂无日志</div>
+    </div>
+
+    <div v-if="totalPages > 1" class="mt-4 flex items-center justify-between gap-3">
+      <div class="text-xs text-tertiary">
+        第 {{ props.page }} / {{ totalPages }} 页
+      </div>
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-main hover:bg-zinc-200 dark:hover:bg-zinc-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="props.pending || props.page <= 1"
+          @click="$emit('page-change', props.page - 1)"
+        >
+          上一页
+        </button>
+        <button
+          type="button"
+          class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-main hover:bg-zinc-200 dark:hover:bg-zinc-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="props.pending || props.page >= totalPages"
+          @click="$emit('page-change', props.page + 1)"
+        >
+          下一页
+        </button>
+      </div>
     </div>
   </section>
 </template>
@@ -58,9 +84,23 @@
 import type { AdminLogItem } from '~/composables/useAdminDashboard'
 import { parseApiDate } from '~/utils/date'
 
-defineProps<{
+const props = withDefaults(defineProps<{
   items: AdminLogItem[]
+  total: number
+  buyTotal: number
+  sellTotal: number
+  page: number
+  pageSize: number
+  pending?: boolean
+}>(), {
+  pending: false,
+})
+
+defineEmits<{
+  (event: 'page-change', page: number): void
 }>()
+
+const totalPages = computed(() => Math.max(1, Math.ceil(props.total / Math.max(props.pageSize, 1))))
 
 function formatDate(value: string) {
   const date = parseApiDate(value)

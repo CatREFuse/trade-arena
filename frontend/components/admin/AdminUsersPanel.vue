@@ -5,7 +5,9 @@
         <h2 class="text-lg font-bold text-main">用户信息</h2>
         <p class="text-xs text-secondary mt-1">注册用户、账户与交易活跃度</p>
       </div>
-      <div class="text-xs text-tertiary">总数 {{ total }}</div>
+      <div class="text-xs text-tertiary">
+        总注册 {{ props.total }} · 本页 {{ props.items.length }}
+      </div>
     </div>
 
     <div class="mt-4 overflow-x-auto">
@@ -21,9 +23,9 @@
             <th class="py-2 font-medium">注册时间</th>
           </tr>
         </thead>
-        <tbody v-if="items.length">
+        <tbody v-if="props.items.length">
           <tr
-            v-for="user in items"
+            v-for="user in props.items"
             :key="user.id"
             class="border-b border-zinc-200/50 dark:border-zinc-700/50 last:border-0"
           >
@@ -42,7 +44,31 @@
           </tr>
         </tbody>
       </table>
-      <div v-if="!items.length" class="py-6 text-center text-xs text-tertiary">暂无数据</div>
+      <div v-if="!props.items.length" class="py-6 text-center text-xs text-tertiary">暂无数据</div>
+    </div>
+
+    <div v-if="totalPages > 1" class="mt-4 flex items-center justify-between gap-3">
+      <div class="text-xs text-tertiary">
+        第 {{ props.page }} / {{ totalPages }} 页
+      </div>
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-main hover:bg-zinc-200 dark:hover:bg-zinc-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="props.pending || props.page <= 1"
+          @click="$emit('page-change', props.page - 1)"
+        >
+          上一页
+        </button>
+        <button
+          type="button"
+          class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-main hover:bg-zinc-200 dark:hover:bg-zinc-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="props.pending || props.page >= totalPages"
+          @click="$emit('page-change', props.page + 1)"
+        >
+          下一页
+        </button>
+      </div>
     </div>
   </section>
 </template>
@@ -51,10 +77,21 @@
 import type { AdminUserItem } from '~/composables/useAdminDashboard'
 import { parseApiDate } from '~/utils/date'
 
-defineProps<{
+const props = withDefaults(defineProps<{
   total: number
   items: AdminUserItem[]
+  page: number
+  pageSize: number
+  pending?: boolean
+}>(), {
+  pending: false,
+})
+
+defineEmits<{
+  (event: 'page-change', page: number): void
 }>()
+
+const totalPages = computed(() => Math.max(1, Math.ceil(props.total / Math.max(props.pageSize, 1))))
 
 function formatDate(value: string) {
   const date = parseApiDate(value)

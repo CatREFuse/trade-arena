@@ -373,8 +373,8 @@ async def test_get_market_overview_caches_aggregate_snapshot(fake_redis, monkeyp
     overview = await service.get_market_overview()
     assert overview.markets[0].stock_count == len(md.MARKET_TRADE_UNIVERSE["us"])
     assert overview.markets[0].market_status == "open"
-    assert overview.markets[0].timezone == "America/New_York"
-    assert overview.markets[0].session_windows == ["09:30-16:00"]
+    assert overview.markets[0].timezone == md.settings.market_display_timezone
+    assert overview.markets[0].session_windows
     assert overview.markets[0].leader is not None
     assert overview.boards["us"][0].ticker == "AAPL"
     assert fake_redis.set_calls[-1][0] == "market:overview:v3"

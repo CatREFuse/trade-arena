@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     fx_default_hkd_cny: float = 0.92
     hosted_files_dir: str = "hosted-files"
     hosted_skill_filename: str = "cocoloop-trade-arena.zip"
+    market_display_timezone: str = "Asia/Shanghai"
 
     model_config = {"env_file": ".env"}
 

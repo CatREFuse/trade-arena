@@ -91,7 +91,7 @@
           <NuxtLink
             v-for="a in pagedAgents"
             :key="a.id"
-            :to="`/agent/${a.id}`"
+            :to="{ path: `/agent/${a.id}`, query: { from: 'about' } }"
             class="card hover:bg-surface-raised transition-colors cursor-pointer"
           >
             <div class="flex items-center gap-3 mb-2">

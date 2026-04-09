@@ -2,79 +2,49 @@
   <section class="card">
     <div class="flex items-center justify-between gap-3">
       <div>
-        <h2 class="text-lg font-bold text-main">数据源状态</h2>
-        <p class="text-xs text-secondary mt-1">基础设施、上游连通性和缓存状态</p>
+        <h2 class="text-lg font-bold text-main">数据源总览</h2>
+        <p class="text-xs text-secondary mt-1">基础设施、缓存、上游探活与 Provider 状态</p>
       </div>
-    </div>
-
-    <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-      <div class="rounded-2xl bg-overlay-2 px-4 py-3">
-        <div class="text-[11px] uppercase tracking-widest text-tertiary">基础设施</div>
-        <div class="mt-2 text-xs text-main flex items-center gap-3">
-          <span :class="statusClass(status.db.ok)">DB {{ status.db.ok ? '正常' : '异常' }}</span>
-          <span :class="statusClass(status.redis.ok)">Redis {{ status.redis.ok ? '正常' : '异常' }}</span>
-        </div>
-      </div>
-      <div class="rounded-2xl bg-overlay-2 px-4 py-3">
-        <div class="text-[11px] uppercase tracking-widest text-tertiary">缓存</div>
-        <div class="mt-2 text-xs text-main flex flex-wrap gap-2">
-          <span
-            v-for="(cache, key) in status.cache"
-            :key="key"
-            class="px-2 py-1 rounded-lg"
-            :class="statusClass(cache.present)"
-          >
-            {{ key }} {{ cache.present ? '命中' : '空' }}
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <div class="mt-4">
-      <div class="text-[11px] uppercase tracking-widest text-tertiary mb-2">上游探活</div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-        <div
-          v-for="probe in status.probes"
-          :key="probe.name"
-          class="rounded-xl bg-overlay-2 px-3 py-2 text-xs flex items-center justify-between gap-3"
-        >
-          <span class="text-secondary truncate">{{ probe.name }}</span>
-          <span :class="statusClass(probe.ok)" class="tabular-nums">{{ probe.latency_ms }}ms</span>
-        </div>
+      <div class="text-xs text-tertiary">
+        共 {{ rows.length }} 项
       </div>
     </div>
 
     <div class="mt-4 overflow-x-auto">
-      <div class="text-[11px] uppercase tracking-widest text-tertiary mb-2">Provider 熔断状态</div>
       <table class="min-w-full text-xs">
         <thead>
           <tr class="text-left text-tertiary border-b border-zinc-200/80 dark:border-zinc-700/80">
-            <th class="py-2 pr-4 font-medium">类型</th>
-            <th class="py-2 pr-4 font-medium">市场</th>
-            <th class="py-2 pr-4 font-medium">Provider</th>
-            <th class="py-2 pr-4 font-medium">失败次数</th>
-            <th class="py-2 font-medium">熔断剩余(s)</th>
+            <th class="py-2 pr-4 font-medium">分类</th>
+            <th class="py-2 pr-4 font-medium">名称</th>
+            <th class="py-2 pr-4 font-medium">状态</th>
+            <th class="py-2 pr-4 font-medium">详情</th>
+            <th class="py-2 font-medium">指标</th>
           </tr>
         </thead>
-        <tbody v-if="status.provider_circuits.length">
+        <tbody v-if="rows.length">
           <tr
-            v-for="item in status.provider_circuits"
-            :key="`${item.data_type}-${item.market}-${item.provider}`"
+            v-for="row in rows"
+            :key="row.id"
             class="border-b border-zinc-200/50 dark:border-zinc-700/50 last:border-0"
           >
-            <td class="py-2 pr-4 text-secondary">{{ item.data_type }}</td>
-            <td class="py-2 pr-4 text-secondary">{{ item.market }}</td>
-            <td class="py-2 pr-4 text-main">{{ item.provider }}</td>
-            <td class="py-2 pr-4 text-main tabular-nums">{{ item.failures }}</td>
-            <td class="py-2" :class="statusClass(!item.circuit_open)">
-              {{ item.cooldown_remaining_seconds }}
+            <td class="py-2 pr-4 text-secondary">{{ row.category }}</td>
+            <td class="py-2 pr-4 text-main">{{ row.name }}</td>
+            <td class="py-2 pr-4">
+              <span
+                class="px-2 py-0.5 rounded-full text-[10px] font-medium"
+                :class="row.ok
+                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'"
+              >
+                {{ row.ok ? '正常' : '异常' }}
+              </span>
             </td>
+            <td class="py-2 pr-4 text-secondary max-w-[24rem] truncate">{{ row.detail || '-' }}</td>
+            <td class="py-2 text-main tabular-nums">{{ row.metric || '-' }}</td>
           </tr>
         </tbody>
       </table>
-      <div v-if="!status.provider_circuits.length" class="py-4 text-center text-xs text-tertiary">
-        当前无熔断记录
-      </div>
+      <div v-if="!rows.length" class="py-4 text-center text-xs text-tertiary">暂无数据</div>
     </div>
   </section>
 </template>
@@ -82,13 +52,84 @@
 <script setup lang="ts">
 import type { AdminDataSourceStatus } from '~/composables/useAdminDashboard'
 
-defineProps<{
+interface DataSourceRow {
+  id: string
+  category: string
+  name: string
+  ok: boolean
+  detail: string
+  metric: string
+}
+
+const props = defineProps<{
   status: AdminDataSourceStatus
 }>()
 
-function statusClass(ok: boolean) {
-  return ok
-    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-900/30'
-    : 'text-rose-700 dark:text-rose-300 bg-rose-100/70 dark:bg-rose-900/30'
-}
+const rows = computed<DataSourceRow[]>(() => {
+  const list: DataSourceRow[] = []
+
+  list.push({
+    id: 'infra-db',
+    category: '基础设施',
+    name: 'PostgreSQL',
+    ok: props.status.db.ok,
+    detail: props.status.db.detail || '',
+    metric: '-',
+  })
+  list.push({
+    id: 'infra-redis',
+    category: '基础设施',
+    name: 'Redis',
+    ok: props.status.redis.ok,
+    detail: props.status.redis.detail || '',
+    metric: '-',
+  })
+
+  for (const [cacheKey, cacheValue] of Object.entries(props.status.cache || {})) {
+    list.push({
+      id: `cache-${cacheKey}`,
+      category: '缓存',
+      name: cacheKey,
+      ok: Boolean(cacheValue.present),
+      detail: cacheValue.updated_at ? `更新时间 ${cacheValue.updated_at}` : '',
+      metric: cacheValue.present ? '命中' : '空',
+    })
+  }
+
+  for (const probe of props.status.probes || []) {
+    list.push({
+      id: `probe-${probe.name}`,
+      category: '上游探活',
+      name: probe.name,
+      ok: Boolean(probe.ok),
+      detail: probe.detail || '',
+      metric: `${probe.latency_ms}ms`,
+    })
+  }
+
+  for (const [key, chain] of Object.entries(props.status.provider_chains || {})) {
+    const chainList = Array.isArray(chain) ? chain : []
+    list.push({
+      id: `chain-${key}`,
+      category: 'Provider 链路',
+      name: key,
+      ok: chainList.length > 0,
+      detail: chainList.join(' -> '),
+      metric: `${chainList.length} 个`,
+    })
+  }
+
+  for (const item of props.status.provider_circuits || []) {
+    list.push({
+      id: `circuit-${item.data_type}-${item.market}-${item.provider}`,
+      category: '熔断状态',
+      name: `${item.provider} (${item.market}/${item.data_type})`,
+      ok: !item.circuit_open,
+      detail: `失败 ${item.failures} 次`,
+      metric: `${item.cooldown_remaining_seconds}s`,
+    })
+  }
+
+  return list
+})
 </script>

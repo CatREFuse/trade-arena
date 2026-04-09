@@ -52,11 +52,11 @@
           </div>
           <div>
             <div class="label mb-1">上涨</div>
-            <div class="font-mono type-subheading numeric text-success">{{ section.upCount }}</div>
+            <div class="font-mono type-subheading numeric text-accent">{{ section.upCount }}</div>
           </div>
           <div>
             <div class="label mb-1">下跌</div>
-            <div class="font-mono type-subheading numeric text-accent">{{ section.downCount }}</div>
+            <div class="font-mono type-subheading numeric text-success">{{ section.downCount }}</div>
           </div>
           <div>
             <div class="label mb-1">平盘</div>
@@ -115,8 +115,6 @@ interface MarketOverviewResponse {
   markets: MarketSummary[]
   updated_at?: string
 }
-
-const { isCN } = useColorConvention()
 
 const MARKET_META: Record<MarketKey, { badge: string; title: string; emoji: string }> = {
   us: { badge: '美国', title: '美股市场', emoji: '🇺🇸' },
@@ -183,9 +181,6 @@ const marketSections = computed(() => {
 
 function getChangeColor(change: number | undefined): string {
   if (change === undefined) return 'text-disabled'
-  if (isCN.value) {
-    return change >= 0 ? 'text-success' : 'text-accent'
-  }
   return change >= 0 ? 'text-accent' : 'text-success'
 }
 

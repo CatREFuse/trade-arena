@@ -120,11 +120,10 @@ interface LeaderboardResponse {
   rankings?: LeaderboardRanking[]
 }
 
-const { isCN } = useColorConvention()
 const ITEMS_PER_PAGE = 5
 const currentPage = ref(1)
 
-const { data, pending, error } = useLazyFetch<LeaderboardResponse>('/api/leaderboard?market=overall&include_empty=false', {
+const { data, pending, error } = useLazyFetch<LeaderboardResponse>('/api/leaderboard?market=overall&include_empty=false&include_sparkline=false', {
   key: 'home-leaderboard-overall',
   default: () => ({ rankings: [] }),
   deep: false,
@@ -159,9 +158,6 @@ function goToPage(page: number) {
 }
 
 function getReturnColor(value: number): string {
-  if (isCN.value) {
-    return value >= 0 ? 'text-success' : 'text-accent'
-  }
   return value >= 0 ? 'text-accent' : 'text-success'
 }
 

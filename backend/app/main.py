@@ -20,6 +20,7 @@ from app.routers import (
     dev,
     files,
     admin,
+    analytics,
 )
 from app.services.market_data import MarketDataService
 from app.services.market_providers import close_shared_http_clients
@@ -96,3 +97,4 @@ app.include_router(agents.router)
 app.include_router(dev.router)
 app.include_router(files.router)
 app.include_router(admin.router)
+app.include_router(analytics.router)

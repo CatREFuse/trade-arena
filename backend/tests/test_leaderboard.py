@@ -245,3 +245,30 @@ async def test_fully_empty_agent_is_hidden_when_include_empty_is_false(
     assert all(item["agent_id"] != "gamma" for item in payload["rankings"])
     assert payload["total_participants"] == 2
     assert payload["ranked_participants"] == 1
+
+
+@pytest.mark.asyncio
+async def test_leaderboard_can_disable_sparkline_payload(
+    client,
+    seeded_accounts,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def fake_get_quotes_batch(self, tickers: list[str]):
+        return _mock_quote_map(*tickers)
+
+    async def fake_get_rate_to_cny(self, market: str):
+        if market == "us":
+            return Decimal("7.20"), "USD/CNY", None
+        if market == "hk":
+            return Decimal("0.92"), "HKD/CNY", None
+        return Decimal("1"), "CNY/CNY", None
+
+    monkeypatch.setattr(md.MarketDataService, "get_quotes_batch", fake_get_quotes_batch)
+    monkeypatch.setattr(fx_module.FXService, "get_rate_to_cny", fake_get_rate_to_cny)
+
+    response = await client.get("/api/leaderboard?market=overall&include_sparkline=false")
+
+    assert response.status_code == 200
+    payload = response.json()
+    target = next(item for item in payload["rankings"] if item["agent_id"] == seeded_accounts.agent_id)
+    assert target["sparkline_3d"] == []
