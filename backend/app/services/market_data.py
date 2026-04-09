@@ -316,26 +316,6 @@ def _extract_board_tickers(market: str) -> list[str]:
     return [entry["ticker"] for entry in MARKET_BOARD.get(market, [])]
 
 
-def _market_board_name_map(market: str) -> dict[str, str]:
-    return {
-        str(entry.get("ticker") or "").strip().upper(): str(entry.get("name") or "").strip()
-        for entry in MARKET_BOARD.get(market, [])
-        if entry.get("ticker")
-    }
-
-
-def _build_market_board_entries(market: str) -> list[dict[str, str]]:
-    ticker_names = _market_board_name_map(market)
-    tickers = MARKET_TRADE_UNIVERSE.get(market) or _extract_board_tickers(market)
-    return [
-        {
-            "ticker": ticker,
-            "name": ticker_names.get(ticker, ticker),
-        }
-        for ticker in tickers
-    ]
-
-
 def _build_unique_tickers(
     base_tickers: list[str],
     extra_tickers: list[str],
@@ -2366,7 +2346,7 @@ class MarketDataService:
         )
 
     async def _build_and_store_market_board(self, cache_key: str, market: str) -> MarketBoardSnapshotOut:
-        entries = _build_market_board_entries(market)
+        entries = MARKET_BOARD.get(market, [])
         last_good_cache_key = f"market:board:last-good:{MARKET_CACHE_VERSION}:{market}"
         if not entries:
             return MarketBoardSnapshotOut(items=[], updated_at=datetime.now(timezone.utc))

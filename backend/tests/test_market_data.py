@@ -86,18 +86,6 @@ def test_market_trade_universe_uses_large_cn_hk_pool():
     assert md.MARKET_BOARD["hk"][0]["ticker"] in md.MARKET_TRADE_UNIVERSE["hk"]
 
 
-def test_market_board_entries_expand_to_trade_universe():
-    cn_entries = md._build_market_board_entries("cn")
-    hk_entries = md._build_market_board_entries("hk")
-
-    assert len(cn_entries) == len(md.MARKET_TRADE_UNIVERSE["cn"])
-    assert len(hk_entries) == len(md.MARKET_TRADE_UNIVERSE["hk"])
-    assert cn_entries[0]["ticker"] == md.MARKET_TRADE_UNIVERSE["cn"][0]
-    assert hk_entries[0]["ticker"] == md.MARKET_TRADE_UNIVERSE["hk"][0]
-    assert cn_entries[-1]["name"] == cn_entries[-1]["ticker"]
-    assert hk_entries[-1]["name"] == hk_entries[-1]["ticker"]
-
-
 def test_provider_chain_prioritizes_akshare_for_cn_and_hk(fake_redis):
     service = md.MarketDataService(fake_redis)
     cn_chain = service._quote_providers("600519.SH")
@@ -212,7 +200,6 @@ async def test_get_market_board_uses_calendar_status_over_provider_status(fake_r
 
     board = await service.get_market_board("cn", refresh=True)
     assert board.items
-    assert len(board.items) == len(md.MARKET_TRADE_UNIVERSE["cn"])
     assert all(item.market_status == "closed" for item in board.items)
 
 
@@ -300,13 +287,13 @@ async def test_get_market_board_batches_large_universe_and_falls_back(fake_redis
 
     board = await service.get_market_board("us")
 
-    assert len(board.items) == len(md.MARKET_TRADE_UNIVERSE["us"])
+    assert len(board.items) == len(md.MARKET_BOARD["us"])
     assert isinstance(board.items[0], MarketBoardItemOut)
     assert board.items[0].ticker == "AAPL"
     assert board.items[0].name == "Fallback AAPL"
     assert board.items[1].ticker == "MSFT"
     assert batch_calls
-    assert len(batch_calls) == (len(md.MARKET_TRADE_UNIVERSE["us"]) + 3) // 4
+    assert len(batch_calls) == (len(md.MARKET_BOARD["us"]) + 3) // 4
     assert len(fallback_calls) == len(batch_calls)
     written_keys = [call[0] for call in fake_redis.set_calls]
     assert "market:board:v3:us" in written_keys
