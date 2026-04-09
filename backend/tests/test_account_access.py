@@ -44,6 +44,17 @@ def _read_hosted_skill_version() -> str:
     return (match.group("dq") or match.group("sq") or match.group("raw")).strip()
 
 
+def _read_skill_version_from_zip_bytes(raw: bytes) -> str:
+    archive = zipfile.ZipFile(io.BytesIO(raw))
+    content = archive.read("SKILL.md").decode("utf-8")
+    match = re.search(
+        r"""(?m)^version:\s*(?:"(?P<dq>[^"]+)"|'(?P<sq>[^']+)'|(?P<raw>[^\s#]+))\s*$""",
+        content,
+    )
+    assert match
+    return (match.group("dq") or match.group("sq") or match.group("raw")).strip()
+
+
 def _mock_quote_map(*tickers: str) -> dict[str, QuoteOut]:
     return {
         ticker: QuoteOut(
@@ -331,3 +342,23 @@ async def test_static_file_endpoint_prefers_existing_file(
 
     assert response.status_code == 200
     assert response.content == b"custom-content"
+
+
+@pytest.mark.asyncio
+async def test_static_file_endpoint_rebuilds_outdated_skill_archive(
+    client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    monkeypatch.setattr(settings, "hosted_files_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "hosted_skill_filename", "cocoloop-trade-arena.zip")
+
+    stale_file = tmp_path / "cocoloop-trade-arena.zip"
+    with zipfile.ZipFile(stale_file, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("SKILL.md", "---\nname: trade-arena\nversion: 0.0.1\n---\n")
+        archive.writestr("config.json", "{}")
+
+    response = await client.get("/api/file/cocoloop-trade-arena.zip")
+
+    assert response.status_code == 200
+    assert _read_skill_version_from_zip_bytes(response.content) == _read_hosted_skill_version()
+    archive = zipfile.ZipFile(io.BytesIO(response.content))
+    assert "scripts/quickstart.py" in archive.namelist()

@@ -159,6 +159,7 @@ curl --noproxy '*' -H "Authorization: Bearer <OPS_API_KEY>" "http://127.0.0.1:90
 - Skill 功能变动时必须更新版本号（`SKILL.md` front matter 的 `version`）
 - 发布前必须删除 `__pycache__` 与 `.pyc` 文件
 - 通过浏览器执行上传发布：`https://clawhub.ai/publish-skill?updateSlug=trade-arena`
+- 站点托管默认链接 `/file/cocoloop-trade-arena.zip` 必须始终指向最新版本（用于旧版 skill 升级兜底）
 
 推荐顺序（版本有更新时）：
 1. 本地完成 Skill 改动并更新版本号（`cocoloop-trade-arena/SKILL.md` 与 `skill-runtime/cocoloop-trade-arena/SKILL.md`）。
@@ -181,14 +182,24 @@ print(out)
 PY
 ```
 
-4. 浏览器打开发布页并上传 Skill（目录 `cocoloop-trade-arena/`）：
+4. 同步保留版本化托管包（用于历史版本兜底）：
+
+```bash
+cp hosted-files/cocoloop-trade-arena.zip "hosted-files/cocoloop-trade-arena-v<当前版本>.zip"
+```
+
+说明：
+- 旧版 skill 可能仍从站点托管链接拉更新，默认链接必须保持最新。
+- 可额外保留历史版本文件（如 `cocoloop-trade-arena-v1.4.2.zip`）用于紧急回退。
+
+5. 浏览器打开发布页并上传 Skill（目录 `cocoloop-trade-arena/`）：
 
 ```bash
 open "https://clawhub.ai/publish-skill?updateSlug=trade-arena"
 ```
 
-5. 与步骤 4 同步执行 `git push`，触发 webhook CI/CD 部署（`main` 分支）。
-6. 发布后双向核对：
+6. 与步骤 5 同步执行 `git push`，触发 webhook CI/CD 部署（`main` 分支）。
+7. 发布后双向核对：
    - ClawHub 页面版本号是否已更新
    - 线上接口 `GET /api/agents/skill/version` 与 `/file/cocoloop-trade-arena.zip` 是否与当前版本一致
 
