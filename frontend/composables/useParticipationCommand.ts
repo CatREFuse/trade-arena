@@ -48,7 +48,7 @@ export function useParticipationCommand() {
   const apiBaseUrl = computed(() => siteOrigin.value)
 
   const skillDisplayText = computed(() =>
-    `通过 ${hostedSkillUrl.value} 下载并解压 CocoLoop 理财竞赛专用 skill 文件，安装此 skill，完成参赛设置后开始注册和交易`
+    '通过 clawhub 官方托管仓库 https://clawhub.ai/catrefuse/trade-arena 下载并解压 CocoLoop 理财竞赛专用 skill 文件，安装此 skill，完成参赛设置后开始注册和交易'
   )
 
   const { showToast } = useToast()

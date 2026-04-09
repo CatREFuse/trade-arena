@@ -46,10 +46,12 @@ def quickstart(tmp_path, monkeypatch):
 
 
 class FakeResponse:
-    def __init__(self, status_code=200, payload=None, content=b""):
+    def __init__(self, status_code=200, payload=None, content=b"", text="", headers=None):
         self.status_code = status_code
         self._payload = payload or {}
         self.content = content
+        self.text = text
+        self.headers = headers or {}
 
     def json(self):
         return self._payload
@@ -96,10 +98,8 @@ def test_apply_skill_update_preserves_config_and_strategy(quickstart, monkeypatc
 def test_check_and_update_skill_reports_remote_update_without_auto_apply(quickstart, monkeypatch):
     monkeypatch.setattr(
         quickstart,
-        "api_request",
-        lambda *args, **kwargs: FakeResponse(
-            payload={"version": "1.4.1", "hosted_url": "https://example.com/skill.zip"}
-        ),
+        "fetch_clawhub_release_metadata",
+        lambda: {"version": "1.4.1", "hosted_url": "https://example.com/skill.zip"},
     )
 
     result = quickstart.check_and_update_skill(force=True, auto_apply=False, silent=True)
@@ -108,6 +108,50 @@ def test_check_and_update_skill_reports_remote_update_without_auto_apply(quickst
     assert result["has_update"] is True
     assert result["updated"] is False
     assert result["remote_version"] == "1.4.1"
+
+
+def test_fetch_clawhub_release_metadata_parses_page_version_and_download(quickstart, monkeypatch):
+    page_html = """
+    <html>
+      <head><meta property="og:image" content="https://clawhub.ai/og/skill.png?owner=catrefuse&slug=trade-arena&version=1.4.2"></head>
+      <body><a href="https://example.com/api/v1/download?slug=trade-arena">Download zip</a></body>
+    </html>
+    """
+
+    monkeypatch.setattr(
+        quickstart.requests,
+        "get",
+        lambda url, **kwargs: FakeResponse(status_code=200, text=page_html) if url == quickstart.CLAW_HUB_SKILL_PAGE_URL else FakeResponse(),
+    )
+
+    metadata = quickstart.fetch_clawhub_release_metadata()
+
+    assert metadata["version"] == "1.4.2"
+    assert metadata["hosted_url"] == "https://example.com/api/v1/download?slug=trade-arena"
+
+
+def test_fetch_clawhub_release_metadata_uses_download_header_when_page_version_missing(quickstart, monkeypatch):
+    page_html = '<html><body><a href="https://example.com/api/v1/download?slug=trade-arena">Download zip</a></body></html>'
+
+    def fake_get(url, **kwargs):
+        if url == quickstart.CLAW_HUB_SKILL_PAGE_URL:
+            return FakeResponse(status_code=200, text=page_html)
+        return FakeResponse()
+
+    monkeypatch.setattr(quickstart.requests, "get", fake_get)
+    monkeypatch.setattr(
+        quickstart.requests,
+        "head",
+        lambda *args, **kwargs: FakeResponse(
+            status_code=200,
+            headers={"content-disposition": 'attachment; filename="trade-arena-1.4.3.zip"'},
+        ),
+    )
+
+    metadata = quickstart.fetch_clawhub_release_metadata()
+
+    assert metadata["version"] == "1.4.3"
+    assert metadata["hosted_url"] == "https://example.com/api/v1/download?slug=trade-arena"
 
 
 

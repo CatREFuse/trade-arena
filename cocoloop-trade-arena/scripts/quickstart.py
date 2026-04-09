@@ -11,12 +11,14 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import re
 import shutil
 import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urljoin
 
 import requests
 
@@ -25,6 +27,7 @@ CONFIG_FILE = SKILL_ROOT / "config.json"
 SKILL_MD_FILE = SKILL_ROOT / "SKILL.md"
 STRATEGY_FILE = SKILL_ROOT / "strategy.md"
 LEGACY_STRATEGY_FILE = SKILL_ROOT / "strategy.MD"
+CLAW_HUB_SKILL_PAGE_URL = "https://clawhub.ai/catrefuse/trade-arena"
 
 InputFunc = Callable[[str], str]
 
@@ -177,6 +180,87 @@ def _normalize_download_url(url: str, api_url: str) -> str:
 
 
 
+def _extract_clawhub_download_url(page_html: str) -> str:
+    if not page_html:
+        return ""
+
+    labeled = re.search(r'href="([^"]+)"[^>]*>\s*Download zip\s*<', page_html, flags=re.IGNORECASE)
+    if labeled:
+        return urljoin(CLAW_HUB_SKILL_PAGE_URL, labeled.group(1))
+
+    fallback = re.search(r'href="([^"]*api/v1/download\?slug=trade-arena[^"]*)"', page_html, flags=re.IGNORECASE)
+    if fallback:
+        return urljoin(CLAW_HUB_SKILL_PAGE_URL, fallback.group(1))
+    return ""
+
+
+def _extract_clawhub_version(page_html: str) -> str:
+    if not page_html:
+        return ""
+
+    og_match = re.search(r'og/skill\.png[^"]*version=([0-9]+(?:\.[0-9]+)+)', page_html, flags=re.IGNORECASE)
+    if og_match:
+        return og_match.group(1)
+
+    badge_match = re.search(r'>\s*v(?:<!-- -->)?\s*([0-9]+(?:\.[0-9]+)+)\s*<', page_html, flags=re.IGNORECASE)
+    if badge_match:
+        return badge_match.group(1)
+
+    script_match = re.search(r'"version"\s*:\s*"([0-9]+(?:\.[0-9]+)+)"', page_html, flags=re.IGNORECASE)
+    if script_match:
+        return script_match.group(1)
+    return ""
+
+
+def _extract_version_from_content_disposition(content_disposition: str) -> str:
+    if not content_disposition:
+        return ""
+    match = re.search(
+        r'filename\*?=(?:"[^"]*?([0-9]+(?:\.[0-9]+)+)\.zip"|\S*?([0-9]+(?:\.[0-9]+)+)\.zip)',
+        content_disposition,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return ""
+    return match.group(1) or match.group(2) or ""
+
+
+def _resolve_version_from_download(download_url: str) -> str:
+    if not download_url:
+        return ""
+
+    try:
+        response = requests.head(download_url, allow_redirects=True, timeout=30)
+    except requests.RequestException:
+        response = requests.get(download_url, allow_redirects=True, stream=True, timeout=30)
+
+    version = _extract_version_from_content_disposition(response.headers.get("content-disposition", ""))
+    try:
+        response.close()
+    except Exception:
+        pass
+    return version
+
+
+def fetch_clawhub_release_metadata() -> dict:
+    response = requests.get(CLAW_HUB_SKILL_PAGE_URL, timeout=30)
+    if response.status_code != 200:
+        raise RuntimeError(f"http_{response.status_code}")
+
+    page_html = response.text
+    remote_version = _extract_clawhub_version(page_html)
+    hosted_url = _extract_clawhub_download_url(page_html)
+
+    if not hosted_url:
+        raise RuntimeError("missing_download_url")
+    if not remote_version:
+        remote_version = _resolve_version_from_download(hosted_url)
+    if not remote_version:
+        raise RuntimeError("missing_version")
+
+    return {"version": remote_version, "hosted_url": hosted_url}
+
+
 def api_request(method, endpoint, data=None, token=None):
     config = load_config()
     api_url = _normalize_api_url(config["api_url"])
@@ -248,42 +332,28 @@ def check_and_update_skill(force: bool = False, auto_apply: bool = True, silent:
     config["last_update_check_at"] = _now_utc_iso()
 
     try:
-        response = api_request("GET", "/api/agents/skill/version")
+        payload = fetch_clawhub_release_metadata()
     except requests.RequestException as exc:
-        config["setup_state"]["last_update_error"] = exc.__class__.__name__
+        config["setup_state"]["last_update_error"] = f"clawhub_{exc.__class__.__name__}"
         save_config(config, announce=False)
         if force and not silent:
             print(f"⚠️  检查更新失败: {exc}")
         return {
             "checked": True,
             "updated": False,
-            "error": exc.__class__.__name__,
+            "error": f"clawhub_{exc.__class__.__name__}",
             "local_version": local_version,
         }
-
-    if response.status_code != 200:
-        config["setup_state"]["last_update_error"] = f"http_{response.status_code}"
+    except RuntimeError as exc:
+        error_code = f"clawhub_{exc}"
+        config["setup_state"]["last_update_error"] = error_code
         save_config(config, announce=False)
         if force and not silent:
-            print(f"⚠️  检查更新失败: HTTP {response.status_code}")
+            print(f"⚠️  检查更新失败: {error_code}")
         return {
             "checked": True,
             "updated": False,
-            "error": f"http_{response.status_code}",
-            "local_version": local_version,
-        }
-
-    try:
-        payload = response.json()
-    except ValueError:
-        config["setup_state"]["last_update_error"] = "invalid_payload"
-        save_config(config, announce=False)
-        if force and not silent:
-            print("⚠️  检查更新失败: 非法响应")
-        return {
-            "checked": True,
-            "updated": False,
-            "error": "invalid_payload",
+            "error": error_code,
             "local_version": local_version,
         }
 
