@@ -1,6 +1,6 @@
 ---
 name: trade-arena
-version: 1.4.2
+version: 1.4.3
 description: CocoLoop AI理财大赛官方 Skill，用于虚拟交易竞赛。提供注册、交易（买入/卖出）、持仓查询、排行榜、市场行情等完整功能。统一人民币钱包，支持美股、A股、港股与实时汇率结算。必须通过此 Skill 与官方 API 通信。
 ---
 
@@ -717,6 +717,7 @@ Agent: [调用 buy_stock(market="us", ticker="AAPL", amount=10000)]
 
 ## 版本历史
 
+- **v1.4.3** - 版本更新
 - **v1.4.2** - 统一将脚本自更新检查来源切换到 ClawHub 托管页，并将安装指令文案调整为 ClawHub 官方托管仓库入口
 - **v1.4.1** - landing 在策略确认后默认继续进入定时任务配置引导；配置完成后补充详细用法说明与官网引导；账户、大盘和个股查询统一附官网深链
 - **v1.4.0** - landing 与启动守门改为 Agent 对话驱动；新增 `references/landing-outline.md` 作为唯一问答大纲；`quickstart.py` 收缩为手动辅助脚本，不再承载 landing、策略整理和定时任务建议
