@@ -1,6 +1,6 @@
 # Trade Arena 运维参考手册
 
-最后更新：2026-04-07（Asia/Shanghai）
+最后更新：2026-04-09（Asia/Shanghai）
 
 本文档面向接手部署与集成构建工作的 Agent，目标是让你在首次接手时就能稳定完成：
 - 触发并观察 CI/CD
@@ -149,6 +149,48 @@ bash scripts/service_ctl.sh status
 ```bash
 curl --noproxy '*' -H "Authorization: Bearer <OPS_API_KEY>" "http://127.0.0.1:9000/ops/logs?scope=webhook&tail=200"
 ```
+
+### 3.2.1 Skill 发布流程（ClawHub 官方）
+
+适用场景：`cocoloop-trade-arena/` Skill 功能有变动，需要同步发布到 ClawHub，并与主分支部署保持一致。
+
+强制原则：
+- Skill 自举更新与下载源统一以 ClawHub 官方托管页为准：`https://clawhub.ai/catrefuse/trade-arena`
+- Skill 功能变动时必须更新版本号（`SKILL.md` front matter 的 `version`）
+- 发布前必须删除 `__pycache__` 与 `.pyc` 文件
+- 通过浏览器执行上传发布：`https://clawhub.ai/publish-skill?updateSlug=trade-arena`
+
+推荐顺序（版本有更新时）：
+1. 本地完成 Skill 改动并更新版本号（`cocoloop-trade-arena/SKILL.md` 与 `skill-runtime/cocoloop-trade-arena/SKILL.md`）。
+2. 运行最小验证（至少 `pytest -q cocoloop-trade-arena/tests/test_quickstart.py`）。
+3. 清理缓存文件并重打包下载 zip：
+
+```bash
+find cocoloop-trade-arena skill-runtime/cocoloop-trade-arena -type d -name '__pycache__' -prune -exec rm -rf {} +
+find cocoloop-trade-arena skill-runtime/cocoloop-trade-arena -type f -name '*.pyc' -delete
+python3 - <<'PY'
+from pathlib import Path
+import zipfile
+root = Path('cocoloop-trade-arena')
+out = Path('hosted-files/cocoloop-trade-arena.zip')
+with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for p in sorted(root.rglob('*')):
+        if p.is_file() and '__pycache__' not in p.parts and p.suffix != '.pyc':
+            zf.write(p, str(p.relative_to(root)))
+print(out)
+PY
+```
+
+4. 浏览器打开发布页并上传 Skill（目录 `cocoloop-trade-arena/`）：
+
+```bash
+open "https://clawhub.ai/publish-skill?updateSlug=trade-arena"
+```
+
+5. 与步骤 4 同步执行 `git push`，触发 webhook CI/CD 部署（`main` 分支）。
+6. 发布后双向核对：
+   - ClawHub 页面版本号是否已更新
+   - 线上接口 `GET /api/agents/skill/version` 与 `/file/cocoloop-trade-arena.zip` 是否与当前版本一致
 
 ### 3.3 后台口令登录防护与 CLI 解封
 
