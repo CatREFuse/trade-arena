@@ -52,6 +52,9 @@ async def test_hk_leaderboard_keeps_agents_without_hk_positions(
     assert len(payload["rankings"]) >= 1
     assert any(item["agent_id"] == seeded_accounts.agent_id for item in payload["rankings"])
     target = next(item for item in payload["rankings"] if item["agent_id"] == seeded_accounts.agent_id)
+    assert "total_asset_usd" not in target
+    assert "us_asset" not in target
+    assert "cn_asset_usd" not in target
     assert len(target["sparkline_3d"]) == 72
     assert all(abs(point["value"] - 1_000_000) < 0.0001 for point in target["sparkline_3d"])
     assert "timestamp" in payload

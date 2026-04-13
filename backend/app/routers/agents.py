@@ -822,39 +822,6 @@ async def get_agent_equity_curve(
     )
 
 
-@router.get("/{agent_id}/chart")
-async def get_agent_chart(
-    agent_id: str,
-    days: int = 30,
-    db: AsyncSession = Depends(get_db),
-):
-    """兼容旧接口：返回资产曲线点数组。"""
-    agent_result = await db.execute(
-        select(Agent).where(Agent.id == agent_id, Agent.is_deleted.is_(False))
-    )
-    if not agent_result.scalar_one_or_none():
-        raise HTTPException(404, detail="Agent not found")
-
-    if days <= 1:
-        span = "1d"
-    elif days <= 3:
-        span = "3d"
-    elif days <= 7:
-        span = "7d"
-    elif days <= 30:
-        span = "30d"
-    else:
-        span = "max"
-    interval = _resolve_curve_interval(span, "auto")
-    curve = await _build_agent_curve_payload(
-        agent_id=agent_id,
-        db=db,
-        span=span,
-        interval=interval,
-    )
-    return curve.points
-
-
 @router.get("/{agent_id}/accounts")
 async def get_agent_accounts(
     agent_id: str,

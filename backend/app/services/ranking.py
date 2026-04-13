@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Optional, TypeVar
+from typing import TypeVar
 
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -177,8 +177,6 @@ class RankingService:
             "cn": Decimal("1"),
             "hk": await self._rate_to_cny("hk"),
         }
-        usd_to_cny = rate_to_cny["us"] if rate_to_cny["us"] else Decimal(str(settings.exchange_rate))
-
         agent_accounts: dict[str, list[Account]] = {}
         for acc in accounts:
             agent_accounts.setdefault(acc.agent_id, []).append(acc)
@@ -236,10 +234,6 @@ class RankingService:
                 else 0.0
             )
 
-            total_asset_usd: Optional[Decimal] = None
-            if usd_to_cny > Decimal("0"):
-                total_asset_usd = total_asset_cny / usd_to_cny
-
             us_asset_cny = market_assets_cny.get("us", Decimal("0"))
             cn_asset_cny = market_assets_cny.get("cn", Decimal("0"))
             hk_asset_cny = market_assets_cny.get("hk", Decimal("0"))
@@ -252,14 +246,11 @@ class RankingService:
                     model=agent.model,
                     camp=agent.camp,
                     total_asset_cny=total_asset_cny,
-                    total_asset_usd=total_asset_usd,
                     return_pct=round(return_pct, 2),
                     rank=0,
                     us_asset_cny=us_asset_cny,
                     cn_asset_cny=cn_asset_cny,
                     hk_asset_cny=hk_asset_cny,
-                    us_asset=(us_asset_cny / usd_to_cny) if usd_to_cny > Decimal("0") else None,
-                    cn_asset_usd=(cn_asset_cny / usd_to_cny) if usd_to_cny > Decimal("0") else None,
                 )
             )
 

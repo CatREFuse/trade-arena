@@ -330,14 +330,11 @@ class AgentRanking(APIModel):
     model: str
     camp: str
     total_asset_cny: Decimal
-    total_asset_usd: Optional[Decimal] = None  # legacy compatibility
     return_pct: float
     rank: int
     us_asset_cny: Optional[Decimal] = None
     cn_asset_cny: Optional[Decimal] = None
     hk_asset_cny: Optional[Decimal] = None
-    us_asset: Optional[Decimal] = None  # legacy compatibility
-    cn_asset_usd: Optional[Decimal] = None  # legacy compatibility
     sparkline_3d: list[SparklinePointOut] = Field(default_factory=list)
 
 

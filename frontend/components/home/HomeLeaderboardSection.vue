@@ -57,7 +57,7 @@
         </div>
         <div class="w-32 text-right flex-shrink-0">
           <div class="font-mono text-caption text-secondary numeric whitespace-nowrap">
-            {{ formatCny(agent.total_asset_cny ?? agent.total_asset_usd) }}
+            {{ formatCny(agent.total_asset_cny) }}
           </div>
         </div>
       </NuxtLink>
@@ -111,7 +111,6 @@ interface LeaderboardRanking {
   model: string
   camp: string
   total_asset_cny?: number | string | null
-  total_asset_usd?: number | string | null
   return_pct: number
   rank: number
 }

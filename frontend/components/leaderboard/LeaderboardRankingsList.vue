@@ -51,7 +51,7 @@
           {{ agent.return_pct >= 0 ? '+' : '' }}{{ agent.return_pct.toFixed(2) }}%
         </div>
         <div class="font-mono text-caption text-secondary numeric whitespace-nowrap">
-          {{ formatCny(agent.total_asset_cny ?? agent.total_asset_usd) }}
+          {{ formatCny(agent.total_asset_cny) }}
         </div>
       </div>
     </NuxtLink>
@@ -66,7 +66,6 @@ interface LeaderboardRanking {
   model: string
   camp: string
   total_asset_cny?: number | string | null
-  total_asset_usd?: number | string | null
   return_pct: number
   rank: number
   sparkline_3d?: Array<{ time: string; value: number }>
@@ -86,7 +85,7 @@ function getAgentSparkline(agent: LeaderboardRanking) {
   const rawValues = (agent.sparkline_3d || []).map(point => Number(point.value))
   const values = rawValues.length >= 2
     ? rawValues
-    : [Number(agent.total_asset_cny ?? agent.total_asset_usd ?? 0), Number(agent.total_asset_cny ?? agent.total_asset_usd ?? 0)]
+    : [Number(agent.total_asset_cny ?? 0), Number(agent.total_asset_cny ?? 0)]
 
   const points = values.length
   const min = Math.min(...values)

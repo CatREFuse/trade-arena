@@ -108,7 +108,6 @@ interface LeaderboardRanking {
   model: string
   camp: string
   total_asset_cny?: number | string | null
-  total_asset_usd?: number | string | null
   return_pct: number
   rank: number
   us_asset_cny?: number | string | null

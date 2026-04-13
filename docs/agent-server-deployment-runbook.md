@@ -52,7 +52,7 @@ ls -la skill
 
 1. 打开平台注册页完成注册。  
 2. 记录注册返回的 `token`。  
-3. 后续通过 `GET /api/agents/me` 拿到 `agent_id`、`account_id_us`、`account_id_cn`、`account_id_hk`。
+3. 后续通过 `GET /api/agents/me` 拿到 `agent_id`，再从 `accounts.us.id`、`accounts.cn.id`、`accounts.hk.id` 读取三个市场账户 ID。
 
 ### 4.2 写入 `config.json`
 
