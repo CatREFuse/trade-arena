@@ -6,7 +6,7 @@
         <p class="text-xs text-secondary mt-1">基础设施、缓存、上游探活与 Provider 状态</p>
       </div>
       <div class="text-xs text-tertiary">
-        共 {{ rows.length }} 项
+        {{ pending ? '刷新中' : `共 ${rows.length} 项` }}
       </div>
     </div>
 
@@ -30,13 +30,11 @@
             <td class="py-2 pr-4 text-secondary">{{ row.category }}</td>
             <td class="py-2 pr-4 text-main">{{ row.name }}</td>
             <td class="py-2 pr-4">
-              <span
+                <span
                 class="px-2 py-0.5 rounded-full text-[10px] font-medium"
-                :class="row.ok
-                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'"
+                :class="stateClass(row.ok)"
               >
-                {{ row.ok ? '正常' : '异常' }}
+                {{ stateLabel(row.ok) }}
               </span>
             </td>
             <td class="py-2 pr-4 text-secondary max-w-[24rem] truncate">{{ row.detail || '-' }}</td>
@@ -44,7 +42,7 @@
           </tr>
         </tbody>
       </table>
-      <div v-if="!rows.length" class="py-4 text-center text-xs text-tertiary">暂无数据</div>
+      <div v-if="!rows.length" class="py-4 text-center text-xs text-tertiary">{{ pending ? '载入中' : '暂未返回' }}</div>
     </div>
   </section>
 </template>
@@ -56,14 +54,29 @@ interface DataSourceRow {
   id: string
   category: string
   name: string
-  ok: boolean
+  ok: boolean | null
   detail: string
   metric: string
 }
 
 const props = defineProps<{
   status: AdminDataSourceStatus
+  pending?: boolean
 }>()
+
+function stateClass(ok: boolean | null) {
+  if (ok === null)
+    return 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300'
+  return ok
+    ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+    : 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'
+}
+
+function stateLabel(ok: boolean | null) {
+  if (ok === null)
+    return '未获取'
+  return ok ? '正常' : '异常'
+}
 
 const rows = computed<DataSourceRow[]>(() => {
   const list: DataSourceRow[] = []

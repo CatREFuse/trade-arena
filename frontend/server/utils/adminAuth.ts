@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { deleteCookie, getCookie, setCookie } from 'h3'
+import { createError, deleteCookie, getCookie, setCookie } from 'h3'
 
 const ADMIN_SESSION_COOKIE = 'ta_admin_session'
 
@@ -16,6 +16,10 @@ function getAdminCredentialConfig(): AdminCredentialConfig {
     password: String(runtimeConfig.adminPassword || ''),
     sessionSalt: String(runtimeConfig.adminSessionSalt || ''),
   }
+}
+
+function hasCompleteAdminConfig(config: AdminCredentialConfig): boolean {
+  return Boolean(config.username && config.password && config.sessionSalt)
 }
 
 function digest(input: string): string {
@@ -36,6 +40,8 @@ export function buildAdminSessionToken(config: AdminCredentialConfig): string {
 
 export function validateAdminCredentials(username: string, password: string): boolean {
   const config = getAdminCredentialConfig()
+  if (!hasCompleteAdminConfig(config))
+    return false
   return secureEqual(username, config.username) && secureEqual(password, config.password)
 }
 
@@ -44,13 +50,23 @@ export function hasValidAdminSession(event: Parameters<typeof getCookie>[0]): bo
   if (!token)
     return false
 
-  const expectedToken = buildAdminSessionToken(getAdminCredentialConfig())
+  const config = getAdminCredentialConfig()
+  if (!hasCompleteAdminConfig(config))
+    return false
+
+  const expectedToken = buildAdminSessionToken(config)
   return secureEqual(token, expectedToken)
 }
 
 export function setAdminSession(event: Parameters<typeof setCookie>[0]) {
   const runtimeConfig = useRuntimeConfig()
   const config = getAdminCredentialConfig()
+  if (!hasCompleteAdminConfig(config)) {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Admin credentials are not configured',
+    })
+  }
   const token = buildAdminSessionToken(config)
   setCookie(event, ADMIN_SESSION_COOKIE, token, {
     httpOnly: true,

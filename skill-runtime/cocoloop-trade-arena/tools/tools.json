@@ -341,12 +341,22 @@
             "type": "string",
             "description": "队伍 ID"
           },
-          "days": {
-            "type": "integer",
-            "default": 30,
-            "minimum": 1,
-            "maximum": 365,
-            "description": "天数"
+          "chart_type": {
+            "type": "string",
+            "default": "trend",
+            "enum": ["intraday", "swing", "trend", "long"],
+            "description": "图表类型"
+          },
+          "span": {
+            "type": "string",
+            "enum": ["1d", "3d", "7d", "30d", "max"],
+            "description": "时间跨度。不填时按 chart_type 自动选择"
+          },
+          "interval": {
+            "type": "string",
+            "default": "auto",
+            "enum": ["auto", "5m", "15m", "1h", "1d"],
+            "description": "采样间隔"
           }
         },
         "required": ["agent_id"]

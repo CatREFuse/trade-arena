@@ -4,8 +4,10 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 
 from app.schemas import QuoteOut, StockHistoryPointOut, StockIntradayOut, StockIntradayPointOut
+from app.models import Agent
 from app.services import fx as fx_module
 from app.services import market_data as md
 
@@ -90,6 +92,48 @@ async def test_stock_detail_route_returns_history_and_site_stats(
     assert payload["position_stats"]["market_value_cny"] == "2858.40"
     assert payload["position_stats"]["fx_pair"] == "USD/CNY"
     assert payload["position_stats"]["fx_rate"] == "7.20"
+
+
+@pytest.mark.asyncio
+async def test_stock_detail_route_hides_deleted_agent_stats(
+    client,
+    db_session_factory,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async with db_session_factory() as session:
+        agent = (await session.execute(select(Agent).where(Agent.id == "alpha"))).scalar_one()
+        agent.is_deleted = True
+        await session.commit()
+
+    async def fake_get_quote(self, ticker: str):
+        return QuoteOut(
+            ticker="AAPL",
+            price=Decimal("198.50"),
+            change_pct=1.25,
+            name="Apple",
+            volume=1000,
+            market_status="open",
+        )
+
+    async def fake_get_stock_history_with_source(self, ticker: str, *, days: int = 90, refresh: bool = False):
+        return [], "yahoo_chart"
+
+    async def fake_get_stock_listing_date(self, ticker: str, *, refresh: bool = False):
+        return "1980-12-12"
+
+    monkeypatch.setattr(md.MarketDataService, "get_quote", fake_get_quote)
+    monkeypatch.setattr(md.MarketDataService, "get_stock_history_with_source", fake_get_stock_history_with_source)
+    monkeypatch.setattr(md.MarketDataService, "get_stock_listing_date", fake_get_stock_listing_date)
+
+    response = await client.get("/api/market/stocks/aapl?days=90&trade_limit=5")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["site_stats"]["total_trade_count"] == 0
+    assert payload["site_stats"]["unique_agent_count"] == 0
+    assert payload["recent_trades"] == []
+    assert payload["position_stats"]["holder_count"] == 0
+    assert payload["position_stats"]["total_shares"] == "0.000000"
 
 
 @pytest.mark.asyncio

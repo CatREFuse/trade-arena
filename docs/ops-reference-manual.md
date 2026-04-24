@@ -63,7 +63,7 @@
 - `GET /ops/status`
 - `GET /ops/logs`
 
-`/ops/jobs/service` 的 `target` 允许 `all|backend|frontend`。
+`/ops/jobs/service` 的 `target` 允许 `all|backend|frontend`，默认只重启应用服务，不重启 webhook/gateway。
 
 鉴权规则：
 
@@ -85,7 +85,7 @@ bash scripts/opsctl.sh init-secrets --output .env.ops.local
 
 1. 作为薄入口只负责转发到 `scripts/opsctl.sh deploy --branch <branch>`
 2. 具体部署编排由 `scripts/ops/deploy.sh` 执行
-3. 服务重启统一调用 `scripts/opsctl.sh restart --target all`（内部再转发到 `scripts/service_ctl.sh`，默认会拉起 webhook）
+3. 服务重启统一调用 `scripts/opsctl.sh restart --target all`（内部再转发到 `scripts/service_ctl.sh`；只有显式 `START_WEBHOOK=1` 时才会包含 webhook）
 4. 实际部署脚本仍使用锁文件与 pending 机制，避免同机并发部署
 5. 部署执行开始/结束会同步写入 `webhook/DEPLOY_LOG.md`
 
@@ -129,11 +129,13 @@ bash scripts/opsctl.sh init-secrets --output .env.ops.local
 
 1. 运行日志：`tail -n 200 /var/log/trade-arena-deploy.log`
 2. Webhook 记录：检查 `webhook/DEPLOY_LOG.md` 最新条目状态
-3. 线上回归：
+3. 线上无副作用回归：
 
 ```bash
-bash scripts/online_regression.sh
+RUN_REGISTER=0 bash scripts/online_regression.sh
 ```
+
+注册闭环回归会写入临时 Agent。执行前必须先按 `docs/ops-logical-delete-log.md` 完成逻辑删除留档，再显式设置 `RUN_REGISTER=1`。
 
 4. 若失败，先看日志再决定回滚或热修复
 
@@ -220,8 +222,9 @@ open "https://clawhub.ai/publish-skill?updateSlug=trade-arena"
 
 公网入口要求：
 
-- Nginx 必须将 `/api/admin/auth/` 代理到 `127.0.0.1:3000`
-- 其余 `/api/` 仍可按现有规则代理到 `127.0.0.1:8000`
+- Nginx 必须将 `/api/admin/` 代理到 `127.0.0.1:3000`，由 Nuxt 校验后台 session 后再转发后端。
+- FastAPI 后端的 `/api/admin/*` 还需要 `X-Admin-API-Key`，该值由 Nuxt 代理注入。
+- 后端和 Nuxt 必须共享同一组内部 key：`ADMIN_API_KEY` 与 `NUXT_ADMIN_BACKEND_API_KEY`。
 - 若漏掉这条例外，`/console/login` 页面对外会返回 `404`
 
 运维排查与解除统一走 SSH CLI：

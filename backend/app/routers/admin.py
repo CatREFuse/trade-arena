@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from time import perf_counter
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +20,34 @@ from app.services.market_data import MARKET_CACHE_VERSION, MarketDataService
 from app.services.traffic_analytics import TrafficAnalyticsService
 from app.utils.datetime import ensure_utc_datetime, normalize_iso_datetime
 
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+logger = logging.getLogger(__name__)
+
+
+def require_admin_api_key(x_admin_api_key: str | None = Header(default=None)) -> None:
+    expected = settings.admin_api_key.strip()
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "ADMIN_API_NOT_CONFIGURED",
+                "message": "管理后台内部鉴权未配置",
+            },
+        )
+    if not x_admin_api_key or not secrets.compare_digest(x_admin_api_key, expected):
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "ADMIN_AUTH_REQUIRED",
+                "message": "需要管理后台内部鉴权",
+            },
+        )
+
+
+router = APIRouter(
+    prefix="/api/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_admin_api_key)],
+)
 
 
 def _as_float(value: Decimal | float | int | None) -> float:
@@ -267,6 +296,32 @@ async def _collect_data_sources(request: Request, db: AsyncSession) -> dict:
     }
 
 
+def _empty_users(limit: int, offset: int) -> dict:
+    return {"total": 0, "limit": int(limit), "offset": int(offset), "items": []}
+
+
+def _empty_logs(limit: int, offset: int) -> dict:
+    return {
+        "total": 0,
+        "buy_total": 0,
+        "sell_total": 0,
+        "limit": int(limit),
+        "offset": int(offset),
+        "items": [],
+    }
+
+
+def _empty_data_sources(detail: str = "") -> dict:
+    return {
+        "db": {"ok": False, "detail": detail},
+        "redis": {"ok": False, "detail": detail},
+        "probes": [],
+        "provider_chains": {},
+        "provider_circuits": [],
+        "cache": {},
+    }
+
+
 async def _probe_sources(service: MarketDataService) -> list[dict]:
     checks = [
         _probe_source("US Quote (AAPL)", lambda: service.get_quote("AAPL")),
@@ -323,6 +378,33 @@ def _empty_market_snapshot() -> dict:
         "market_summary": [],
         "boards": {"us": [], "cn": [], "hk": []},
     }
+
+
+def _empty_trade_stats() -> dict:
+    return {
+        "totals": {
+            "trade_count": 0,
+            "trade_amount": 0,
+            "buy_count": 0,
+            "sell_count": 0,
+            "recent_24h_count": 0,
+        },
+        "by_market": {},
+        "daily": [],
+        "top_tickers": [],
+    }
+
+
+def _empty_traffic_report(days: int) -> dict:
+    return TrafficAnalyticsService(None)._empty_report(days=days)
+
+
+async def _collect_dashboard_section(name: str, fetcher, fallback):
+    try:
+        return await fetcher()
+    except Exception:
+        logger.exception("Admin dashboard section failed: %s", name)
+        return fallback()
 
 
 async def _collect_market_snapshot(request: Request, live: bool = False) -> dict:
@@ -494,12 +576,36 @@ async def admin_dashboard(
     traffic_top: int = Query(default=15, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    users = await _collect_users(db, limit=20, offset=0, redis=request.app.state.redis)
-    logs = await _collect_logs(db, limit=20, offset=0)
-    data_sources = await _collect_data_sources(request, db)
-    market = await _collect_market_snapshot(request, live=live_market)
-    trade_stats = await _collect_trade_stats(db, days=7)
-    traffic = await _collect_traffic(request.app.state.redis, days=traffic_days, top=traffic_top)
+    users = await _collect_dashboard_section(
+        "users",
+        lambda: _collect_users(db, limit=20, offset=0, redis=request.app.state.redis),
+        lambda: _empty_users(limit=20, offset=0),
+    )
+    logs = await _collect_dashboard_section(
+        "logs",
+        lambda: _collect_logs(db, limit=20, offset=0),
+        lambda: _empty_logs(limit=20, offset=0),
+    )
+    data_sources = await _collect_dashboard_section(
+        "data_sources",
+        lambda: _collect_data_sources(request, db),
+        lambda: _empty_data_sources(),
+    )
+    market = await _collect_dashboard_section(
+        "market",
+        lambda: _collect_market_snapshot(request, live=live_market),
+        _empty_market_snapshot,
+    )
+    trade_stats = await _collect_dashboard_section(
+        "trade_stats",
+        lambda: _collect_trade_stats(db, days=7),
+        _empty_trade_stats,
+    )
+    traffic = await _collect_dashboard_section(
+        "traffic",
+        lambda: _collect_traffic(request.app.state.redis, days=traffic_days, top=traffic_top),
+        lambda: _empty_traffic_report(days=traffic_days),
+    )
     return {
         "generated_at": datetime.now(timezone.utc),
         "users": users,

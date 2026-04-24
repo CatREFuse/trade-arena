@@ -3,7 +3,7 @@ set -euo pipefail
 
 BASE_URL="${BASE_URL:-https://stock.cocoloop.cn}"
 NO_PROXY_VALUE="${NO_PROXY_VALUE:-*}"
-RUN_REGISTER="${RUN_REGISTER:-1}"
+RUN_REGISTER="${RUN_REGISTER:-0}"
 CLEANUP_REGISTERED_AGENT="${CLEANUP_REGISTERED_AGENT:-1}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-20}"
 
@@ -94,7 +94,6 @@ run_check "health" "GET" "/api/health" "200" "\"status\":"
 run_check "agents" "GET" "/api/agents/" "200"
 run_check "leaderboard" "GET" "/api/leaderboard?market=overall" "200"
 run_check "feed" "GET" "/api/feed?limit=3&offset=0" "200"
-run_check "dev_status" "GET" "/api/dev/status" "200"
 run_check "overview" "GET" "/api/market/overview" "200"
 run_check "quote_aapl" "GET" "/api/market/quote/AAPL" "200"
 run_check "skill_hosted" "GET" "/api/agents/skill/hosted" "200"

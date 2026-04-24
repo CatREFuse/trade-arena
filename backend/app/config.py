@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     market_alphavantage_api_key: str = ""
     market_finnhub_api_key: str = ""
     market_tushare_token: str = ""
+    admin_api_key: str = ""
+    dev_routes_enabled: bool = False
     fx_provider_url: str = "https://open.er-api.com/v6/latest/USD"
     fx_refresh_interval_seconds: int = 300
     fx_cache_key_prefix: str = "fx:rates"

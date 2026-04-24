@@ -16,15 +16,18 @@ bash scripts/online_regression.sh
 # 只跑无副作用检查（不临时注册）
 RUN_REGISTER=0 bash scripts/online_regression.sh
 
+# 验证注册闭环（执行前先完成生产逻辑删除留档）
+RUN_REGISTER=1 bash scripts/online_regression.sh
+
 # 指定目标环境
 BASE_URL=https://stock.cocoloop.cn bash scripts/online_regression.sh
 ```
 
 脚本覆盖项：
 - 页面可达性（首页、注册、排行榜、行情、后台入口跳转）
-- 核心 API（health/agents/leaderboard/feed/market/dev status）
+- 核心 API（health/agents/leaderboard/feed/market）
 - 错误契约（`INVALID_TOKEN`、`TICKER_NOT_FOUND`、`EMAIL_VERIFICATION_DISABLED`）
-- 注册闭环（可选）：`register -> agents/me`
+- 注册闭环（显式设置 `RUN_REGISTER=1` 后执行）：`register -> agents/me`
 - 参数边界：`buy amount=0`、`sell shares=0` 必须返回 `422`
 
 结果判定：

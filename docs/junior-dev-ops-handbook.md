@@ -202,6 +202,14 @@ curl --noproxy '*' -X POST http://localhost:8000/api/dev/reset
 ```
 
 这些接口只用于本地联调和回归，不要写进生产流程。
+`scripts/service_ctl.sh` 在 `MODE=dev` 下会自动设置 `DEV_ROUTES_ENABLED=1`。手动启动后端时，如需使用这些接口，必须显式设置 `DEV_ROUTES_ENABLED=1`；生产环境不得开启。
+
+本地管理后台 API 通过内部 key 串联 Nuxt 与 FastAPI。`scripts/service_ctl.sh` 在 `MODE=dev` 下会自动给前后端设置本地内部 key；手动启动时需要同时设置：
+
+```bash
+ADMIN_API_KEY=local-dev-admin-api-key
+NUXT_ADMIN_BACKEND_API_KEY=local-dev-admin-api-key
+```
 
 ## 9. 构建与生产模式检查
 

@@ -166,7 +166,7 @@ cmd_admin_login_guard() {
 
 cmd_restart() {
   local target="all"
-  local restart_webhook="${START_WEBHOOK:-1}"
+  local restart_webhook="${START_WEBHOOK:-0}"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --target)
@@ -185,8 +185,8 @@ cmd_restart() {
       START_WEBHOOK="$restart_webhook" /bin/bash "$ROOT_DIR/scripts/service_ctl.sh" restart
       ;;
     backend|frontend)
-      log "Target '$target' currently triggers a full restart to keep dependency order stable."
-      START_WEBHOOK="$restart_webhook" /bin/bash "$ROOT_DIR/scripts/service_ctl.sh" restart
+      log "Restarting target '$target' without touching webhook/gateway."
+      TARGET="$target" START_WEBHOOK=0 /bin/bash "$ROOT_DIR/scripts/service_ctl.sh" restart
       ;;
     *)
       fail "Unsupported restart target: $target"

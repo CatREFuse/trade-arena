@@ -1,10 +1,16 @@
+const isProductionRuntime = process.env.NODE_ENV === 'production'
+const adminUsername = process.env.NUXT_ADMIN_USERNAME || (isProductionRuntime ? '' : 'admin')
+const adminPassword = process.env.NUXT_ADMIN_PASSWORD || (isProductionRuntime ? '' : 'admin123456')
+const adminSessionSalt = process.env.NUXT_ADMIN_SESSION_SALT || (isProductionRuntime ? '' : 'trade-arena-admin-session')
+
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
   devtools: { enabled: true },
   runtimeConfig: {
-    adminUsername: process.env.NUXT_ADMIN_USERNAME || 'admin',
-    adminPassword: process.env.NUXT_ADMIN_PASSWORD || 'admin123456',
-    adminSessionSalt: process.env.NUXT_ADMIN_SESSION_SALT || 'trade-arena-admin-session',
+    adminUsername,
+    adminPassword,
+    adminSessionSalt,
+    adminBackendApiKey: process.env.NUXT_ADMIN_BACKEND_API_KEY || process.env.ADMIN_API_KEY || '',
     adminCookieSecure: process.env.NUXT_ADMIN_COOKIE_SECURE === 'true',
     adminLoginGuardStateFile: process.env.NUXT_ADMIN_LOGIN_GUARD_STATE_FILE || '.runtime/admin-login-guard/state.json',
     public: {

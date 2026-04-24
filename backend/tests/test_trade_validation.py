@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 import app.routers.trade as trade_router
-from app.models import Position
+from app.models import Account, Agent, Position, Wallet
 from app.schemas import BuyRequest, QuoteOut, SellRequest
 from app.services.market_calendar import MarketCalendarService
 from app.services import market_data as md
@@ -167,6 +167,136 @@ async def test_trade_buy_alias_ticker_is_normalized_and_persisted(
         ).scalars().all()
         assert len(rows) == 1
         assert rows[0].ticker == "BRK.B"
+
+
+@pytest.mark.asyncio
+async def test_trade_rejects_account_id_with_same_prefix_different_agent(
+    client, seeded_accounts, db_session_factory, monkeypatch
+):
+    async with db_session_factory() as session:
+        wallet_cash = Decimal("1000000.00")
+        session.add(
+            Agent(
+                id="alpha-2",
+                name="Alpha Impersonation Target",
+                avatar="avatar",
+                model="gpt-5.4",
+                camp="open",
+                style="test",
+                framework="pytest",
+            )
+        )
+        session.add(
+            Wallet(
+                id="alpha-2-wallet",
+                agent_id="alpha-2",
+                currency="CNY",
+                initial_cash=wallet_cash,
+                cash=wallet_cash,
+            )
+        )
+        session.add(
+            Account(
+                id="alpha-2-us",
+                agent_id="alpha-2",
+                market="us",
+                currency="CNY",
+                initial_cash=Decimal("0.00"),
+                cash=wallet_cash,
+                api_token="other-agent-token",
+            )
+        )
+        await session.commit()
+
+    monkeypatch.setattr(MarketCalendarService, "is_trade_open", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(md.MarketDataService, "get_quote", _fake_quote_for_tests)
+
+    response = await client.post(
+        "/api/trade/buy",
+        headers={"Authorization": f"Bearer {seeded_accounts.token}"},
+        json={
+            "account_id": "alpha-2-us",
+            "ticker": "AAPL",
+            "amount": 100,
+        },
+    )
+
+    assert response.status_code == 403
+
+    async with db_session_factory() as session:
+        wallet = (await session.execute(select(Wallet).where(Wallet.agent_id == "alpha-2"))).scalar_one()
+        assert wallet.cash == Decimal("1000000.00")
+
+
+@pytest.mark.asyncio
+async def test_trade_sell_rejects_account_id_with_same_prefix_different_agent(
+    client, seeded_accounts, db_session_factory
+):
+    async with db_session_factory() as session:
+        wallet_cash = Decimal("1000000.00")
+        session.add(
+            Agent(
+                id="alpha-2",
+                name="Alpha Impersonation Target",
+                avatar="avatar",
+                model="gpt-5.4",
+                camp="open",
+                style="test",
+                framework="pytest",
+            )
+        )
+        session.add(
+            Wallet(
+                id="alpha-2-wallet",
+                agent_id="alpha-2",
+                currency="CNY",
+                initial_cash=wallet_cash,
+                cash=wallet_cash,
+            )
+        )
+        session.add(
+            Account(
+                id="alpha-2-us",
+                agent_id="alpha-2",
+                market="us",
+                currency="CNY",
+                initial_cash=Decimal("0.00"),
+                cash=wallet_cash,
+                api_token="other-agent-token",
+            )
+        )
+        session.add(
+            Position(
+                account_id="alpha-2-us",
+                ticker="AAPL",
+                shares=Decimal("5"),
+                avg_cost=Decimal("100"),
+            )
+        )
+        await session.commit()
+
+    response = await client.post(
+        "/api/trade/sell",
+        headers={"Authorization": f"Bearer {seeded_accounts.token}"},
+        json={
+            "account_id": "alpha-2-us",
+            "ticker": "AAPL",
+            "shares": 1,
+        },
+    )
+
+    assert response.status_code == 403
+
+    async with db_session_factory() as session:
+        position = (
+            await session.execute(
+                select(Position).where(
+                    Position.account_id == "alpha-2-us",
+                    Position.ticker == "AAPL",
+                )
+            )
+        ).scalar_one()
+        assert position.shares == Decimal("5.000000")
 
 
 @pytest.mark.asyncio

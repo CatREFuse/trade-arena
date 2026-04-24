@@ -127,10 +127,12 @@ async def _record_account_snapshot(
             row.trade_count = row.trade_count + trade_increment
 
 
-def _resolve_account_id(req, account: Account):
+async def _resolve_account_id(req, account: Account, db: AsyncSession):
     """从 token 认证的 account 自动解析 account_id"""
     if req.account_id:
-        if not req.account_id.startswith(f"{account.agent_id}-"):
+        result = await db.execute(select(Account).where(Account.id == req.account_id))
+        target_account = result.scalar_one_or_none()
+        if target_account is None or target_account.agent_id != account.agent_id:
             raise HTTPException(403, detail="无权操作该账户")
         return  # 兼容旧方式
     if req.market:
@@ -149,7 +151,7 @@ async def buy(
     account: Account = Depends(get_current_account),
     db: AsyncSession = Depends(get_db),
 ):
-    _resolve_account_id(req, account)
+    await _resolve_account_id(req, account, db)
 
     redis = request.app.state.redis
     fx_service = getattr(request.app.state, "fx_service", None) or FXService(redis)
@@ -191,7 +193,7 @@ async def sell(
     account: Account = Depends(get_current_account),
     db: AsyncSession = Depends(get_db),
 ):
-    _resolve_account_id(req, account)
+    await _resolve_account_id(req, account, db)
 
     redis = request.app.state.redis
     fx_service = getattr(request.app.state, "fx_service", None) or FXService(redis)

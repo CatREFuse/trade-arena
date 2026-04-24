@@ -242,8 +242,9 @@ async def get_stock_detail(
             func.count(func.distinct(Account.agent_id)),
         )
         .select_from(Trade)
-        .join(Account, Account.id == Trade.account_id, isouter=True)
-        .where(Trade.ticker == quote.ticker)
+        .join(Account, Account.id == Trade.account_id)
+        .join(Agent, Agent.id == Account.agent_id)
+        .where(Trade.ticker == quote.ticker, Agent.is_deleted.is_(False))
     )
     stats_row = (await db.execute(stats_stmt)).one()
     site_stats = StockSiteStatsOut(
@@ -260,7 +261,7 @@ async def get_stock_detail(
         select(Trade, Account.market, Agent.id, Agent.name, Agent.avatar)
         .join(Account, Account.id == Trade.account_id)
         .join(Agent, Agent.id == Account.agent_id)
-        .where(Trade.ticker == quote.ticker)
+        .where(Trade.ticker == quote.ticker, Agent.is_deleted.is_(False))
         .order_by(Trade.created_at.desc(), Trade.id.desc())
         .limit(normalized_trade_limit)
     )
@@ -289,7 +290,9 @@ async def get_stock_detail(
             func.coalesce(func.sum(Position.shares), 0),
         )
         .select_from(Position)
-        .where(Position.ticker == quote.ticker, Position.shares > 0)
+        .join(Account, Account.id == Position.account_id)
+        .join(Agent, Agent.id == Account.agent_id)
+        .where(Position.ticker == quote.ticker, Position.shares > 0, Agent.is_deleted.is_(False))
     )
     holder_count_raw, total_shares_raw = (await db.execute(position_stmt)).one()
     holder_count = int(holder_count_raw or 0)

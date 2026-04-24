@@ -67,7 +67,7 @@ Ops API（同样需要 `Authorization: Bearer <OPS_API_KEY>`）：
 - `GET /ops/status`
 - `GET /ops/logs`
 
-其中 `/ops/jobs/service` 支持 `target=all|backend|frontend`。
+其中 `/ops/jobs/service` 支持 `target=all|backend|frontend`，默认只重启应用服务，不重启 webhook/gateway。
 
 说明：
 

@@ -21,6 +21,7 @@ FRONTEND_LOG_FILE="$LOG_DIR/frontend.log"
 WEBHOOK_LOG_FILE="$LOG_DIR/webhook.log"
 
 MODE="${MODE:-prod}"                    # dev | prod
+TARGET="${TARGET:-all}"                 # all | backend | frontend | webhook
 START_DOCKER="${START_DOCKER:-1}"       # 1 | 0
 STOP_DOCKER="${STOP_DOCKER:-0}"         # 1 | 0
 START_WEBHOOK="${START_WEBHOOK:-0}"     # 1 | 0
@@ -63,9 +64,10 @@ Usage:
 
 Common env vars:
   MODE=prod|dev                 Default: prod
+  TARGET=all|backend|frontend|webhook
   START_DOCKER=1|0              Default: 1
   STOP_DOCKER=1|0               Default: 0
-  START_WEBHOOK=1|0             Default: 0
+  START_WEBHOOK=1|0             Default: 0. With TARGET=all, webhook is included only when this is 1.
   PREPARE_BACKEND=1|0           Default: 0
   PREPARE_FRONTEND=1|0          Default: 0
   BUILD_FRONTEND=1|0            Default: prod=1, dev=0
@@ -309,6 +311,12 @@ start_backend() {
     cd "$ROOT_DIR/backend"
     # Keep backend runtime env aligned with webhook/ops by loading ops env files.
     load_ops_env
+    if [[ "$MODE" == "dev" && -z "${ADMIN_API_KEY:-}" ]]; then
+      export ADMIN_API_KEY="local-dev-admin-api-key"
+    fi
+    if [[ "$MODE" == "dev" && -z "${DEV_ROUTES_ENABLED:-}" ]]; then
+      export DEV_ROUTES_ENABLED=1
+    fi
     if [[ "$MODE" == "dev" ]]; then
       if [[ "$BACKEND_RELOAD" == "1" ]]; then
         nohup "$py" -m uvicorn app.main:app --reload --host "$BACKEND_HOST" --port "$BACKEND_PORT" \
@@ -332,6 +340,10 @@ build_frontend_if_needed() {
   log "Building frontend production bundle..."
   (
     cd "$ROOT_DIR/frontend"
+    load_ops_env
+    if [[ -z "${NUXT_ADMIN_BACKEND_API_KEY:-}" && -n "${ADMIN_API_KEY:-}" ]]; then
+      export NUXT_ADMIN_BACKEND_API_KEY="$ADMIN_API_KEY"
+    fi
     rm -rf .nuxt .output
     npm run build
   )
@@ -349,6 +361,13 @@ start_frontend() {
   log "Starting frontend on ${FRONTEND_HOST}:${FRONTEND_PORT} (mode=$MODE)..."
   (
     cd "$ROOT_DIR/frontend"
+    load_ops_env
+    if [[ "$MODE" == "dev" && -z "${ADMIN_API_KEY:-}" ]]; then
+      export ADMIN_API_KEY="local-dev-admin-api-key"
+    fi
+    if [[ -z "${NUXT_ADMIN_BACKEND_API_KEY:-}" && -n "${ADMIN_API_KEY:-}" ]]; then
+      export NUXT_ADMIN_BACKEND_API_KEY="$ADMIN_API_KEY"
+    fi
     local frontend_entry="$ROOT_DIR/frontend/.output/server/index.mjs"
     local spawned_pid=""
     if [[ "$MODE" == "dev" ]]; then
@@ -404,10 +423,32 @@ start_webhook() {
 }
 
 stop_all() {
-  stop_pid_file "webhook" "$WEBHOOK_PID_FILE"
+  if [[ "$START_WEBHOOK" == "1" ]]; then
+    stop_pid_file "webhook" "$WEBHOOK_PID_FILE"
+  fi
   stop_pid_file "frontend" "$FRONTEND_PID_FILE"
   stop_pid_file "backend" "$BACKEND_PID_FILE"
   stop_docker_if_needed
+}
+
+stop_selected() {
+  case "$TARGET" in
+    all)
+      stop_all
+      ;;
+    backend)
+      stop_pid_file "backend" "$BACKEND_PID_FILE"
+      ;;
+    frontend)
+      stop_pid_file "frontend" "$FRONTEND_PID_FILE"
+      ;;
+    webhook)
+      stop_pid_file "webhook" "$WEBHOOK_PID_FILE"
+      ;;
+    *)
+      fail "Unsupported TARGET: $TARGET"
+      ;;
+  esac
 }
 
 status_one() {
@@ -450,17 +491,53 @@ start_all() {
   log "All requested services are started."
 }
 
+start_selected() {
+  case "$TARGET" in
+    all)
+      start_all
+      return
+      ;;
+    backend)
+      start_docker_if_needed
+      prepare_backend_if_needed
+      start_backend
+      if [[ "$HEALTHCHECK" == "1" ]]; then
+        wait_http "backend" "http://127.0.0.1:${BACKEND_PORT}/api/health"
+      fi
+      ;;
+    frontend)
+      prepare_frontend_if_needed
+      build_frontend_if_needed
+      start_frontend
+      if [[ "$HEALTHCHECK" == "1" ]]; then
+        wait_http "frontend" "http://127.0.0.1:${FRONTEND_PORT}/"
+      fi
+      ;;
+    webhook)
+      START_WEBHOOK=1 start_webhook
+      if [[ "$HEALTHCHECK" == "1" ]]; then
+        wait_http "webhook" "http://127.0.0.1:${WEBHOOK_PORT}/health"
+      fi
+      ;;
+    *)
+      fail "Unsupported TARGET: $TARGET"
+      ;;
+  esac
+
+  log "Requested service target '$TARGET' is started."
+}
+
 ACTION="${1:-}"
 case "$ACTION" in
   start)
-    start_all
+    start_selected
     ;;
   stop)
-    stop_all
+    stop_selected
     ;;
   restart)
-    stop_all
-    start_all
+    stop_selected
+    start_selected
     ;;
   status)
     status_all

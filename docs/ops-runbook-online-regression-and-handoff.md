@@ -35,13 +35,17 @@ RUN_REGISTER=0 bash scripts/online_regression.sh
 # 指定环境
 BASE_URL=https://stock.cocoloop.cn bash scripts/online_regression.sh
 
+# 验证注册闭环（执行前先完成生产逻辑删除留档）
+RUN_REGISTER=1 bash scripts/online_regression.sh
+
 # 保留临时回归账号（默认会自动清理）
 CLEANUP_REGISTERED_AGENT=0 bash scripts/online_regression.sh
 ```
 
 默认行为：
+- 默认 `RUN_REGISTER=0`，脚本只做无副作用检查。
 - `RUN_REGISTER=1` 且注册成功时，脚本会在回归结束后自动调用 `DELETE /api/agents/me/regression` 对回归 Agent 执行逻辑删除。
-- 该接口不会物理删除生产数据；线上如需额外清理测试 Agent，也必须按 `docs/ops-logical-delete-log.md` 先留档、再执行、再补结果。
+- 该接口不会物理删除生产数据；线上验证注册闭环或清理测试 Agent，都必须按 `docs/ops-logical-delete-log.md` 先留档、再执行、再补结果。
 
 判定标准：
 - 输出 `Summary: pass=... fail=0`

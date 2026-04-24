@@ -5,10 +5,12 @@ from sqlalchemy import select
 
 from app.models import Agent
 
+ADMIN_HEADERS = {"X-Admin-API-Key": "test-admin-key"}
+
 
 @pytest.mark.asyncio
 async def test_admin_users_endpoint_returns_seeded_user(client, seeded_accounts):
-    response = await client.get("/api/admin/users")
+    response = await client.get("/api/admin/users", headers=ADMIN_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -24,7 +26,7 @@ async def test_admin_users_endpoint_hides_deleted_agent(client, seeded_accounts,
         agent.is_deleted = True
         await session.commit()
 
-    response = await client.get("/api/admin/users")
+    response = await client.get("/api/admin/users", headers=ADMIN_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -33,7 +35,7 @@ async def test_admin_users_endpoint_hides_deleted_agent(client, seeded_accounts,
 
 @pytest.mark.asyncio
 async def test_admin_logs_endpoint_returns_trade_logs(client):
-    response = await client.get("/api/admin/logs")
+    response = await client.get("/api/admin/logs", headers=ADMIN_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -48,7 +50,7 @@ async def test_admin_logs_endpoint_returns_trade_logs(client):
 
 @pytest.mark.asyncio
 async def test_admin_data_sources_endpoint_returns_status(client):
-    response = await client.get("/api/admin/data-sources")
+    response = await client.get("/api/admin/data-sources", headers=ADMIN_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -60,7 +62,7 @@ async def test_admin_data_sources_endpoint_returns_status(client):
 
 @pytest.mark.asyncio
 async def test_admin_trade_stats_endpoint_returns_totals(client):
-    response = await client.get("/api/admin/trade-stats?days=7")
+    response = await client.get("/api/admin/trade-stats?days=7", headers=ADMIN_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -71,7 +73,7 @@ async def test_admin_trade_stats_endpoint_returns_totals(client):
 
 @pytest.mark.asyncio
 async def test_admin_dashboard_endpoint_returns_all_modules(client):
-    response = await client.get("/api/admin/dashboard")
+    response = await client.get("/api/admin/dashboard", headers=ADMIN_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -85,15 +87,57 @@ async def test_admin_dashboard_endpoint_returns_all_modules(client):
 
 
 @pytest.mark.asyncio
+async def test_admin_dashboard_endpoint_returns_partial_payload_when_trade_stats_fails(client, monkeypatch):
+    async def boom(*args, **kwargs):
+        raise RuntimeError("trade stats failed")
+
+    monkeypatch.setattr("app.routers.admin._collect_trade_stats", boom)
+
+    response = await client.get("/api/admin/dashboard", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data_sources"]["db"]["ok"] is True
+    assert payload["trade_stats"]["totals"]["trade_count"] == 0
+    assert payload["trade_stats"]["daily"] == []
+
+
+@pytest.mark.asyncio
 async def test_admin_traffic_endpoint_collects_pageview(client):
     post_response = await client.post("/api/analytics/pageview", json={"path": "/leaderboard"})
     assert post_response.status_code == 200
     assert post_response.json()["ok"] is True
 
-    response = await client.get("/api/admin/traffic?days=7&top=5")
+    response = await client.get("/api/admin/traffic?days=7&top=5", headers=ADMIN_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["total_pv"] >= 1
     assert payload["today_pv"] >= 1
     assert any(item["path"] == "/leaderboard" for item in payload["top_pages"])
+
+
+@pytest.mark.asyncio
+async def test_admin_endpoint_rejects_missing_internal_key(client):
+    response = await client.get("/api/admin/users")
+
+    assert response.status_code == 401
+    assert response.json()["detail"]["error"] == "ADMIN_AUTH_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_admin_endpoint_rejects_wrong_internal_key(client):
+    response = await client.get("/api/admin/users", headers={"X-Admin-API-Key": "wrong-key"})
+
+    assert response.status_code == 401
+    assert response.json()["detail"]["error"] == "ADMIN_AUTH_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_admin_endpoint_rejects_when_internal_key_unconfigured(client, monkeypatch):
+    monkeypatch.setattr("app.routers.admin.settings.admin_api_key", "")
+
+    response = await client.get("/api/admin/users", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["error"] == "ADMIN_API_NOT_CONFIGURED"

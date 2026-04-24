@@ -233,6 +233,9 @@ async def app(
     db_session_factory: async_sessionmaker[AsyncSession],
     fake_redis: FakeRedis,
 ) -> AsyncIterator:
+    original_admin_api_key = settings.admin_api_key
+    settings.admin_api_key = "test-admin-key"
+
     async def override_get_db() -> AsyncIterator[AsyncSession]:
         async with db_session_factory() as session:
             yield session
@@ -242,6 +245,7 @@ async def app(
     try:
         yield fastapi_app
     finally:
+        settings.admin_api_key = original_admin_api_key
         fastapi_app.dependency_overrides.pop(get_db, None)
         fastapi_app.dependency_overrides.pop(get_current_account, None)
 

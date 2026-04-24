@@ -66,6 +66,8 @@ REDIS_URL=redis://localhost:6379/0
 
 # 生产建议：关闭开发验证码回显
 EMAIL_VERIFICATION_DEV_MODE=false
+DEV_ROUTES_ENABLED=false
+ADMIN_API_KEY=replace-with-random-internal-admin-key
 
 # 如需邮箱验证码，请配置 SMTP
 SMTP_HOST=
@@ -157,6 +159,11 @@ Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
 Environment=PORT=3000
 Environment=NUXT_PUBLIC_SITE_URL=https://your-domain.com
+Environment=NUXT_ADMIN_BACKEND_API_KEY=replace-with-same-random-internal-admin-key
+Environment=NUXT_ADMIN_USERNAME=replace-with-admin-username
+Environment=NUXT_ADMIN_PASSWORD=replace-with-strong-password
+Environment=NUXT_ADMIN_SESSION_SALT=replace-with-random-session-salt
+Environment=NUXT_ADMIN_COOKIE_SECURE=true
 ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=3
@@ -184,9 +191,9 @@ server {
     listen 80;
     server_name your-domain.com;
 
-    # 后台登录鉴权必须走 Nuxt，才能下发管理端 session / 设备指纹 cookie
-    location /api/admin/auth/ {
-        proxy_pass http://127.0.0.1:3000/api/admin/auth/;
+    # 后台 API 必须走 Nuxt，由 Nuxt 校验 session 后注入内部 key 再转发后端
+    location /api/admin/ {
+        proxy_pass http://127.0.0.1:3000/api/admin/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -319,6 +326,7 @@ curl -sI https://your-domain.com
 ## 13. 当前项目部署注意事项
 
 - 前端 `frontend/server/api/[...path].ts` 当前将 API 代理到 `http://127.0.0.1:8000`，因此默认要求前后端部署在同一台服务器。
-- 公网 Nginx 需保留 `/api/admin/auth/` 直达 Nuxt 3000 的例外规则，否则 `/console/login` 无法建立后台 session。
+- 公网 Nginx 需保留 `/api/admin/` 直达 Nuxt 3000 的例外规则，否则后台 session 与后端内部 key 注入都无法生效。
 - `/api/agents/skill/hosted` 返回 ZIP 下载文件名（`cocoloop-trade-arena.zip`）。
 - 生产环境建议配置 SMTP，并将 `EMAIL_VERIFICATION_DEV_MODE` 设为 `false`。
+- 生产环境必须保持 `DEV_ROUTES_ENABLED=false`，开发数据接口不得挂载。

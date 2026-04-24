@@ -574,6 +574,7 @@ function formatChartSourceLabel(value: string) {
 }
 
 function stopWorker() {
+  if (!import.meta.client) return
   if (refreshWorker !== null) {
     window.clearInterval(refreshWorker)
     refreshWorker = null
@@ -581,10 +582,12 @@ function stopWorker() {
 }
 
 function shouldRunWorker() {
+  if (!import.meta.client) return false
   return detailData.value?.quote?.market_status === 'open' && !document.hidden
 }
 
 function ensureWorker() {
+  if (!import.meta.client) return
   stopWorker()
   if (!shouldRunWorker()) return
   refreshWorker = window.setInterval(async () => {
@@ -596,9 +599,11 @@ function ensureWorker() {
   }, REFRESH_INTERVAL_MS)
 }
 
-watch(() => detailData.value?.quote?.market_status, () => {
-  ensureWorker()
-}, { immediate: true })
+onMounted(() => {
+  watch(() => detailData.value?.quote?.market_status, () => {
+    ensureWorker()
+  }, { immediate: true })
+})
 
 onMounted(() => {
   const onVisible = () => {

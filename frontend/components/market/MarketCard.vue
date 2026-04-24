@@ -150,6 +150,11 @@ interface BoardItem {
   change_pct: number
 }
 
+interface MarketLeaderItem {
+  ticker: string
+  change_pct: number
+}
+
 interface MarketSummary {
   market_status?: string
   timezone?: string
@@ -160,8 +165,8 @@ interface MarketSummary {
   up_count: number
   down_count: number
   flat_count: number
-  leader?: BoardItem | null
-  laggard?: BoardItem | null
+  leader?: MarketLeaderItem | null
+  laggard?: MarketLeaderItem | null
 }
 
 const props = withDefaults(defineProps<{

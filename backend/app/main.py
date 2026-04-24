@@ -17,7 +17,6 @@ from app.routers import (
     leaderboard,
     sse,
     agents,
-    dev,
     files,
     admin,
     analytics,
@@ -94,7 +93,11 @@ app.include_router(market.router)
 app.include_router(leaderboard.router)
 app.include_router(sse.router)
 app.include_router(agents.router)
-app.include_router(dev.router)
 app.include_router(files.router)
 app.include_router(admin.router)
 app.include_router(analytics.router)
+
+if settings.dev_routes_enabled:
+    from app.routers import dev
+
+    app.include_router(dev.router)

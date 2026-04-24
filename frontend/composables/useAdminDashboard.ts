@@ -82,9 +82,14 @@ export interface AdminProviderCircuitItem {
   cooldown_remaining_seconds: number
 }
 
+export interface AdminHealthState {
+  ok: boolean | null
+  detail: string
+}
+
 export interface AdminDataSourceStatus {
-  db: { ok: boolean, detail: string }
-  redis: { ok: boolean, detail: string }
+  db: AdminHealthState
+  redis: AdminHealthState
   probes: AdminProbeItem[]
   provider_chains: Record<string, string[]>
   provider_circuits: AdminProviderCircuitItem[]
@@ -165,19 +170,23 @@ export interface AdminDashboardResponse {
   traffic: AdminTrafficStats
 }
 
-function createDefaultDashboard(): AdminDashboardResponse {
+export function createDefaultAdminDataSources(): AdminDataSourceStatus {
+  return {
+    db: { ok: null, detail: '' },
+    redis: { ok: null, detail: '' },
+    probes: [],
+    provider_chains: {},
+    provider_circuits: [],
+    cache: {},
+  }
+}
+
+export function createDefaultDashboard(): AdminDashboardResponse {
   return {
     generated_at: '',
     users: { total: 0, items: [] },
     logs: { total: 0, buy_total: 0, sell_total: 0, items: [] },
-    data_sources: {
-      db: { ok: false, detail: '' },
-      redis: { ok: false, detail: '' },
-      probes: [],
-      provider_chains: {},
-      provider_circuits: [],
-      cache: {},
-    },
+    data_sources: createDefaultAdminDataSources(),
     market: {
       updated_at: '',
       indices: [],

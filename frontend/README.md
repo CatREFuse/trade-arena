@@ -26,8 +26,11 @@ Admin console credentials can be configured through environment variables:
 NUXT_ADMIN_USERNAME=admin
 NUXT_ADMIN_PASSWORD=replace-with-strong-password
 NUXT_ADMIN_SESSION_SALT=replace-with-random-salt
+NUXT_ADMIN_BACKEND_API_KEY=replace-with-backend-admin-key
 NUXT_ADMIN_COOKIE_SECURE=false
 ```
+
+Production runtime does not use development admin defaults. Configure the admin credentials explicitly; `NUXT_ADMIN_BACKEND_API_KEY` must match the backend `ADMIN_API_KEY`.
 
 Admin console login session does not set `maxAge`; it remains valid until logout, credential/salt change, or browser policy cleanup.
 

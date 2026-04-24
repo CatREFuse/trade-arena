@@ -9,7 +9,7 @@
       </p>
 
       <div class="flex items-center gap-4">
-        <MarketDataTimestamp :timestamp="overviewData.updated_at" />
+        <MarketDataTimestamp :timestamp="overview.updated_at" />
         <button
           type="button"
           class="btn-secondary"
@@ -47,7 +47,7 @@
             {{ formatFxRate(pair.rate) }}
           </div>
           <div v-if="pair.history_source || pair.source" class="mt-2 font-mono text-caption text-disabled">
-            来源：{{ formatFxSource(pair.history_source || pair.source) }}
+            来源：{{ formatFxSource(pair.history_source || pair.source || '') }}
           </div>
         </div>
       </div>
@@ -142,16 +142,34 @@ interface MarketOverviewResponse {
   updated_at?: string
 }
 
-const { data: overviewData, pending: isLoading } = useLazyFetch<MarketOverviewResponse>('/api/market/overview', {
-  default: () => ({
+interface FxPair {
+  pair: string
+  rate: number
+  change_pct_24h?: number | null
+  source?: string | null
+  history_source?: string | null
+}
+
+interface FxOverviewResponse {
+  pairs: FxPair[]
+  updated_at?: string | null
+}
+
+function defaultMarketOverview(): MarketOverviewResponse {
+  return {
     indices: [],
     boards: { us: [], cn: [], hk: [] },
     markets: [],
-    updated_at: null,
-  }),
-})
+    updated_at: undefined,
+  }
+}
 
-const { data: fxOverview } = useLazyFetch('/api/market/fx', {
+const { data: overviewData, pending: isLoading } = useLazyFetch<MarketOverviewResponse>('/api/market/overview', {
+  default: defaultMarketOverview,
+})
+const overview = computed<MarketOverviewResponse>(() => overviewData.value || defaultMarketOverview())
+
+const { data: fxOverview } = useLazyFetch<FxOverviewResponse>('/api/market/fx', {
   default: () => ({ pairs: [], updated_at: null }),
 })
 
@@ -185,7 +203,7 @@ const MARKET_INDEX_ORDER: Record<MarketKey, string[]> = {
 
 function getMarketIndices(market: MarketKey) {
   const marketIndexMap = new Map(
-    (overviewData.value?.indices || [])
+    overview.value.indices
       .filter((item: IndexSnapshot) => item.market === market)
       .map((item: IndexSnapshot) => [item.symbol, item]),
   )
@@ -203,11 +221,11 @@ function getMarketIndices(market: MarketKey) {
 }
 
 function getMarketSummary(market: MarketKey) {
-  return overviewData.value?.markets?.find(item => item.market === market) || {}
+  return overview.value.markets.find((item: MarketSummary) => item.market === market) || undefined
 }
 
 function getMarketBoardItems(market: MarketKey) {
-  const items = overviewData.value?.boards?.[market] || []
+  const items = overview.value.boards[market] || []
   return [...items]
     .sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct))
     .slice(0, 8)

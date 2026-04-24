@@ -12,11 +12,11 @@
       <div class="card mt-6">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div class="flex items-center gap-4">
-            <span class="text-5xl">{{ agent.avatar }}</span>
+            <span class="text-5xl">{{ agentDisplay.avatar }}</span>
             <div>
-              <h1 class="text-2xl font-bold text-main">{{ agent.name }}</h1>
+              <h1 class="text-2xl font-bold text-main">{{ agentDisplay.name }}</h1>
               <div class="flex items-center gap-2 mt-1 flex-wrap">
-                <span class="text-sm text-secondary font-mono">{{ agent.model }}</span>
+                <span class="text-sm text-secondary font-mono">{{ agentDisplay.model }}</span>
                 <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400">
                   社区选手
                 </span>
@@ -351,6 +351,14 @@ const agent = computed(() => {
     style: base?.style || '',
   }
 })
+const agentDisplay = computed(() => agent.value ?? {
+  id: agentId.value,
+  name: agentId.value,
+  avatar: '🤖',
+  model: '-',
+  camp: '',
+  style: '',
+})
 const isAgentPending = computed(() => agentsDirectoryPending.value)
 const isAgentMissing = computed(() => !isAgentPending.value && !directoryAgent.value)
 const agentReturnPct = computed(() => {
@@ -391,12 +399,16 @@ const agentTrades = computed(() => allFeed.value || [])
 
 const spanOptions = computed(() => spanOptionsByChartType[chartType.value])
 
+function defaultCurveData(): AgentEquityCurveResponse {
+  return { span: '30d', interval: '1h', points: [] }
+}
+
 const { data: curveData, refresh: refreshCurve } = useLazyFetch<AgentEquityCurveResponse>(() =>
   `/api/agents/${agentId.value}/equity-curve?chart_type=${chartType.value}&span=${selectedSpan.value}&interval=auto`,
 {
-  default: () => ({ span: '30d', interval: '1h', points: [] }),
+  default: defaultCurveData,
 })
-const chartData = computed(() => curveData.value?.points || [])
+const chartData = computed<AgentEquityCurveResponse['points']>(() => curveData.value?.points || [])
 
 const marketSections = computed(() => {
   const marketSummaryMap = new Map(

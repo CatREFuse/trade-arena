@@ -31,7 +31,7 @@
     </div>
 
     <div class="mt-6 space-y-4">
-      <AdminDataSourcesPanel :status="dashboard.data_sources" />
+      <AdminDataSourcesPanel :status="dataSources" :pending="dataSourcesPending" />
       <AdminTrafficPanel :stats="dashboard.traffic" />
       <AdminUsersPanel
         :total="usersData.total"
@@ -64,7 +64,11 @@ import AdminMarketPanel from '~/components/admin/AdminMarketPanel.vue'
 import AdminTrafficPanel from '~/components/admin/AdminTrafficPanel.vue'
 import AdminTradeStatsPanel from '~/components/admin/AdminTradeStatsPanel.vue'
 import AdminUsersPanel from '~/components/admin/AdminUsersPanel.vue'
-import type { AdminLogItem, AdminUserItem } from '~/composables/useAdminDashboard'
+import {
+  createDefaultAdminDataSources,
+  createDefaultDashboard,
+} from '~/composables/useAdminDashboard'
+import type { AdminDataSourceStatus, AdminLogItem, AdminUserItem } from '~/composables/useAdminDashboard'
 
 useHead({ title: '管理后台 - CocoLoop Agent 理财竞赛' })
 
@@ -110,50 +114,33 @@ const {
   watch: [logsQuery],
 })
 
+const {
+  data: dataSourcesResponse,
+  pending: dataSourcesPending,
+  refresh: refreshDataSources,
+} = useFetch<AdminDataSourceStatus>('/api/admin/data-sources', {
+  default: createDefaultAdminDataSources,
+})
+
 const usersData = computed(() => usersResponse.value || { total: 0, items: [] as AdminUserItem[] })
 const logsData = computed(() => logsResponse.value || { total: 0, buy_total: 0, sell_total: 0, items: [] as AdminLogItem[] })
+const dashboard = computed(() => data.value || createDefaultDashboard())
 
-const dashboard = computed(() => data.value || {
-  users: { total: 0, items: [] },
-  logs: { total: 0, buy_total: 0, sell_total: 0, items: [] },
-  data_sources: {
-    db: { ok: false, detail: '' },
-    redis: { ok: false, detail: '' },
-    probes: [],
-    provider_chains: {},
-    provider_circuits: [],
-    cache: {},
-  },
-  market: {
-    updated_at: '',
-    indices: [],
-    market_summary: [],
-    boards: {},
-  },
-  trade_stats: {
-    totals: {
-      trade_count: 0,
-      trade_amount: 0,
-      buy_count: 0,
-      sell_count: 0,
-      recent_24h_count: 0,
-    },
-    by_market: {},
-    daily: [],
-    top_tickers: [],
-  },
-  traffic: {
-    window_days: 7,
-    total_pv: 0,
-    today_pv: 0,
-    unique_page_count: 0,
-    unique_ip_count: 0,
-    daily: [],
-    top_pages: [],
-    top_ips: [],
-    top_regions: [],
-  },
-})
+function hasDataSourceSnapshot(status: AdminDataSourceStatus | null | undefined) {
+  if (!status)
+    return false
+  if (status.db.ok !== null || status.redis.ok !== null)
+    return true
+  if (status.probes.length || status.provider_circuits.length)
+    return true
+  return Object.keys(status.cache).length > 0 || Object.keys(status.provider_chains).length > 0
+}
+
+const dataSources = computed(() => (
+  hasDataSourceSnapshot(dataSourcesResponse.value)
+    ? dataSourcesResponse.value!
+    : dashboard.value.data_sources
+))
 
 const normalizedError = computed(() => {
   const detail = (error.value as any)?.data?.detail
@@ -164,7 +151,7 @@ const normalizedError = computed(() => {
   return '未知错误'
 })
 
-const isRefreshing = computed(() => pending.value || usersPending.value || logsPending.value)
+const isRefreshing = computed(() => pending.value || usersPending.value || logsPending.value || dataSourcesPending.value)
 
 const usersTotalPages = computed(() => Math.max(1, Math.ceil(usersData.value.total / listPageSize)))
 const logsTotalPages = computed(() => Math.max(1, Math.ceil(logsData.value.total / listPageSize)))
@@ -192,7 +179,7 @@ function onLogsPageChange(page: number) {
 }
 
 async function refresh() {
-  await Promise.all([refreshDashboard(), refreshUsers(), refreshLogs()])
+  await Promise.all([refreshDashboard(), refreshUsers(), refreshLogs(), refreshDataSources()])
 }
 
 async function logout() {
